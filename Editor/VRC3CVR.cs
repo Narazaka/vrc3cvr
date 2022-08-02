@@ -33,6 +33,7 @@ public class VRC3CVR : EditorWindow
     Vector2 scrollPosition;
     GameObject chilloutAvatarGameObject;
     bool shouldCloneAvatar = true;
+    bool shouldDeleteVRCAvatarDescriptorAndPipelineManager = true;
     bool shouldDeletePhysBones = true;
 
     [MenuItem("PeanutTools/VRC3CVR")]
@@ -78,6 +79,10 @@ public class VRC3CVR : EditorWindow
         CustomGUI.SmallLineGap();
 
         shouldCloneAvatar = GUILayout.Toggle(shouldCloneAvatar, "Clone avatar");
+
+        CustomGUI.SmallLineGap();
+
+        shouldDeleteVRCAvatarDescriptorAndPipelineManager = GUILayout.Toggle(shouldDeleteVRCAvatarDescriptorAndPipelineManager, "Delete VRC Avatar Descriptor and Pipeline Manager");
 
         CustomGUI.SmallLineGap();
 
@@ -167,7 +172,10 @@ public class VRC3CVR : EditorWindow
         SetAnimator();
         ConvertVrcParametersToChillout();
         InsertChilloutOverride();
-        DeleteVrcComponents();
+
+        if (shouldDeleteVRCAvatarDescriptorAndPipelineManager) {
+            DeleteVrcComponents();
+        }
 
         if (shouldCloneAvatar) {
             HideOriginalAvatar();
