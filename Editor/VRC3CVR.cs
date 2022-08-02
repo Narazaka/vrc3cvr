@@ -14,6 +14,7 @@ using ABI.CCK.Components;
 using ABI.CCK.Scripts;
 using ABI.CCK.Scripts.Editor;
 using PeanutTools_VRC3CVR;
+using System.Text.RegularExpressions;
 
 public class VRC3CVR : EditorWindow
 {
@@ -311,6 +312,28 @@ public class VRC3CVR : EditorWindow
         return entries;
     }
 
+    void MatchAnimatorParameterToVRCParameter(VRCExpressionParameter vrcParam) {
+        AnimatorControllerParameter[] parameters = chilloutAnimatorController.parameters;
+
+        for (int i = 0; i < parameters.Length; i++) {
+            if (parameters[i].name == Regex.Replace(vrcParam.name, "[^a-zA-Z0-9#]", "")) {
+                switch (parameters[i].type)
+                {
+                    case AnimatorControllerParameterType.Bool:
+                        parameters[i].defaultBool = vrcParam.defaultValue == 1 ? true : false;
+                        break;
+                    case AnimatorControllerParameterType.Int:
+                        parameters[i].defaultInt = (int)vrcParam.defaultValue;
+                        break;
+                    case AnimatorControllerParameterType.Float:
+                        parameters[i].defaultFloat = vrcParam.defaultValue;
+                        break;
+                }
+            }
+        }
+        chilloutAnimatorController.parameters = parameters;
+    }
+
     void ConvertVrcParametersToChillout()
     {
         Debug.Log("Converting vrc parameters to chillout...");
@@ -379,6 +402,8 @@ public class VRC3CVR : EditorWindow
                 default:
                     throw new Exception("Cannot convert vrc parameter to chillout: unknown type \"" + vrcParam.valueType + "\"");
             }
+
+            MatchAnimatorParameterToVRCParameter(vrcParam);
 
             if (newParam != null) {
                 newParams.Add(newParam);
@@ -621,6 +646,10 @@ public class VRC3CVR : EditorWindow
         AnimatorControllerParameter[] newParams = animatorToMerge.parameters;
 
         Debug.Log("Found " + newParams.Length + " parameters in this animator");
+
+        for (int i = 0; i < newParams.Length; i++) {
+            newParams[i].name = Regex.Replace(newParams[i].name, "[^a-zA-Z0-9#]", "");
+        }
 
         chilloutAnimatorController.parameters = GetParametersWithoutDupes(newParams, existingParams);
 
