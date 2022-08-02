@@ -822,6 +822,11 @@ public class VRC3CVR : EditorWindow
 
         AnimatorControllerLayer[] layersToMerge = animatorToMerge.layers;
 
+        // Force first layer to all has a weight of 1.0f
+        if (layersToMerge.Length > 0) {
+            layersToMerge[0].defaultWeight = 1.0f;
+        }
+
         Debug.Log("Found " + layersToMerge.Length + " layers to merge");
 
         // CVR breaks if any layer names are the same
