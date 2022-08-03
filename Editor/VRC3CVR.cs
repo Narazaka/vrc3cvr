@@ -906,7 +906,7 @@ public class VRC3CVR : EditorWindow
             if (layer.stateMachine.states.Length > 0) { // Do not copy empty layers
                 Debug.Log("Layer \"" + layer.name + "\" with " + layer.stateMachine.states.Length + " states");
 
-                ProcessStateMachine(layer.stateMachine);/
+                ProcessStateMachine(layer.stateMachine);
 
                 layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(id, layer.avatarMask);
 
