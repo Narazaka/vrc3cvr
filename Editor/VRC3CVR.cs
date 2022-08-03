@@ -36,6 +36,20 @@ public class VRC3CVR : EditorWindow
     bool shouldDeleteVRCAvatarDescriptorAndPipelineManager = true;
     bool shouldDeletePhysBones = true;
 
+    [Serializable]
+    public enum VRCBaseAnimatorID
+    {
+        BASE,
+        ADDITIVE,
+        GESTURE,
+        ACTION,
+        FX,
+        MAX
+    }
+
+    // This stores generated extra avatar masks based on the VRC hardcoded animator masks combined with individual layer masks.
+    Dictionary<(AvatarMask, AvatarMask), AvatarMask> avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
+
     [MenuItem("PeanutTools/VRC3CVR")]
     public static void ShowWindow()
     {
@@ -163,6 +177,9 @@ public class VRC3CVR : EditorWindow
 
         Debug.Log("Starting to convert...");
 
+        // Clear the cache
+        avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
+
         CreateChilloutAvatar();
         GetValuesFromVrcAvatar();
         CreateChilloutComponentIfNeeded();
@@ -180,6 +197,9 @@ public class VRC3CVR : EditorWindow
         if (shouldCloneAvatar) {
             HideOriginalAvatar();
         }
+
+        // Clear the cache
+        avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
 
         Debug.Log("Conversion complete!");
 
@@ -435,7 +455,14 @@ public class VRC3CVR : EditorWindow
                 continue;
             }
 
-            MergeVrcAnimatorIntoChilloutAnimator(vrcAnimatorControllers[i]);
+            if (i >= (int)VRCBaseAnimatorID.MAX || i < 0) {
+                Debug.Log("Unknown VRC animator id");
+                return;
+            }
+
+            VRCBaseAnimatorID baseAnimatorID = (VRCBaseAnimatorID)i;
+
+            MergeVrcAnimatorIntoChilloutAnimator(vrcAnimatorControllers[i], baseAnimatorID);
         }
 
         Debug.Log("Finished merging all animators");
@@ -646,7 +673,32 @@ public class VRC3CVR : EditorWindow
         AssetDatabase.Refresh();
     }
 
-    void MergeVrcAnimatorIntoChilloutAnimator(AnimatorController originalAnimatorController)
+    AvatarMask GetAvatarMaskForLayerAndVRCAnimator(VRCBaseAnimatorID id, AvatarMask originalMask)
+    {
+        if (id >= VRCBaseAnimatorID.MAX)
+        {
+            Debug.LogError("Invalid base animator id");
+        }
+
+        switch(id)
+        {
+            case VRCBaseAnimatorID.BASE:
+                return originalMask;
+            case VRCBaseAnimatorID.ADDITIVE:
+                return originalMask;
+            case VRCBaseAnimatorID.GESTURE:
+                return originalMask;
+            case VRCBaseAnimatorID.ACTION:
+                return originalMask;
+            case VRCBaseAnimatorID.FX:
+                return (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrEmptyMask.mask", typeof(AvatarMask));
+            default:
+                Debug.Log("Unknown VRC animator id");
+                return null;
+        }
+    }
+
+    void MergeVrcAnimatorIntoChilloutAnimator(AnimatorController originalAnimatorController, VRCBaseAnimatorID id)
     {
         Debug.Log("Merging vrc animator \"" + originalAnimatorController.name + "\"...");
 
@@ -695,6 +747,8 @@ public class VRC3CVR : EditorWindow
             Debug.Log("Layer \"" + layer.name + "\" with " + layer.stateMachine.states.Length + " states");
 
             ProcessStateMachine(layer.stateMachine);/
+
+            layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(id, layer.avatarMask);
 
             newLayers[newLayersIdx] = layer;
             newLayersIdx++;
