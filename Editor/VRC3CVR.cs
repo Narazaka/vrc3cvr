@@ -575,14 +575,14 @@ public class VRC3CVR : EditorWindow
 
                     // Create replace conditions for ChilloutVR
                     AnimatorCondition newConditionLessThan = new AnimatorCondition();
-                    newConditionLessThan.parameter = condition.parameter;
+                    newConditionLessThan.parameter = Regex.Replace(condition.parameter, "[^a-zA-Z0-9#]", "");
                     newConditionLessThan.mode = AnimatorConditionMode.Less;
                     newConditionLessThan.threshold = thresholdHigh;
 
                     conditionsToAdd.Add(newConditionLessThan);
 
                     AnimatorCondition newConditionGreaterThan = new AnimatorCondition();
-                    newConditionGreaterThan.parameter = condition.parameter;
+                    newConditionGreaterThan.parameter = Regex.Replace(condition.parameter, "[^a-zA-Z0-9#]", "");
                     newConditionGreaterThan.mode = AnimatorConditionMode.Greater;
                     newConditionGreaterThan.threshold = thresholdLow;
 
@@ -601,7 +601,7 @@ public class VRC3CVR : EditorWindow
                     if (isDuplicate) {
                         // Add greater than transition to duplicate
                         AnimatorCondition newConditionGreaterThan = new AnimatorCondition();
-                        newConditionGreaterThan.parameter = condition.parameter;
+                        newConditionGreaterThan.parameter = Regex.Replace(condition.parameter, "[^a-zA-Z0-9#]", "");
                         newConditionGreaterThan.mode = AnimatorConditionMode.Greater;
                         newConditionGreaterThan.threshold = thresholdHigh;
 
@@ -610,7 +610,7 @@ public class VRC3CVR : EditorWindow
                     } else {
                         // Change transition to use less than
                         AnimatorCondition newConditionLessThan = new AnimatorCondition();
-                        newConditionLessThan.parameter = condition.parameter;
+                        newConditionLessThan.parameter = Regex.Replace(condition.parameter, "[^a-zA-Z0-9#]", "");
                         newConditionLessThan.mode = AnimatorConditionMode.Less;
                         newConditionLessThan.threshold = thresholdLow;
 
@@ -641,7 +641,7 @@ public class VRC3CVR : EditorWindow
 
                         for (int c2 = 0; c2 < transition.conditions.Length; c2++)
                         {
-                            newTransition.AddCondition(transition.conditions[c2].mode, transition.conditions[c2].threshold, transition.conditions[c2].parameter);
+                            newTransition.AddCondition(transition.conditions[c2].mode, transition.conditions[c2].threshold, Regex.Replace(transition.conditions[c2].parameter, "[^a-zA-Z0-9#]", ""));
                         }
 
                         List<AnimatorTranstitionType> transitionsToAdd2 = new List<AnimatorTranstitionType>();
@@ -708,6 +708,7 @@ public class VRC3CVR : EditorWindow
             }
             else
             {
+				condition.parameter = Regex.Replace(condition.parameter, "[^a-zA-Z0-9#]", "");
                 conditionsToAdd.Add(condition);
             }
         }
@@ -738,6 +739,8 @@ public class VRC3CVR : EditorWindow
                 } else if (blendTree.blendParameter == "GestureRightWeight") {
                     blendTree.blendParameter = "GestureRight";
                 }
+
+                blendTree.blendParameter = Regex.Replace(blendTree.blendParameter, "[^a-zA-Z0-9#]", "");
             }
 
             AnimatorStateTransition[] newTransitions = ProcessTransitions(state.transitions);
@@ -851,7 +854,7 @@ public class VRC3CVR : EditorWindow
             if (layer.stateMachine.states.Length > 0) { // Do not copy empty layers
                 Debug.Log("Layer \"" + layer.name + "\" with " + layer.stateMachine.states.Length + " states");
 
-                ProcessStateMachine(layer.stateMachine);
+                ProcessStateMachine(layer.stateMachine);/
 
                 newLayers[newLayersIdx] = layer;
                 newLayersIdx++;
