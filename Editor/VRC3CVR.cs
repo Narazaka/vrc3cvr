@@ -544,6 +544,7 @@ public class VRC3CVR : EditorWindow
                         conditionsToAdd.Add(newConditionLessThan);
                     }
                 } else {
+                    condition.parameter = Regex.Replace(condition.parameter, "[^a-zA-Z0-9#]", "");
                     conditionsToAdd.Add(condition);
                 }
             }
@@ -582,6 +583,8 @@ public class VRC3CVR : EditorWindow
                 } else if (blendTree.blendParameter == "GestureRightWeight") {
                     blendTree.blendParameter = "GestureRight";
                 }
+
+                blendTree.blendParameter = Regex.Replace(blendTree.blendParameter, "[^a-zA-Z0-9#]", "");
             }
 
             AnimatorStateTransition[] newTransitions = ProcessTransitions(state.transitions);
@@ -691,7 +694,7 @@ public class VRC3CVR : EditorWindow
 
             Debug.Log("Layer \"" + layer.name + "\" with " + layer.stateMachine.states.Length + " states");
 
-            ProcessStateMachine(layer.stateMachine);
+            ProcessStateMachine(layer.stateMachine);/
 
             newLayers[newLayersIdx] = layer;
             newLayersIdx++;
