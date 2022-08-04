@@ -50,6 +50,21 @@ public class VRC3CVR : EditorWindow
     // This stores generated extra avatar masks based on the VRC hardcoded animator masks combined with individual layer masks.
     Dictionary<(AvatarMask, AvatarMask), AvatarMask> avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
 
+    // This mask will mask all other layer masks from the gesture animator, and is derived from the
+    // *first* layer.
+    AvatarMask gestureMask;
+
+    // Hands combined from both ChilloutVR animationClips
+    AnimationClip handCombinedFistAnimationClip;
+    AnimationClip handCombinedGunAnimationClip;
+    AnimationClip handCombinedOpenAnimationClip;
+    AnimationClip handCombinedPeaceAnimationClip;
+    AnimationClip handCombinedPointAnimationClip;
+    AnimationClip handCombinedRelaxedAnimationClip;
+    AnimationClip handCombinedRockNRollAnimationClip;
+    AnimationClip handCombinedThumbsUpAnimationClip;
+
+
     [MenuItem("PeanutTools/VRC3CVR")]
     public static void ShowWindow()
     {
@@ -177,8 +192,18 @@ public class VRC3CVR : EditorWindow
 
         Debug.Log("Starting to convert...");
 
+        // Generate Combined hand animations
+        CreateCombinedHandAnimations();
+
         // Clear the cache
         avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
+        gestureMask = null;
+
+        AssetDatabase.Refresh();
+
+        Directory.CreateDirectory(Application.dataPath + "/" + outputDirName);
+
+        AssetDatabase.Refresh();
 
         CreateChilloutAvatar();
         GetValuesFromVrcAvatar();
@@ -200,6 +225,7 @@ public class VRC3CVR : EditorWindow
 
         // Clear the cache
         avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
+        gestureMask = null;
 
         Debug.Log("Conversion complete!");
 
@@ -800,6 +826,73 @@ public class VRC3CVR : EditorWindow
         transition.conditions = conditionsToAdd.ToArray();
     }
 
+    Motion ReplaceProxyAnimationClip(Motion clip) {
+        switch(clip.name) {
+            case "proxy_hands_fist":
+                if (handCombinedFistAnimationClip) {
+                    return handCombinedFistAnimationClip;
+                } else {
+                    return clip;
+                }
+            case "proxy_hands_gun":
+                if (handCombinedGunAnimationClip)
+                {
+                    return handCombinedGunAnimationClip;
+                } else {
+                    return clip;
+                }
+            case "proxy_hands_idle":
+                if (handCombinedRelaxedAnimationClip)
+                {
+                    return handCombinedRelaxedAnimationClip;
+                } else {
+                    return clip;
+                }
+            case "proxy_hands_idle2":
+                if (handCombinedRelaxedAnimationClip)
+                {
+                    return handCombinedRelaxedAnimationClip;
+                } else {
+                    return clip;
+                }
+            case "proxy_hands_open":
+                if (handCombinedOpenAnimationClip)
+                {
+                    return handCombinedOpenAnimationClip;
+                } else {
+                    return clip;
+                }
+            case "proxy_hands_peace":
+                if (handCombinedPeaceAnimationClip)
+                {
+                    return handCombinedPeaceAnimationClip;
+                } else {
+                    return clip;
+                }
+            case "proxy_hands_point":
+                if (handCombinedPointAnimationClip)
+                {
+                    return handCombinedPointAnimationClip;
+                } else {
+                    return clip;
+                }
+            case "proxy_hands_rock":
+                if (handCombinedRockNRollAnimationClip) {
+                    return handCombinedRockNRollAnimationClip;
+                } else {
+                    return clip;
+                }
+            case "proxy_hands_thumbs_up":
+                if (handCombinedThumbsUpAnimationClip) {
+                    return handCombinedThumbsUpAnimationClip;
+                } else {
+                    return clip;
+                }
+            default:
+                return clip;
+        }
+    }
+
     void ProcessStateMachine(AnimatorStateMachine stateMachine)
     {
         for (int s = 0; s < stateMachine.states.Length; s++)
@@ -815,6 +908,8 @@ public class VRC3CVR : EditorWindow
                 state.timeParameter = "GestureRight";
             }
 
+            state.timeParameter = Regex.Replace(state.timeParameter, "[^a-zA-Z0-9#]", "");
+
             if (state.motion is BlendTree) {
                 BlendTree blendTree = (BlendTree)state.motion;
 
@@ -824,7 +919,17 @@ public class VRC3CVR : EditorWindow
                     blendTree.blendParameter = "GestureRight";
                 }
 
+                ChildMotion[] blendTreeMotions = blendTree.children;
+
+                for (int i = 0; i < blendTreeMotions.Count(); i++) {
+                    blendTreeMotions[i].motion = ReplaceProxyAnimationClip(blendTreeMotions[i].motion);
+                }
+
+                blendTree.children = blendTreeMotions;
+
                 blendTree.blendParameter = Regex.Replace(blendTree.blendParameter, "[^a-zA-Z0-9#]", "");
+            } else if (state.motion is AnimationClip) {
+                state.motion = ReplaceProxyAnimationClip(state.motion);
             }
 
             AnimatorStateTransition[] newTransitions = ProcessTransitions(state.transitions);
@@ -887,23 +992,194 @@ public class VRC3CVR : EditorWindow
         AssetDatabase.Refresh();
     }
 
-    AvatarMask GetAvatarMaskForLayerAndVRCAnimator(VRCBaseAnimatorID id, AvatarMask originalMask)
-    {
-        if (id >= VRCBaseAnimatorID.MAX)
+    AvatarMask ReplaceVRCMask(AvatarMask mask) { 
+        if (mask) {
+            switch(mask.name) {
+                case "vrc_Hand Left":
+                    return (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrHandLeft.mask", typeof(AvatarMask));
+                case "vrc_Hand Right":
+                    return (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrHandRight.mask", typeof(AvatarMask));
+                case "vrc_HandsOnly":
+                    return (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrHandsOnly.mask", typeof(AvatarMask));
+                case "vrc_MusclesOnly":
+                    return (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrMusclesOnly.mask", typeof(AvatarMask));
+                default:
+                    return mask;
+            }
+        }
+        return mask;
+    }
+
+    AnimationClip CombineAnimationClips(AnimationClip animationClipA, AnimationClip animationClipB) {
+        AnimationClip animationClipCombined = new AnimationClip();
+
+        foreach (EditorCurveBinding i in AnimationUtility.GetCurveBindings(animationClipA)) {
+            AnimationCurve curve = AnimationUtility.GetEditorCurve(animationClipA, i);
+            animationClipCombined.SetCurve(i.path, i.type, i.propertyName, curve);
+        }
+
+        foreach (EditorCurveBinding i in AnimationUtility.GetCurveBindings(animationClipB))
+        {
+            AnimationCurve curve = AnimationUtility.GetEditorCurve(animationClipB, i);
+            animationClipCombined.SetCurve(i.path, i.type, i.propertyName, curve);
+        }
+
+        return animationClipCombined;
+    }
+
+    void CreateCombinedHandAnimations() {
+        AnimationClip handLeftGunAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftGun.anim", typeof(AnimationClip));
+        AnimationClip handRightGunAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightGun.anim", typeof(AnimationClip));
+        if (handLeftGunAnimationClip && handRightGunAnimationClip) {
+            handCombinedGunAnimationClip = CombineAnimationClips(handLeftGunAnimationClip, handRightGunAnimationClip);
+            AssetDatabase.CreateAsset(handCombinedGunAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedGun.anim");
+        }
+
+        AnimationClip handLeftOpenAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftOpen.anim", typeof(AnimationClip));
+        AnimationClip handRightOpenAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightOpen.anim", typeof(AnimationClip));
+        if (handLeftOpenAnimationClip && handRightOpenAnimationClip) {
+            handCombinedOpenAnimationClip = CombineAnimationClips(handLeftOpenAnimationClip, handRightOpenAnimationClip);
+            AssetDatabase.CreateAsset(handCombinedOpenAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedOpen.anim");
+        }
+
+        AnimationClip handLeftPeaceAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftPeace.anim", typeof(AnimationClip));
+        AnimationClip handRightPeaceAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightPeace.anim", typeof(AnimationClip));
+        if (handLeftPeaceAnimationClip && handRightPeaceAnimationClip) {
+            handCombinedPeaceAnimationClip = CombineAnimationClips(handLeftPeaceAnimationClip, handRightPeaceAnimationClip);
+            AssetDatabase.CreateAsset(handCombinedPeaceAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedPeace.anim");
+        }
+
+        AnimationClip handLeftPointAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftPoint.anim", typeof(AnimationClip));
+        AnimationClip handRightPointAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightPoint.anim", typeof(AnimationClip));
+        if (handLeftPointAnimationClip && handRightPointAnimationClip)
+        {
+            handCombinedPointAnimationClip = CombineAnimationClips(handLeftPointAnimationClip, handRightPointAnimationClip);
+            AssetDatabase.CreateAsset(handCombinedPointAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedPoint.anim");
+        }
+
+        AnimationClip handLeftRockNRollAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftRockNRoll.anim", typeof(AnimationClip));
+        AnimationClip handRightRockNRollAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightRockNRoll.anim", typeof(AnimationClip));
+        if (handLeftRockNRollAnimationClip && handRightRockNRollAnimationClip) {
+            handCombinedRockNRollAnimationClip = CombineAnimationClips(handLeftRockNRollAnimationClip, handRightRockNRollAnimationClip);
+            AssetDatabase.CreateAsset(handCombinedRockNRollAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedRockNRoll.anim");
+        }
+
+        AnimationClip handLeftThumbsUpAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftThumbsUp.anim", typeof(AnimationClip));
+        AnimationClip handRightThumbsUpAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightThumbsUp.anim", typeof(AnimationClip));
+        if (handLeftThumbsUpAnimationClip && handRightThumbsUpAnimationClip) {
+            handCombinedThumbsUpAnimationClip = CombineAnimationClips(handLeftThumbsUpAnimationClip, handRightThumbsUpAnimationClip);
+            AssetDatabase.CreateAsset(handCombinedThumbsUpAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedThumbsUp.anim");
+        }
+
+        //
+        AnimationClip handLeftRelaxedAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftRelaxed.anim", typeof(AnimationClip));
+        AnimationClip handRightRelaxedAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightRelaxed.anim", typeof(AnimationClip));
+        if (handLeftRelaxedAnimationClip && handRightRelaxedAnimationClip)
+        {
+            handCombinedRelaxedAnimationClip = CombineAnimationClips(handLeftRelaxedAnimationClip, handRightRelaxedAnimationClip);
+            AssetDatabase.CreateAsset(handCombinedRelaxedAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedRelaxed.anim");
+        }
+
+        AnimationClip handLeftFistAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftFist.anim", typeof(AnimationClip));
+        AnimationClip handRightFistAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightFist.anim", typeof(AnimationClip));
+        if (handLeftFistAnimationClip && handRightFistAnimationClip)
+        {
+            handCombinedFistAnimationClip = CombineAnimationClips(handLeftFistAnimationClip, handRightFistAnimationClip);
+            // Don't create the asset yet...
+        }
+
+        if (handCombinedRelaxedAnimationClip && handCombinedFistAnimationClip) {
+            List<EditorCurveBinding> editorCurveBindingsRelaxed = new List<EditorCurveBinding>();
+            List<AnimationCurve> relaxedCurves = new List<AnimationCurve>();
+
+            foreach (EditorCurveBinding i in AnimationUtility.GetCurveBindings(handCombinedRelaxedAnimationClip)) {
+                editorCurveBindingsRelaxed.Add(i);
+                AnimationCurve curve = AnimationUtility.GetEditorCurve(handCombinedRelaxedAnimationClip, i);
+                relaxedCurves.Add(curve);
+            }
+
+            List<EditorCurveBinding> editorCurveBindingsFist = new List<EditorCurveBinding>();
+            List<AnimationCurve> fistCurves = new List<AnimationCurve>();
+
+            foreach (EditorCurveBinding i in AnimationUtility.GetCurveBindings(handCombinedFistAnimationClip)) {
+                editorCurveBindingsFist.Add(i);
+                AnimationCurve curve = AnimationUtility.GetEditorCurve(handCombinedFistAnimationClip, i);
+                fistCurves.Add(curve);
+            }
+
+            handCombinedFistAnimationClip.ClearCurves();
+            for (int i = 0; i < fistCurves.Count; i++) {
+                AnimationCurve newCurve = new AnimationCurve();
+
+                bool foundMatch = false;
+                for (int j = 0; j < editorCurveBindingsRelaxed.Count; j++) {
+                    if (editorCurveBindingsFist[i].propertyName == editorCurveBindingsRelaxed[j].propertyName) {
+                        newCurve.AddKey(relaxedCurves[j].keys[0]);
+                        foundMatch = true;
+                        continue;
+                    }
+                }
+
+                if (!foundMatch) {
+                    newCurve.AddKey(fistCurves[i].keys[0]);
+                }
+
+                newCurve.AddKey(fistCurves[i].keys[1]);
+
+                handCombinedFistAnimationClip.SetCurve(editorCurveBindingsFist[i].path, editorCurveBindingsFist[i].type, editorCurveBindingsFist[i].propertyName, newCurve);
+            }
+
+
+            AssetDatabase.CreateAsset(handCombinedFistAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedFist.anim");
+        }
+    }
+
+    AvatarMask GetCombinedAvatarMask(AvatarMask baseMask, AvatarMask layerMask) { 
+        if (baseMask == null) {
+            return layerMask;
+        }
+
+        if (layerMask == null) {
+            return baseMask;
+        }
+
+        if (avatarMaskCombineCache.ContainsKey((baseMask, layerMask))) {
+            return avatarMaskCombineCache[(baseMask, layerMask)];
+        } else {
+            AvatarMask combinedAvatarMask = new AvatarMask();
+            for (int i = 0; i < (int)AvatarMaskBodyPart.LastBodyPart; i++) {
+                combinedAvatarMask.SetHumanoidBodyPartActive((AvatarMaskBodyPart)i,
+                    layerMask.GetHumanoidBodyPartActive((AvatarMaskBodyPart)i) & baseMask.GetHumanoidBodyPartActive((AvatarMaskBodyPart)i));
+            }
+            avatarMaskCombineCache[(baseMask, layerMask)] = combinedAvatarMask;
+            if (baseMask.name != "" && layerMask.name != "") {
+                AssetDatabase.CreateAsset(combinedAvatarMask, "Assets/" + outputDirName + "/" + baseMask.name + "_" + layerMask.name + ".mask");
+            }
+            return combinedAvatarMask;
+        }
+    }
+
+    AvatarMask GetAvatarMaskForLayerAndVRCAnimator(VRCBaseAnimatorID animatorID, int layerID, AvatarMask originalMask) {
+        if (animatorID >= VRCBaseAnimatorID.MAX)
         {
             Debug.LogError("Invalid base animator id");
         }
 
-        switch(id)
+        switch(animatorID)
         {
             case VRCBaseAnimatorID.BASE:
-                return originalMask;
+                return ReplaceVRCMask(originalMask);
             case VRCBaseAnimatorID.ADDITIVE:
-                return originalMask;
+                return ReplaceVRCMask(originalMask);
             case VRCBaseAnimatorID.GESTURE:
-                return originalMask;
+                if (layerID == 0) {
+                    gestureMask = ReplaceVRCMask(originalMask);
+                    return gestureMask;
+                } else {
+                    return GetCombinedAvatarMask(ReplaceVRCMask(gestureMask), ReplaceVRCMask(originalMask));
+                }
             case VRCBaseAnimatorID.ACTION:
-                return originalMask;
+                return ReplaceVRCMask(originalMask);
             case VRCBaseAnimatorID.FX:
                 return (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrEmptyMask.mask", typeof(AvatarMask));
             default:
@@ -912,7 +1188,7 @@ public class VRC3CVR : EditorWindow
         }
     }
 
-    void MergeVrcAnimatorIntoChilloutAnimator(AnimatorController originalAnimatorController, VRCBaseAnimatorID id)
+    void MergeVrcAnimatorIntoChilloutAnimator(AnimatorController originalAnimatorController, VRCBaseAnimatorID animatorID)
     {
         Debug.Log("Merging vrc animator \"" + originalAnimatorController.name + "\"...");
 
@@ -965,7 +1241,7 @@ public class VRC3CVR : EditorWindow
 
                 ProcessStateMachine(layer.stateMachine);
 
-                layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(id, layer.avatarMask);
+            	layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(animatorID, i, layer.avatarMask);
 
 				newLayers[newLayersIdx] = layer;
                 newLayersIdx++;
