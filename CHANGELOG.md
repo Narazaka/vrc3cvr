@@ -1,3 +1,7 @@
+# 1.2.3S
+
+- Fix bug with VRC3CVR_Ouput directory not being created.
+
 # 1.2.2S
 
 - Improve support of animator masking on all animators.
