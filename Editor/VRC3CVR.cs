@@ -388,24 +388,26 @@ public class VRC3CVR : EditorWindow
         chilloutAnimatorController.parameters = parameters;
     }
     Dictionary<string, Dictionary<int, string>> FindMenuButtonsAndToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<int, string>> toggleTable) {
-        foreach (VRCExpressionsMenu.Control control in menu.controls) {
-            if (control.type == VRCExpressionsMenu.Control.ControlType.Toggle || control.type == VRCExpressionsMenu.Control.ControlType.Button) {
-                Dictionary<int, string> idTable;
-                if(toggleTable.ContainsKey(control.parameter.name)) {
-                    idTable = toggleTable[control.parameter.name];
-                } else {
-                    idTable = new Dictionary<int, string>();
-                }
+		if (menu != null) {
+	        foreach (VRCExpressionsMenu.Control control in menu.controls) {
+	            if (control.type == VRCExpressionsMenu.Control.ControlType.Toggle || control.type == VRCExpressionsMenu.Control.ControlType.Button) {
+	                Dictionary<int, string> idTable;
+	                if(toggleTable.ContainsKey(control.parameter.name)) {
+	                    idTable = toggleTable[control.parameter.name];
+	                } else {
+	                    idTable = new Dictionary<int, string>();
+	                }
 
-                if (!idTable.ContainsKey((int)control.value)) {
-                    idTable.Add((int)control.value, control.name);
-                }
+	                if (!idTable.ContainsKey((int)control.value)) {
+	                    idTable.Add((int)control.value, control.name);
+	                }
 
-                toggleTable[control.parameter.name] = idTable;
-            } else if (control.type == VRCExpressionsMenu.Control.ControlType.SubMenu) {
-                toggleTable = FindMenuButtonsAndToggles(control.subMenu, toggleTable);
-            }
-        }
+	                toggleTable[control.parameter.name] = idTable;
+	            } else if (control.type == VRCExpressionsMenu.Control.ControlType.SubMenu) {
+	                toggleTable = FindMenuButtonsAndToggles(control.subMenu, toggleTable);
+	            }
+	        }
+		}
         
         return toggleTable;
     }
