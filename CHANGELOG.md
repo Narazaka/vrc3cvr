@@ -1,3 +1,11 @@
+# 1.2.2S
+
+- Improve support of animator masking on all animators.
+
+# 1.2.1S
+
+- Hotfix to address error on avatars without a VRC ExpressionMenu
+
 # 1.2.0S
 
 - Match CVR restrictions on parameter names
