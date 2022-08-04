@@ -361,9 +361,9 @@ public class VRC3CVR : EditorWindow
         }
         chilloutAnimatorController.parameters = parameters;
     }
-    Dictionary<string, Dictionary<int, string>> FindMenuToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<int, string>> toggleTable) {
+    Dictionary<string, Dictionary<int, string>> FindMenuButtonsAndToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<int, string>> toggleTable) {
         foreach (VRCExpressionsMenu.Control control in menu.controls) {
-            if (control.type == VRCExpressionsMenu.Control.ControlType.Toggle) {
+            if (control.type == VRCExpressionsMenu.Control.ControlType.Toggle || control.type == VRCExpressionsMenu.Control.ControlType.Button) {
                 Dictionary<int, string> idTable;
                 if(toggleTable.ContainsKey(control.parameter.name)) {
                     idTable = toggleTable[control.parameter.name];
@@ -377,7 +377,7 @@ public class VRC3CVR : EditorWindow
 
                 toggleTable[control.parameter.name] = idTable;
             } else if (control.type == VRCExpressionsMenu.Control.ControlType.SubMenu) {
-                toggleTable = FindMenuToggles(control.subMenu, toggleTable);
+                toggleTable = FindMenuButtonsAndToggles(control.subMenu, toggleTable);
             }
         }
         
@@ -421,7 +421,7 @@ public class VRC3CVR : EditorWindow
 
         List<CVRAdvancedSettingsEntry> newParams = new List<CVRAdvancedSettingsEntry>();
 
-        Dictionary<string, Dictionary<int, string>> toggleTable = FindMenuToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<int, string>>());
+        Dictionary<string, Dictionary<int, string>> toggleTable = FindMenuButtonsAndToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<int, string>>());
 
         for (int i = 0; i < vrcParams?.parameters?.Length; i++)
         {
