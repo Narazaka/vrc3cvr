@@ -54,6 +54,10 @@ public class VRC3CVR : EditorWindow
     // *first* layer.
     AvatarMask gestureMask;
 
+    AvatarMask emptyMask;
+    AvatarMask fullMask;
+    AvatarMask musclesOnlyMask;
+
     // Hands combined from both ChilloutVR animationClips
     AnimationClip handCombinedFistAnimationClip;
     AnimationClip handCombinedGunAnimationClip;
@@ -198,6 +202,11 @@ public class VRC3CVR : EditorWindow
         // Clear the cache
         avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
         gestureMask = null;
+
+        // Load hardcoded masks
+        emptyMask = (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrEmptyMask.mask", typeof(AvatarMask));
+        fullMask = (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrFullMask.mask", typeof(AvatarMask));
+        musclesOnlyMask = (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrMusclesOnly.mask", typeof(AvatarMask));
 
         AssetDatabase.Refresh();
 
@@ -761,6 +770,18 @@ public class VRC3CVR : EditorWindow
                 } else {
                     return clip;
                 }
+            case "proxy_stand_still":
+                return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
+            case "proxy_idle":
+                return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
+            case "proxy_idle_2":
+                return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
+            case "proxy_idle_3":
+                return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
+            case "proxy_run_forward":
+                return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocRunningForward.anim", typeof(AnimationClip));
+            case "proxy_run_backward":
+                return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocRunningBackward.anim", typeof(AnimationClip));
             default:
                 return clip;
         }
@@ -1040,9 +1061,9 @@ public class VRC3CVR : EditorWindow
         switch(animatorID)
         {
             case VRCBaseAnimatorID.BASE:
-                return ReplaceVRCMask(originalMask);
+                return GetCombinedAvatarMask(ReplaceVRCMask(fullMask), ReplaceVRCMask(originalMask));
             case VRCBaseAnimatorID.ADDITIVE:
-                return ReplaceVRCMask(originalMask);
+                return GetCombinedAvatarMask(ReplaceVRCMask(fullMask), ReplaceVRCMask(originalMask));
             case VRCBaseAnimatorID.GESTURE:
                 if (layerID == 0) {
                     gestureMask = ReplaceVRCMask(originalMask);
@@ -1051,9 +1072,9 @@ public class VRC3CVR : EditorWindow
                     return GetCombinedAvatarMask(ReplaceVRCMask(gestureMask), ReplaceVRCMask(originalMask));
                 }
             case VRCBaseAnimatorID.ACTION:
-                return ReplaceVRCMask(originalMask);
+                return GetCombinedAvatarMask(ReplaceVRCMask(musclesOnlyMask), ReplaceVRCMask(originalMask));
             case VRCBaseAnimatorID.FX:
-                return (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrEmptyMask.mask", typeof(AvatarMask));
+                return emptyMask;
             default:
                 Debug.Log("Unknown VRC animator id");
                 return null;
