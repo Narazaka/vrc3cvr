@@ -196,6 +196,12 @@ public class VRC3CVR : EditorWindow
 
         Debug.Log("Starting to convert...");
 
+        AssetDatabase.Refresh();
+
+        Directory.CreateDirectory(Application.dataPath + "/" + outputDirName);
+
+        AssetDatabase.Refresh();
+
         // Generate Combined hand animations
         CreateCombinedHandAnimations();
 
@@ -207,12 +213,6 @@ public class VRC3CVR : EditorWindow
         emptyMask = (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrEmptyMask.mask", typeof(AvatarMask));
         fullMask = (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrFullMask.mask", typeof(AvatarMask));
         musclesOnlyMask = (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrMusclesOnly.mask", typeof(AvatarMask));
-
-        AssetDatabase.Refresh();
-
-        Directory.CreateDirectory(Application.dataPath + "/" + outputDirName);
-
-        AssetDatabase.Refresh();
 
         CreateChilloutAvatar();
         GetValuesFromVrcAvatar();
