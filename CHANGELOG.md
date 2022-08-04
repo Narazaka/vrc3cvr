@@ -1,3 +1,12 @@
+# 1.2.0S
+
+- Match CVR restrictions on parameter names
+- Make deletion of VRC components optional
+- Fix weight of first layer of each animator
+- Add empty masking to FX layers
+- Scrape VRC menu for correct integer parameter names
+- Add support for converting gesture animator with correct masking and proxy animations
+
 # 1.1.1
 
 - fix face mesh using the old mesh
