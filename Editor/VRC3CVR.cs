@@ -361,6 +361,57 @@ public class VRC3CVR : EditorWindow
         }
         chilloutAnimatorController.parameters = parameters;
     }
+    Dictionary<string, Dictionary<int, string>> FindMenuToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<int, string>> toggleTable) {
+        foreach (VRCExpressionsMenu.Control control in menu.controls) {
+            if (control.type == VRCExpressionsMenu.Control.ControlType.Toggle) {
+                Dictionary<int, string> idTable;
+                if(toggleTable.ContainsKey(control.parameter.name)) {
+                    idTable = toggleTable[control.parameter.name];
+                } else {
+                    idTable = new Dictionary<int, string>();
+                }
+
+                if (!idTable.ContainsKey((int)control.value)) {
+                    idTable.Add((int)control.value, control.name);
+                }
+
+                toggleTable[control.parameter.name] = idTable;
+            } else if (control.type == VRCExpressionsMenu.Control.ControlType.SubMenu) {
+                toggleTable = FindMenuToggles(control.subMenu, toggleTable);
+            }
+        }
+        
+        return toggleTable;
+    }
+
+    List<CVRAdvancedSettingsDropDownEntry> GetAdvancedSettingsDropDownForParameter(String name, Dictionary<string, Dictionary<int, string>> toggleTable) {
+        List<CVRAdvancedSettingsDropDownEntry> advancedSettingsDropDownEntries = new List<CVRAdvancedSettingsDropDownEntry>();
+
+        if (toggleTable.ContainsKey(name)) {
+            if (toggleTable[name].Count == 1) {
+                if (toggleTable[name].First().Key == 1) {
+                    CVRAdvancedSettingsDropDownEntry menuEntry = new CVRAdvancedSettingsDropDownEntry();
+                    menuEntry.name = name;
+                    advancedSettingsDropDownEntries.Add(menuEntry);
+                    return advancedSettingsDropDownEntries;
+                }
+            }
+
+            Dictionary<int, string> idTable = toggleTable[name];
+            int lastIndex = idTable.Last().Key;
+            for (int i = 0; i < lastIndex+1; i++) {
+                String MenuEntryName = "---";
+                if (idTable.ContainsKey(i)) {
+                    MenuEntryName = idTable[i];
+                }
+                CVRAdvancedSettingsDropDownEntry menuEntry = new CVRAdvancedSettingsDropDownEntry();
+                menuEntry.name = MenuEntryName;
+                advancedSettingsDropDownEntries.Add(menuEntry);
+            }
+        }
+
+        return advancedSettingsDropDownEntries;
+    }
 
     void ConvertVrcParametersToChillout()
     {
@@ -369,6 +420,8 @@ public class VRC3CVR : EditorWindow
         VRCExpressionParameters vrcParams = vrcAvatarDescriptor.expressionParameters;
 
         List<CVRAdvancedSettingsEntry> newParams = new List<CVRAdvancedSettingsEntry>();
+
+        Dictionary<string, Dictionary<int, string>> toggleTable = FindMenuToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<int, string>>());
 
         for (int i = 0; i < vrcParams?.parameters?.Length; i++)
         {
@@ -381,7 +434,7 @@ public class VRC3CVR : EditorWindow
             switch (vrcParam.valueType)
             {
                 case VRCExpressionParameters.ValueType.Int:
-                    List<CVRAdvancedSettingsDropDownEntry> dropdownOptions = ConvertIntToGameObjectDropdownOptions(GetAllIntOptionsForParam(vrcParam.name));
+                    List<CVRAdvancedSettingsDropDownEntry> dropdownOptions = GetAdvancedSettingsDropDownForParameter(vrcParam.name, toggleTable);
 
                     if (dropdownOptions.Count > 1) {
                         newParam = new CVRAdvancedSettingsEntry() {
@@ -390,7 +443,8 @@ public class VRC3CVR : EditorWindow
                             type = CVRAdvancedSettingsEntry.SettingsType.GameObjectDropdown,
                             setting = new CVRAdvancesAvatarSettingGameObjectDropdown() {
                                 defaultValue = (int)vrcParam.defaultValue,
-                                options = dropdownOptions
+                                options = dropdownOptions,
+                                usedType = CVRAdvancesAvatarSettingBase.ParameterType.GenerateInt
                             }
                         };
                     } else {
@@ -400,10 +454,11 @@ public class VRC3CVR : EditorWindow
                             name = vrcParam.name,
                             machineName = vrcParam.name,
                             setting = new CVRAdvancesAvatarSettingGameObjectToggle() {
-                                defaultValue = vrcParam.defaultValue == 1 ? true : false
+                                defaultValue = vrcParam.defaultValue == 1 ? true : false,
+                                usedType = CVRAdvancesAvatarSettingBase.ParameterType.GenerateBool
                             }
                         };
-                    }
+                    };
                     break;
 
                 case VRCExpressionParameters.ValueType.Float:
@@ -412,7 +467,8 @@ public class VRC3CVR : EditorWindow
                         machineName = vrcParam.name,
                         type = CVRAdvancedSettingsEntry.SettingsType.Slider,
                         setting = new CVRAdvancesAvatarSettingSlider() {
-                            defaultValue = vrcParam.defaultValue
+                            defaultValue = vrcParam.defaultValue,
+                            usedType = CVRAdvancesAvatarSettingBase.ParameterType.GenerateFloat
                         }
                     };
                     break;
@@ -422,7 +478,8 @@ public class VRC3CVR : EditorWindow
                         name = vrcParam.name,
                         machineName = vrcParam.name,
                         setting = new CVRAdvancesAvatarSettingGameObjectToggle() {
-                            defaultValue = vrcParam.defaultValue != 0 ? true : false
+                            defaultValue = vrcParam.defaultValue != 0 ? true : false,
+                            usedType = CVRAdvancesAvatarSettingBase.ParameterType.GenerateBool
                         }
                     };
                     break;
