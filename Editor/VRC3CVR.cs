@@ -27,7 +27,9 @@ public class VRC3CVR : EditorWindow
     AnimatorController chilloutAnimatorController;
     AnimatorController[] vrcAnimatorControllers;
     string outputDirName = "VRC3CVR_Output";
-    bool shouldDeleteCvrHandLayers = true;
+    bool convertLocomotionLayer = false;
+    bool convertGestureLayer = true;
+    bool convertActionLayer = false;
     Vector2 scrollPosition;
     GameObject chilloutAvatarGameObject;
     bool shouldCloneAvatar = true;
@@ -100,8 +102,18 @@ public class VRC3CVR : EditorWindow
 
         CustomGUI.SmallLineGap();
 
-        shouldDeleteCvrHandLayers = GUILayout.Toggle(shouldDeleteCvrHandLayers, "My avatar has custom hand animations");
+        convertLocomotionLayer = GUILayout.Toggle(convertLocomotionLayer, "Convert Locomotion Animator (NOT RECOMMEND)");
+        CustomGUI.ItalicLabel("Locomotion state machines will very likely not convert over correctly and this option is better left unticked for now");
+
+        CustomGUI.SmallLineGap();
+
+        convertGestureLayer = GUILayout.Toggle(convertGestureLayer, "Convert Gesture Animator (hands)");
         CustomGUI.ItalicLabel("If your avatar overwrites the default finger animations when performing expressions");
+
+        CustomGUI.SmallLineGap();
+
+        convertActionLayer = GUILayout.Toggle(convertActionLayer, "Convert Action Animator (NOT RECOMMEND)");
+        CustomGUI.ItalicLabel("Actions (mostly used for emotes) will very likely not convert over correctly and this option is better left unticked for now");
 
         CustomGUI.SmallLineGap();
 
@@ -1337,7 +1349,7 @@ public class VRC3CVR : EditorWindow
 
         string[] allowedLayerNames;
 
-        if (shouldDeleteCvrHandLayers) {
+        if (convertGestureLayer && vrcAvatarDescriptor.baseAnimationLayers[(int)VRCBaseAnimatorID.GESTURE].animatorController) {
             Debug.Log("Deleting CVR hand layers...");
             allowedLayerNames = new string[] { "Locomotion/Emotes" };
         } else {
@@ -1418,8 +1430,16 @@ public class VRC3CVR : EditorWindow
         VRCAvatarDescriptor.CustomAnimLayer[] vrcCustomAnimLayers = vrcAvatarDescriptor.baseAnimationLayers;
         vrcAnimatorControllers = new AnimatorController[vrcCustomAnimLayers.Length];
 
-        for (int i = 0; i < vrcCustomAnimLayers.Length; i++)
-        {
+        for (int i = 0; i < vrcCustomAnimLayers.Length; i++) {
+            // Ignore animators not checked for conversion
+            if (i == (int)VRCBaseAnimatorID.BASE && !convertLocomotionLayer){
+                continue;
+            } else if(i == (int)VRCBaseAnimatorID.GESTURE && !convertGestureLayer) {
+                continue;
+            } else if(i == (int)VRCBaseAnimatorID.ACTION && !convertActionLayer) {
+                continue;
+            }
+
             vrcAnimatorControllers[i] = vrcCustomAnimLayers[i].animatorController as AnimatorController;
         }
 
