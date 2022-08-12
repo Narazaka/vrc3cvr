@@ -251,6 +251,14 @@ public class VRC3CVR : EditorWindow
         isConverting = false;
     }
 
+    Transform GetHeadBoneTransform(Animator animator) {
+		if (animator) {
+        	return animator.GetBoneTransform(HumanBodyBones.Head);
+		} else {
+			return null;
+		}
+    }
+
     void InsertChilloutOverride() {
         Debug.Log("Inserting chillout override controller...");
 
@@ -1317,7 +1325,7 @@ public class VRC3CVR : EditorWindow
     }
 
     SkinnedMeshRenderer GetSkinnedMeshRendererInCVRAvatar() {
-        string pathToSkinnedMeshRenderer = GetRelativePathToGameObject(cvrAvatar.gameObject, bodySkinnedMeshRenderer.gameObject);
+        string pathToSkinnedMeshRenderer = GetPathToGameObjectInsideAvatar(bodySkinnedMeshRenderer.gameObject);
 
         Debug.Log("Path to body skinned mesh renderer: " + pathToSkinnedMeshRenderer);
         
@@ -1338,10 +1346,10 @@ public class VRC3CVR : EditorWindow
         return skinnedMeshRenderer;
     } 
 
-    public static string GetRelativePathToGameObject(GameObject root, GameObject obj)
+    public static string GetPathToGameObjectInsideAvatar(GameObject obj)
     {
         string path = "/" + obj.name;
-        while (obj.transform.parent != null && obj.transform.parent.gameObject != root)
+        while (obj.transform.parent != null)
         {
             obj = obj.transform.parent.gameObject;
 
@@ -1386,6 +1394,12 @@ public class VRC3CVR : EditorWindow
 
         cvrAvatar.viewPosition = vrcViewPosition;
         cvrAvatar.voicePosition = vrcViewPosition;
+
+        // Set the voice position to the root of the head bone by default since that will match VRC behaviour (I think)
+        Transform headBoneTransform = GetHeadBoneTransform(cvrAvatar.GetComponent<Animator>());
+        if (headBoneTransform){
+            cvrAvatar.voicePosition = cvrAvatar.transform.transform.InverseTransformPoint(headBoneTransform.transform.position);
+        }
 
         Debug.Log("Enabling advanced avatar settings...");
 
