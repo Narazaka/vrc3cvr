@@ -1452,7 +1452,7 @@ public class VRC3CVR : EditorWindow
     }
 
     SkinnedMeshRenderer GetSkinnedMeshRendererInCVRAvatar() {
-        string pathToSkinnedMeshRenderer = GetPathToGameObjectInsideAvatar(bodySkinnedMeshRenderer.gameObject);
+        string pathToSkinnedMeshRenderer = GetRelativePathToGameObject(cvrAvatar.gameObject, bodySkinnedMeshRenderer.gameObject);
 
         Debug.Log("Path to body skinned mesh renderer: " + pathToSkinnedMeshRenderer);
 
@@ -1473,10 +1473,10 @@ public class VRC3CVR : EditorWindow
         return skinnedMeshRenderer;
     }
 
-    public static string GetPathToGameObjectInsideAvatar(GameObject obj)
+    public static string GetRelativePathToGameObject(GameObject root, GameObject obj)
     {
         string path = "/" + obj.name;
-        while (obj.transform.parent != null)
+        while (obj.transform.parent != null && obj.transform.parent.gameObject != root)
         {
             obj = obj.transform.parent.gameObject;
 
