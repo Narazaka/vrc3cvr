@@ -476,6 +476,11 @@ public class VRC3CVR : EditorWindow
 
             Debug.Log("Param \"" + vrcParam.name + "\" type \"" + vrcParam.valueType + "\" default \"" + vrcParam.defaultValue + "\"");
 
+            if (vrcParam.name == "") {
+                Debug.Log("Empty-named parameter. Skipping.");
+                continue;
+            }
+
             CVRAdvancedSettingsEntry newParam = null;
 
             switch (vrcParam.valueType)
