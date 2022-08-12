@@ -5,14 +5,12 @@ using System.Linq;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.UIElements;
 using UnityEditor.Animations;
 using VRC.SDK3.Avatars.ScriptableObjects;
 using VRCExpressionParameter = VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.Parameter;
 using VRC.SDK3.Avatars.Components;
 using ABI.CCK.Components;
 using ABI.CCK.Scripts;
-using ABI.CCK.Scripts.Editor;
 using PeanutTools_VRC3CVR;
 using System.Text.RegularExpressions;
 
@@ -246,7 +244,7 @@ public class VRC3CVR : EditorWindow
 
         AnimatorOverrideController overrideController = new AnimatorOverrideController(chilloutAnimatorController);
 
-        AssetDatabase.CreateAsset(overrideController, "Assets/" + outputDirName + "/ChilloutVR Overrides.overrideController");
+        AssetDatabase.CreateAsset(overrideController, "Assets/" + outputDirName + "/" + cvrAvatar.gameObject.name + "_ChilloutVR Overrides.overrideController");
 
         cvrAvatar.overrides = overrideController;
 
@@ -1166,7 +1164,7 @@ public class VRC3CVR : EditorWindow
 
         AssetDatabase.Refresh();
 
-        string pathInsideAssets = outputDirName + "/ChilloutVR_Gestures.controller";
+        string pathInsideAssets = outputDirName + "/" + cvrAvatar.gameObject.name + "_ChilloutVR_Gestures.controller";
         Directory.CreateDirectory(Application.dataPath + "/" + outputDirName);
 
         AssetDatabase.Refresh();
