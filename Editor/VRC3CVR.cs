@@ -28,8 +28,10 @@ public class VRC3CVR : EditorWindow
     AnimatorController[] vrcAnimatorControllers;
     string outputDirName = "VRC3CVR_Output";
     bool convertLocomotionLayer = false;
+    bool convertAdditiveLayer = false;
     bool convertGestureLayer = true;
     bool convertActionLayer = false;
+    bool convertFXLayer = true;
     Vector2 scrollPosition;
     GameObject chilloutAvatarGameObject;
     bool shouldCloneAvatar = true;
@@ -107,6 +109,11 @@ public class VRC3CVR : EditorWindow
 
         CustomGUI.SmallLineGap();
 
+        convertAdditiveLayer = GUILayout.Toggle(convertAdditiveLayer, "Convert Additive Animator (additive blend layers)");
+        CustomGUI.ItalicLabel("Additive state machine is commonly used for additively blended animations on the base avatar. May cause bicycle pose on certain avatars.");
+
+        CustomGUI.SmallLineGap();
+
         convertGestureLayer = GUILayout.Toggle(convertGestureLayer, "Convert Gesture Animator (hands)");
         CustomGUI.ItalicLabel("If your avatar overwrites the default finger animations when performing expressions");
 
@@ -114,6 +121,11 @@ public class VRC3CVR : EditorWindow
 
         convertActionLayer = GUILayout.Toggle(convertActionLayer, "Convert Action Animator (NOT RECOMMEND)");
         CustomGUI.ItalicLabel("Actions (mostly used for emotes) will very likely not convert over correctly and this option is better left unticked for now");
+
+        CustomGUI.SmallLineGap();
+
+        convertFXLayer = GUILayout.Toggle(convertFXLayer, "Convert FX Animator (blendshapes, particles, ect.)");
+        CustomGUI.ItalicLabel("FX state machine is commonly used all effects which don't affect the underlying rig, such as blendshapes and particle effects.");
 
         CustomGUI.SmallLineGap();
 
@@ -1447,9 +1459,13 @@ public class VRC3CVR : EditorWindow
             // Ignore animators not checked for conversion
             if (i == (int)VRCBaseAnimatorID.BASE && !convertLocomotionLayer){
                 continue;
+            } else if(i == (int)VRCBaseAnimatorID.ADDITIVE && !convertAdditiveLayer) {
+                continue;
             } else if(i == (int)VRCBaseAnimatorID.GESTURE && !convertGestureLayer) {
                 continue;
             } else if(i == (int)VRCBaseAnimatorID.ACTION && !convertActionLayer) {
+                continue;
+            } else if(i == (int)VRCBaseAnimatorID.FX && !convertFXLayer) {
                 continue;
             }
 
