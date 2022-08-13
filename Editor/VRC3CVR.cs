@@ -1552,6 +1552,10 @@ public class VRC3CVR : EditorWindow
             cvrAvatar.voicePosition = cvrAvatar.transform.transform.InverseTransformPoint(headBoneTransform.transform.position);
         }
 
+        // Scale the positions
+        cvrAvatar.viewPosition.Scale(cvrAvatar.gameObject.transform.localScale);
+        cvrAvatar.voicePosition.Scale(cvrAvatar.gameObject.transform.localScale);
+
         Debug.Log("Enabling advanced avatar settings...");
 
         cvrAvatar.avatarUsesAdvancedSettings = true;
