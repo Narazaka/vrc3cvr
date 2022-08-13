@@ -727,6 +727,27 @@ public class VRC3CVR : EditorWindow
                                 }
                             }
                         }
+                    } else if (chilloutGestureNumber == 0f) {
+                        thresholdHigh = 0.01f;
+
+                        for (int w = 0; w < transition.conditions.Length; w++)
+                        {
+                            AnimatorCondition conditionW = transition.conditions[w];
+                            if (
+                                (condition.parameter == "GestureLeft" && conditionW.parameter == "GestureLeftWeight") ||
+                                (condition.parameter == "GestureRight" && conditionW.parameter == "GestureRightWeight")
+                            )
+                            {
+                                if (conditionW.mode == AnimatorConditionMode.Less)
+                                {
+                                    thresholdHigh = conditionW.threshold;
+                                }
+                                else
+                                {
+                                    thresholdLow = conditionW.threshold;
+                                }
+                            }
+                        }
                     }
 
                     // Create replace conditions for ChilloutVR
@@ -752,6 +773,8 @@ public class VRC3CVR : EditorWindow
                     if (chilloutGestureNumber == 1f) // Fist only
                     {
                         thresholdLow = 0.01f;
+                    } else if (chilloutGestureNumber == 0f) {
+                        thresholdHigh = 0.01f;
                     }
 
                     if (isDuplicate) {
