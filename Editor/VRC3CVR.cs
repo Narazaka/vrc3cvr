@@ -1573,11 +1573,8 @@ public class VRC3CVR : EditorWindow
         Transform headBoneTransform = GetHeadBoneTransform(cvrAvatar.GetComponent<Animator>());
         if (headBoneTransform){
             cvrAvatar.voicePosition = cvrAvatar.transform.transform.InverseTransformPoint(headBoneTransform.transform.position);
+            cvrAvatar.voicePosition.Scale(cvrAvatar.gameObject.transform.localScale);
         }
-
-        // Scale the positions
-        cvrAvatar.viewPosition.Scale(cvrAvatar.gameObject.transform.localScale);
-        cvrAvatar.voicePosition.Scale(cvrAvatar.gameObject.transform.localScale);
 
         Debug.Log("Enabling advanced avatar settings...");
 
