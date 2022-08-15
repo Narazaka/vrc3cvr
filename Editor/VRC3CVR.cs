@@ -896,81 +896,79 @@ public class VRC3CVR : EditorWindow
     }
 
     Motion ReplaceProxyAnimationClip(Motion clip) {
-        switch(clip.name) {
-            case "proxy_hands_fist":
-                if (handCombinedFistAnimationClip) {
-                    return handCombinedFistAnimationClip;
-                } else {
+        if (clip) {
+            switch (clip.name) {
+                case "proxy_hands_fist":
+                    if (handCombinedFistAnimationClip) {
+                        return handCombinedFistAnimationClip;
+                    } else {
+                        return clip;
+                    }
+                case "proxy_hands_gun":
+                    if (handCombinedGunAnimationClip) {
+                        return handCombinedGunAnimationClip;
+                    } else {
+                        return clip;
+                    }
+                case "proxy_hands_idle":
+                    if (handCombinedRelaxedAnimationClip) {
+                        return handCombinedRelaxedAnimationClip;
+                    } else {
+                        return clip;
+                    }
+                case "proxy_hands_idle2":
+                    if (handCombinedRelaxedAnimationClip) {
+                        return handCombinedRelaxedAnimationClip;
+                    } else {
+                        return clip;
+                    }
+                case "proxy_hands_open":
+                    if (handCombinedOpenAnimationClip) {
+                        return handCombinedOpenAnimationClip;
+                    } else {
+                        return clip;
+                    }
+                case "proxy_hands_peace":
+                    if (handCombinedPeaceAnimationClip) {
+                        return handCombinedPeaceAnimationClip;
+                    } else {
+                        return clip;
+                    }
+                case "proxy_hands_point":
+                    if (handCombinedPointAnimationClip) {
+                        return handCombinedPointAnimationClip;
+                    } else {
+                        return clip;
+                    }
+                case "proxy_hands_rock":
+                    if (handCombinedRockNRollAnimationClip) {
+                        return handCombinedRockNRollAnimationClip;
+                    } else {
+                        return clip;
+                    }
+                case "proxy_hands_thumbs_up":
+                    if (handCombinedThumbsUpAnimationClip) {
+                        return handCombinedThumbsUpAnimationClip;
+                    } else {
+                        return clip;
+                    }
+                case "proxy_stand_still":
+                    return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
+                case "proxy_idle":
+                    return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
+                case "proxy_idle_2":
+                    return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
+                case "proxy_idle_3":
+                    return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
+                case "proxy_run_forward":
+                    return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocRunningForward.anim", typeof(AnimationClip));
+                case "proxy_run_backward":
+                    return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocRunningBackward.anim", typeof(AnimationClip));
+                default:
                     return clip;
-                }
-            case "proxy_hands_gun":
-                if (handCombinedGunAnimationClip)
-                {
-                    return handCombinedGunAnimationClip;
-                } else {
-                    return clip;
-                }
-            case "proxy_hands_idle":
-                if (handCombinedRelaxedAnimationClip)
-                {
-                    return handCombinedRelaxedAnimationClip;
-                } else {
-                    return clip;
-                }
-            case "proxy_hands_idle2":
-                if (handCombinedRelaxedAnimationClip)
-                {
-                    return handCombinedRelaxedAnimationClip;
-                } else {
-                    return clip;
-                }
-            case "proxy_hands_open":
-                if (handCombinedOpenAnimationClip)
-                {
-                    return handCombinedOpenAnimationClip;
-                } else {
-                    return clip;
-                }
-            case "proxy_hands_peace":
-                if (handCombinedPeaceAnimationClip)
-                {
-                    return handCombinedPeaceAnimationClip;
-                } else {
-                    return clip;
-                }
-            case "proxy_hands_point":
-                if (handCombinedPointAnimationClip)
-                {
-                    return handCombinedPointAnimationClip;
-                } else {
-                    return clip;
-                }
-            case "proxy_hands_rock":
-                if (handCombinedRockNRollAnimationClip) {
-                    return handCombinedRockNRollAnimationClip;
-                } else {
-                    return clip;
-                }
-            case "proxy_hands_thumbs_up":
-                if (handCombinedThumbsUpAnimationClip) {
-                    return handCombinedThumbsUpAnimationClip;
-                } else {
-                    return clip;
-                }
-            case "proxy_stand_still":
-                return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
-            case "proxy_idle":
-                return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
-            case "proxy_idle_2":
-                return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
-            case "proxy_idle_3":
-                return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
-            case "proxy_run_forward":
-                return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocRunningForward.anim", typeof(AnimationClip));
-            case "proxy_run_backward":
-                return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocRunningBackward.anim", typeof(AnimationClip));
-            default:
-                return clip;
+            }
+        } else {
+            return clip;
         }
     }
 
@@ -1003,7 +1001,9 @@ public class VRC3CVR : EditorWindow
                 ChildMotion[] blendTreeMotions = blendTree.children;
 
                 for (int i = 0; i < blendTreeMotions.Count(); i++) {
-                    blendTreeMotions[i].motion = ReplaceProxyAnimationClip(blendTreeMotions[i].motion);
+                    if (blendTreeMotions[i].motion is AnimationClip) {
+                        blendTreeMotions[i].motion = ReplaceProxyAnimationClip(blendTreeMotions[i].motion);
+                    }
                 }
 
                 blendTree.children = blendTreeMotions;
