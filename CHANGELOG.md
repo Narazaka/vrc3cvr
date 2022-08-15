@@ -1,3 +1,37 @@
+# 1.2.5S
+
+- Rebase onto main branch
+- Fix scaling of voice position.
+- Fix threshold generation between hand idle and fist.
+- Prevent null error with empty blend tree motions.
+
+# 1.2.4S
+
+- Add toggles to choose all which of the five VRChat base animators to convert and ignore, along with explanations.
+- Voice position is now placed at the base of the head bone (if found) rather than the eye position.
+- Fix assignment of face mesh if the avatar is was placed in the root of scene.
+
+# 1.2.3S
+
+- Fix bug with VRC3CVR_Ouput directory not being created.
+
+# 1.2.2S
+
+- Improve support of animator masking on all animators.
+
+# 1.2.1S
+
+- Hotfix to address error on avatars without a VRC ExpressionMenu
+
+# 1.2.0S
+
+- Match CVR restrictions on parameter names
+- Make deletion of VRC components optional
+- Fix weight of first layer of each animator
+- Add empty masking to FX layers
+- Scrape VRC menu for correct integer parameter names
+- Add support for converting gesture animator with correct masking and proxy animations
+
 # 1.1.1
 
 - fix face mesh using the old mesh

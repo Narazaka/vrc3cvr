@@ -1,8 +1,11 @@
-**This tool is in "low maintenance" mode. I will not be making many updates to it (I don't play ChilloutVR much). I welcome any PR.**
+Convert a VRChat SDK3 avatar to ChilloutVR with this Unity script.
+
+- Keep a BACKUP of your original project.
+- It is not recommend you convert avatars with custom locomotion controllers, only FX and Gesture controllers.
+- This is an experimental fork of the original project (https://github.com/imagitama/vrc3cvr).
+- It supports improved features and bugfixes over the original such as proper layer masking and conversion of VRC proxy animation.
 
 Alternative tool: https://fluffs.gumroad.com/l/sdk3-to-cck
-
-Convert a VRChat SDK3 avatar to ChilloutVR with this Unity script.
 
 Tested with:
 
@@ -22,7 +25,7 @@ Tested using avatar [Canis Woof by Rezillo Ryker](https://www.vrcarena.com/asset
 
 ## Usage
 
-Go to [Releases](https://github.com/imagitama/vrc3cvr/releases/latest) and expand "Assets" and download the `.unitypackage`.
+Go to [Releases](https://github.com/SaracenOne/vrc3cvr/releases/latest) and expand "Assets" and download the `.unitypackage`.
 
 1. Install the ChilloutVR CCK (FAQ channel in their [Discord](https://discord.gg/ABI))
 2. Download and import the vrc3cvr `.unitypackage`
