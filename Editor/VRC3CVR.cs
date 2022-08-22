@@ -992,10 +992,17 @@ public class VRC3CVR : EditorWindow
             if (state.motion is BlendTree) {
                 BlendTree blendTree = (BlendTree)state.motion;
 
+                // X
                 if (blendTree.blendParameter == "GestureLeftWeight") {
                     blendTree.blendParameter = "GestureLeft";
                 } else if (blendTree.blendParameter == "GestureRightWeight") {
                     blendTree.blendParameter = "GestureRight";
+                }
+                // Y
+                if (blendTree.blendParameterY == "GestureLeftWeight") {
+                    blendTree.blendParameterY = "GestureLeft";
+                } else if (blendTree.blendParameterY == "GestureRightWeight") {
+                    blendTree.blendParameterY = "GestureRight";
                 }
 
                 ChildMotion[] blendTreeMotions = blendTree.children;
@@ -1009,6 +1016,7 @@ public class VRC3CVR : EditorWindow
                 blendTree.children = blendTreeMotions;
 
                 blendTree.blendParameter = Regex.Replace(blendTree.blendParameter, "[^a-zA-Z0-9#]", "");
+                blendTree.blendParameterY = Regex.Replace(blendTree.blendParameterY, "[^a-zA-Z0-9#]", "");
             } else if (state.motion is AnimationClip) {
                 state.motion = ReplaceProxyAnimationClip(state.motion);
             }
