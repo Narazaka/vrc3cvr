@@ -1,23 +1,27 @@
+# 1.2.6S
+
+- Fix blend tree Y parameter naming
+
 # 1.2.5S
 
 - Rebase onto main branch
-- Fix scaling of voice position.
-- Fix threshold generation between hand idle and fist.
-- Prevent null error with empty blend tree motions.
+- Fix scaling of voice position
+- Fix threshold generation between hand idle and fist
+- Prevent null error with empty blend tree motions
 
 # 1.2.4S
 
-- Add toggles to choose all which of the five VRChat base animators to convert and ignore, along with explanations.
-- Voice position is now placed at the base of the head bone (if found) rather than the eye position.
-- Fix assignment of face mesh if the avatar is was placed in the root of scene.
+- Add toggles to choose all which of the five VRChat base animators to convert and ignore, along with explanations
+- Voice position is now placed at the base of the head bone (if found) rather than the eye position
+- Fix assignment of face mesh if the avatar is was placed in the root of scene
 
 # 1.2.3S
 
-- Fix bug with VRC3CVR_Ouput directory not being created.
+- Fix bug with VRC3CVR_Ouput directory not being created
 
 # 1.2.2S
 
-- Improve support of animator masking on all animators.
+- Improve support of animator masking on all animators
 
 # 1.2.1S
 
