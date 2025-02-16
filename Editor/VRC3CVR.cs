@@ -512,11 +512,11 @@ public class VRC3CVR : EditorWindow
                         newParam = new CVRAdvancedSettingsEntry() {
                             name = vrcParam.name,
                             machineName = vrcParam.name,
-                            type = CVRAdvancedSettingsEntry.SettingsType.GameObjectDropdown,
+                            type = CVRAdvancedSettingsEntry.SettingsType.Dropdown,
                             setting = new CVRAdvancesAvatarSettingGameObjectDropdown() {
                                 defaultValue = (int)vrcParam.defaultValue,
                                 options = dropdownOptions,
-                                usedType = CVRAdvancesAvatarSettingBase.ParameterType.GenerateInt
+                                usedType = CVRAdvancesAvatarSettingBase.ParameterType.Int
                             }
                         };
                     } else {
@@ -527,7 +527,7 @@ public class VRC3CVR : EditorWindow
                             machineName = vrcParam.name,
                             setting = new CVRAdvancesAvatarSettingGameObjectToggle() {
                                 defaultValue = vrcParam.defaultValue == 1 ? true : false,
-                                usedType = CVRAdvancesAvatarSettingBase.ParameterType.GenerateBool
+                                usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool
                             }
                         };
                     };
@@ -540,7 +540,7 @@ public class VRC3CVR : EditorWindow
                         type = CVRAdvancedSettingsEntry.SettingsType.Slider,
                         setting = new CVRAdvancesAvatarSettingSlider() {
                             defaultValue = vrcParam.defaultValue,
-                            usedType = CVRAdvancesAvatarSettingBase.ParameterType.GenerateFloat
+                            usedType = CVRAdvancesAvatarSettingBase.ParameterType.Float
                         }
                     };
                     break;
@@ -551,7 +551,7 @@ public class VRC3CVR : EditorWindow
                         machineName = vrcParam.name,
                         setting = new CVRAdvancesAvatarSettingGameObjectToggle() {
                             defaultValue = vrcParam.defaultValue != 0 ? true : false,
-                            usedType = CVRAdvancesAvatarSettingBase.ParameterType.GenerateBool
+                            usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool
                         }
                     };
                     break;
