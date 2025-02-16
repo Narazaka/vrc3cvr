@@ -12,7 +12,6 @@ using VRC.SDK3.Avatars.Components;
 using ABI.CCK.Components;
 using ABI.CCK.Scripts;
 using PeanutTools_VRC3CVR;
-using System.Text.RegularExpressions;
 
 public class VRC3CVR : EditorWindow
 {
@@ -409,7 +408,7 @@ public class VRC3CVR : EditorWindow
         AnimatorControllerParameter[] parameters = chilloutAnimatorController.parameters;
 
         for (int i = 0; i < parameters.Length; i++) {
-            if (parameters[i].name == Regex.Replace(vrcParam.name, "[^a-zA-Z0-9#]", "")) {
+            if (parameters[i].name == vrcParam.name) {
                 switch (parameters[i].type)
                 {
                     case AnimatorControllerParameterType.Bool:
@@ -756,14 +755,14 @@ public class VRC3CVR : EditorWindow
 
                     // Create replace conditions for ChilloutVR
                     AnimatorCondition newConditionLessThan = new AnimatorCondition();
-                    newConditionLessThan.parameter = Regex.Replace(condition.parameter, "[^a-zA-Z0-9#]", "");
+                    newConditionLessThan.parameter = condition.parameter;
                     newConditionLessThan.mode = AnimatorConditionMode.Less;
                     newConditionLessThan.threshold = thresholdHigh;
 
                     conditionsToAdd.Add(newConditionLessThan);
 
                     AnimatorCondition newConditionGreaterThan = new AnimatorCondition();
-                    newConditionGreaterThan.parameter = Regex.Replace(condition.parameter, "[^a-zA-Z0-9#]", "");
+                    newConditionGreaterThan.parameter = condition.parameter;
                     newConditionGreaterThan.mode = AnimatorConditionMode.Greater;
                     newConditionGreaterThan.threshold = thresholdLow;
 
@@ -784,7 +783,7 @@ public class VRC3CVR : EditorWindow
                     if (isDuplicate) {
                         // Add greater than transition to duplicate
                         AnimatorCondition newConditionGreaterThan = new AnimatorCondition();
-                        newConditionGreaterThan.parameter = Regex.Replace(condition.parameter, "[^a-zA-Z0-9#]", "");
+                        newConditionGreaterThan.parameter = condition.parameter;
                         newConditionGreaterThan.mode = AnimatorConditionMode.Greater;
                         newConditionGreaterThan.threshold = thresholdHigh;
 
@@ -793,7 +792,7 @@ public class VRC3CVR : EditorWindow
                     } else {
                         // Change transition to use less than
                         AnimatorCondition newConditionLessThan = new AnimatorCondition();
-                        newConditionLessThan.parameter = Regex.Replace(condition.parameter, "[^a-zA-Z0-9#]", "");
+                        newConditionLessThan.parameter = condition.parameter;
                         newConditionLessThan.mode = AnimatorConditionMode.Less;
                         newConditionLessThan.threshold = thresholdLow;
 
@@ -824,7 +823,7 @@ public class VRC3CVR : EditorWindow
 
                         for (int c2 = 0; c2 < transition.conditions.Length; c2++)
                         {
-                            newTransition.AddCondition(transition.conditions[c2].mode, transition.conditions[c2].threshold, Regex.Replace(transition.conditions[c2].parameter, "[^a-zA-Z0-9#]", ""));
+                            newTransition.AddCondition(transition.conditions[c2].mode, transition.conditions[c2].threshold, transition.conditions[c2].parameter);
                         }
 
                         List<AnimatorTranstitionType> transitionsToAdd2 = new List<AnimatorTranstitionType>();
@@ -891,7 +890,6 @@ public class VRC3CVR : EditorWindow
             }
             else
             {
-				condition.parameter = Regex.Replace(condition.parameter, "[^a-zA-Z0-9#]", "");
                 conditionsToAdd.Add(condition);
             }
         }
@@ -991,7 +989,7 @@ public class VRC3CVR : EditorWindow
                 state.timeParameter = "GestureRight";
             }
 
-            state.timeParameter = Regex.Replace(state.timeParameter, "[^a-zA-Z0-9#]", "");
+            state.timeParameter = state.timeParameter;
 
             if (state.motion is BlendTree) {
                 BlendTree blendTree = (BlendTree)state.motion;
@@ -1018,9 +1016,6 @@ public class VRC3CVR : EditorWindow
                 }
 
                 blendTree.children = blendTreeMotions;
-
-                blendTree.blendParameter = Regex.Replace(blendTree.blendParameter, "[^a-zA-Z0-9#]", "");
-                blendTree.blendParameterY = Regex.Replace(blendTree.blendParameterY, "[^a-zA-Z0-9#]", "");
             } else if (state.motion is AnimationClip) {
                 state.motion = ReplaceProxyAnimationClip(state.motion);
             }
@@ -1292,10 +1287,6 @@ public class VRC3CVR : EditorWindow
         AnimatorControllerParameter[] newParams = animatorToMerge.parameters;
 
         Debug.Log("Found " + newParams.Length + " parameters in this animator");
-
-        for (int i = 0; i < newParams.Length; i++) {
-            newParams[i].name = Regex.Replace(newParams[i].name, "[^a-zA-Z0-9#]", "");
-        }
 
         chilloutAnimatorController.parameters = GetParametersWithoutDupes(newParams, existingParams);
 
