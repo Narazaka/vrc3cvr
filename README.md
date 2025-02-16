@@ -9,9 +9,9 @@ Alternative tool: https://fluffs.gumroad.com/l/sdk3-to-cck
 
 Tested with:
 
-- VRChat Avatar SDK3 2022.06.03.00.04
-- ChilloutVR CCK 3.3
-- Unity 2019.4.31f1
+- VRChat Avatar SDK3 3.7.5
+- ChilloutVR CCK 3.13.4
+- Unity 2022.3.22f1
 
 Tested using avatar [Canis Woof by Rezillo Ryker](https://www.vrcarena.com/assets/fnADyoq3IE5b4zIZGanA) (CanineRez_UnityVRC_V011 from July 2022 with PhysBones):
 
