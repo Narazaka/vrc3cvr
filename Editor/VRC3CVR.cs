@@ -512,6 +512,7 @@ public class VRC3CVR : EditorWindow
                         newParam = new CVRAdvancedSettingsEntry() {
                             name = vrcParam.name,
                             machineName = vrcParam.name,
+                            unlinkNameFromMachineName = true,
                             type = CVRAdvancedSettingsEntry.SettingsType.Dropdown,
                             setting = new CVRAdvancesAvatarSettingGameObjectDropdown() {
                                 defaultValue = (int)vrcParam.defaultValue,
@@ -525,6 +526,7 @@ public class VRC3CVR : EditorWindow
                         newParam = new CVRAdvancedSettingsEntry() {
                             name = vrcParam.name,
                             machineName = vrcParam.name,
+                            unlinkNameFromMachineName = true,
                             setting = new CVRAdvancesAvatarSettingGameObjectToggle() {
                                 defaultValue = vrcParam.defaultValue == 1 ? true : false,
                                 usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool
@@ -537,6 +539,7 @@ public class VRC3CVR : EditorWindow
                     newParam = new CVRAdvancedSettingsEntry() {
                         name = vrcParam.name,
                         machineName = vrcParam.name,
+                        unlinkNameFromMachineName = true,
                         type = CVRAdvancedSettingsEntry.SettingsType.Slider,
                         setting = new CVRAdvancesAvatarSettingSlider() {
                             defaultValue = vrcParam.defaultValue,
@@ -549,6 +552,7 @@ public class VRC3CVR : EditorWindow
                     newParam = new CVRAdvancedSettingsEntry() {
                         name = vrcParam.name,
                         machineName = vrcParam.name,
+                        unlinkNameFromMachineName = true,
                         setting = new CVRAdvancesAvatarSettingGameObjectToggle() {
                             defaultValue = vrcParam.defaultValue != 0 ? true : false,
                             usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool
