@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: mkdir Assets/PeanutTools
+        run: mkdir -p Assets/PeanutTools
+
+      - name: Checkout for unitypackage
+        uses: actions/checkout@v4
+        with:
+          path: Assets/PeanutTools/VRC3CVR
+          clean: false
+
+      - name: Create .meta list
+        run: find Assets/PeanutTools/VRC3CVR -name \*.meta >> metaList
+
+      - name: Create UnityPackage
+        uses: pCYSl5EDgo/create-unitypackage@cfcd3cf0391a5ef1306342794866a9897c32af0b
+        with:
+          package-path: VRC3CVR-${{ github.ref_name }}.unitypackage
+          include-files: metaList
+
+      - name: Make Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            VRC3CVR-${{ github.ref_name }}.unitypackage
