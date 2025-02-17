@@ -1,3 +1,7 @@
+# 2.0.0-rc.0
+
+- adjust to CCK 3.13.4
+
 # 1.2.6S
 
 - Fix blend tree Y parameter naming
