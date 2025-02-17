@@ -627,7 +627,6 @@ public class VRC3CVR : EditorWindow
                             unlinkNameFromMachineName = true,
                             type = CVRAdvancedSettingsEntry.SettingsType.Dropdown,
                             setting = new CVRAdvancesAvatarSettingGameObjectDropdown() {
-                                usedType = CVRAdvancesAvatarSettingBase.ParameterType.GenerateInt,
                                 defaultValue = (int)vrcParam.defaultValue,
                                 options = dropdownOptions,
                                 usedType = CVRAdvancesAvatarSettingBase.ParameterType.Int
