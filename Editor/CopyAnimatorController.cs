@@ -69,13 +69,33 @@ public class CopyAnimatorController
             parentStateMachinePosition = sourceStateMachine.parentStateMachinePosition
         };
 
-        // Copy states
+        // Copy states and sub-state machines
         var stateMapping = new Dictionary<AnimatorState, AnimatorState>();
+        var subStateMachineMapping = new Dictionary<AnimatorStateMachine, AnimatorStateMachine>();
+        
+        // First pass: Create all states and sub-state machines
         foreach (var state in sourceStateMachine.states)
         {
-            var newState = CopyState(state.state);
-            stateMapping[state.state] = newState;
-            newStateMachine.AddState(newState, state.position);
+            if (state.state.motion is AnimatorStateMachine subMachine)
+            {
+                // Create a new sub-state machine
+                var newSubMachine = CopyStateMachine(subMachine);
+                subStateMachineMapping[subMachine] = newSubMachine;
+                
+                // Create a state that references the new sub-state machine
+                var newState = new AnimatorState
+                {
+                    name = state.state.name,
+                    motion = newSubMachine
+                };
+                stateMapping[state.state] = newState;
+            }
+            else
+            {
+                var newState = CopyState(state.state);
+                stateMapping[state.state] = newState;
+            }
+            newStateMachine.AddState(stateMapping[state.state], state.position);
         }
 
         // Copy transitions
@@ -89,6 +109,19 @@ public class CopyAnimatorController
         {
             var newTransition = CopyTransition(transition, stateMapping);
             newStateMachine.AddEntryTransition(newTransition);
+        }
+
+        // Copy state transitions
+        foreach (var state in sourceStateMachine.states)
+        {
+            var sourceState = state.state;
+            var newState = stateMapping[sourceState];
+
+            foreach (var transition in sourceState.transitions)
+            {
+                var newTransition = CopyTransition(transition, stateMapping);
+                newState.AddTransition(newTransition);
+            }
         }
 
         return newStateMachine;
