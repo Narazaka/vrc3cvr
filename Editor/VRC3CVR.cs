@@ -1701,47 +1701,11 @@ public class VRC3CVR : EditorWindow
     {
         Debug.Log("Merging vrc animator \"" + originalAnimatorController.name + "\"...");
 
-        // we modify everything in place so we don't want to mutate the original
-        AnimatorController animatorToMerge = CopyVrcAnimatorForMerge(originalAnimatorController);
+        var newAnimatorController = new CopyAnimatorController(originalAnimatorController).CopyController();
 
-        AnimatorControllerParameter[] existingParams = chilloutAnimatorController.parameters;
-        AnimatorControllerParameter[] newParams = animatorToMerge.parameters;
-
-        Debug.Log("Found " + newParams.Length + " parameters in this animator");
-
-        chilloutAnimatorController.parameters = GetParametersWithoutDupes(newParams, existingParams);
-
-        AnimatorControllerLayer[] existingLayers = chilloutAnimatorController.layers;
-
-        AnimatorControllerLayer[] layersToMerge = animatorToMerge.layers;
-
-        // Force first layer to all has a weight of 1.0f
-        if (layersToMerge.Length > 0)
+        for (int i = 0; i < newAnimatorController.layers.Length; i++)
         {
-            layersToMerge[0].defaultWeight = 1.0f;
-        }
-
-        Debug.Log("Found " + layersToMerge.Length + " layers to merge");
-
-        // CVR breaks if any layer names are the same
-        layersToMerge = FixDuplicateLayerNames(layersToMerge, existingLayers);
-
-        AnimatorControllerLayer[] newLayers = new AnimatorControllerLayer[existingLayers.Length + layersToMerge.Length];
-
-        int newLayersIdx = 0;
-
-        for (int i = 0; i < existingLayers.Length; i++)
-        {
-            if (existingLayers[i].stateMachine.states.Length > 0)
-            { // Do not copy empty layers
-                newLayers[newLayersIdx] = existingLayers[i];
-                newLayersIdx++;
-            }
-        }
-
-        for (int i = 0; i < layersToMerge.Length; i++)
-        {
-            AnimatorControllerLayer layer = layersToMerge[i];
+            AnimatorControllerLayer layer = newAnimatorController.layers[i];
 
             if (layer.stateMachine.states.Length > 0)
             { // Do not copy empty layers
@@ -1750,27 +1714,13 @@ public class VRC3CVR : EditorWindow
                 ProcessStateMachine(layer.stateMachine);
 
                 layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(animatorID, i, layer.avatarMask);
-
-                newLayers[newLayersIdx] = layer;
-                newLayersIdx++;
             }
         }
 
-        Array.Resize(ref newLayers, newLayersIdx);
-        chilloutAnimatorController.layers = newLayers;
-
-        // Update all transitions after all state machines are copied
-        foreach (var layer in chilloutAnimatorController.layers)
-        {
-            UpdateTransitionsInStateMachine(layer.stateMachine);
-        }
+        new CopyAnimatorController(newAnimatorController).CopyControllerTo(chilloutAnimatorController);
 
         // Save all elements to chilloutAnimatorController
-        PersistAnimatorControllerElements(chilloutAnimatorController);
-
-        // Persist the asset
-        EditorUtility.SetDirty(chilloutAnimatorController);
-        AssetDatabase.SaveAssets();
+        new SaveAnimatorController(chilloutAnimatorController).Save();
 
         Debug.Log("Merged");
     }
