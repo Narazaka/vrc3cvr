@@ -23,14 +23,12 @@ public class SaveAnimatorController
             }
         }
 
-        // コントローラー自体を永続化
         if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(controller)))
         {
             AssetDatabase.CreateAsset(controller, path);
         }
         EditorUtility.SetDirty(controller);
 
-        // 各レイヤーのステートマシンとその中のステートを永続化
         foreach (var layer in controller.layers)
         {
             if (layer.stateMachine != null)
@@ -45,7 +43,6 @@ public class SaveAnimatorController
 
     private void SaveStateMachine(AnimatorStateMachine stateMachine)
     {
-        // ステートマシンのビヘイビアを永続化
         foreach (var behaviour in stateMachine.behaviours)
         {
             if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(behaviour)))
@@ -54,7 +51,6 @@ public class SaveAnimatorController
             }
         }
 
-        // AnyState transitionsを永続化
         foreach (var transition in stateMachine.anyStateTransitions)
         {
             if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(transition)))
@@ -63,7 +59,6 @@ public class SaveAnimatorController
             }
         }
 
-        // Entry transitionsを永続化
         foreach (var transition in stateMachine.entryTransitions)
         {
             if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(transition)))
@@ -72,13 +67,11 @@ public class SaveAnimatorController
             }
         }
 
-        // 各ステートを永続化
         foreach (var state in stateMachine.states)
         {
             SaveState(state.state);
         }
 
-        // サブステートマシンを永続化
         foreach (var subMachine in stateMachine.stateMachines)
         {
             SaveStateMachine(subMachine.stateMachine);
@@ -87,7 +80,6 @@ public class SaveAnimatorController
 
     private void SaveState(AnimatorState state)
     {
-        // ステートのビヘイビアを永続化
         foreach (var behaviour in state.behaviours)
         {
             if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(behaviour)))
@@ -96,7 +88,6 @@ public class SaveAnimatorController
             }
         }
 
-        // ステートのtransitionsを永続化
         foreach (var transition in state.transitions)
         {
             if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(transition)))
@@ -105,13 +96,11 @@ public class SaveAnimatorController
             }
         }
 
-        // BlendTreeの永続化
         if (state.motion is BlendTree blendTree)
         {
             SaveBlendTree(blendTree);
         }
 
-        // ステート自体を永続化
         if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(state)))
         {
             AssetDatabase.AddObjectToAsset(state, controller);
@@ -125,7 +114,6 @@ public class SaveAnimatorController
             AssetDatabase.AddObjectToAsset(blendTree, controller);
         }
 
-        // 子のBlendTreeを再帰的に永続化
         foreach (var childMotion in blendTree.children)
         {
             if (childMotion.motion is BlendTree childBlendTree)
