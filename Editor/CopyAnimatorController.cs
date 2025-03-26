@@ -132,14 +132,18 @@ public class CopyAnimatorController
         foreach (var transition in sourceStateMachine.anyStateTransitions)
         {
             var newTransition = CopyTransition(transition, stateMapping, subStateMachineMapping);
-            newStateMachine.AddAnyStateTransition(newTransition);
+            var array = newStateMachine.anyStateTransitions;
+            ArrayUtility.Add(ref array, newTransition);
+            newStateMachine.anyStateTransitions = array;
         }
 
         // Copy entry transitions
         foreach (var transition in sourceStateMachine.entryTransitions)
         {
             var newTransition = CopyTransition(transition, stateMapping, subStateMachineMapping);
-            newStateMachine.AddEntryTransition(newTransition);
+            var array = newStateMachine.entryTransitions;
+            ArrayUtility.Add(ref array, newTransition);
+            newStateMachine.entryTransitions = array;
         }
 
         // Copy state transitions
