@@ -1,3 +1,7 @@
+# 2.0.0-rc.3
+
+- Fix release
+
 # 2.0.0-rc.2
 
 - Fix animator's "name"
