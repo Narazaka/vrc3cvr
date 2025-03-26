@@ -44,7 +44,7 @@ public class CopyAnimatorController
             syncedLayerIndex = sourceLayer.syncedLayerIndex,
             syncedLayerAffectsTiming = sourceLayer.syncedLayerAffectsTiming,
             iKPass = sourceLayer.iKPass,
-            avatarMask = sourceLayer.avatarMask
+            avatarMask = sourceLayer.avatarMask,
         };
 
         // Copy state machine
@@ -54,7 +54,9 @@ public class CopyAnimatorController
         }
 
         // Add the layer to the target controller
-        targetController.AddLayer(newLayer);
+        var layers = targetController.layers;
+        ArrayUtility.Add(ref layers, newLayer);
+        targetController.layers = layers;
     }
 
     private AnimatorStateMachine CopyStateMachine(AnimatorStateMachine sourceStateMachine)
@@ -96,12 +98,12 @@ public class CopyAnimatorController
     private void CopyStateMachineBehaviourValues(StateMachineBehaviour sourceBehaviour, StateMachineBehaviour targetBehaviour)
     {
         targetBehaviour.hideFlags = sourceBehaviour.hideFlags;
-        
+
         // Copy serialized fields
         var serializedObject = new SerializedObject(targetBehaviour);
         var sourceSerializedObject = new SerializedObject(sourceBehaviour);
         var property = sourceSerializedObject.GetIterator();
-        
+
         while (property.NextVisible(true))
         {
             if (property.propertyType != SerializedPropertyType.Generic)
@@ -109,7 +111,7 @@ public class CopyAnimatorController
                 serializedObject.CopyFromSerializedProperty(property);
             }
         }
-        
+
         serializedObject.ApplyModifiedProperties();
     }
 
@@ -132,7 +134,14 @@ public class CopyAnimatorController
                 parentStateMachinePosition = subMachine.stateMachine.parentStateMachinePosition
             };
             subStateMachineMapping[subMachine.stateMachine] = newSubMachine;
-            newStateMachine.AddStateMachine(newSubMachine, subMachine.position);
+            var stateMachines = newStateMachine.stateMachines;
+            var childStateMachine = new ChildAnimatorStateMachine
+            {
+                stateMachine = newSubMachine,
+                position = subMachine.position
+            };
+            ArrayUtility.Add(ref stateMachines, childStateMachine);
+            newStateMachine.stateMachines = stateMachines;
         }
 
         // Then create all states
@@ -140,7 +149,14 @@ public class CopyAnimatorController
         {
             var newState = CopyState(state.state);
             stateMapping[state.state] = newState;
-            newStateMachine.AddState(newState, state.position);
+            var states = newStateMachine.states;
+            var childState = new ChildAnimatorState
+            {
+                state = newState,
+                position = state.position
+            };
+            ArrayUtility.Add(ref states, childState);
+            newStateMachine.states = states;
         }
 
         // Recursively create states and state machines for sub-state machines
@@ -188,7 +204,9 @@ public class CopyAnimatorController
             foreach (var transition in sourceState.transitions)
             {
                 var newTransition = CopyTransition(transition, stateMapping, subStateMachineMapping);
-                newState.AddTransition(newTransition);
+                var array = newState.transitions;
+                ArrayUtility.Add(ref array, newTransition);
+                newState.transitions = array;
             }
         }
 
@@ -265,7 +283,15 @@ public class CopyAnimatorController
         // Copy conditions
         foreach (var condition in sourceTransition.conditions)
         {
-            newTransition.AddCondition(condition.mode, condition.threshold, condition.parameter);
+            var newCondition = new AnimatorCondition
+            {
+                mode = condition.mode,
+                threshold = condition.threshold,
+                parameter = condition.parameter,
+            };
+            var conditions = sourceTransition.conditions;
+            ArrayUtility.Add(ref conditions, newCondition);
+            newTransition.conditions = conditions;
         }
 
         return newTransition;
@@ -298,7 +324,15 @@ public class CopyAnimatorController
         // Copy conditions
         foreach (var condition in sourceTransition.conditions)
         {
-            newTransition.AddCondition(condition.mode, condition.threshold, condition.parameter);
+            var newCondition = new AnimatorCondition
+            {
+                mode = condition.mode,
+                threshold = condition.threshold,
+                parameter = condition.parameter,
+            };
+            var conditions = sourceTransition.conditions;
+            ArrayUtility.Add(ref conditions, newCondition);
+            newTransition.conditions = conditions;
         }
 
         return newTransition;
