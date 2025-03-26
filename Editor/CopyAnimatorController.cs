@@ -204,8 +204,12 @@ public class CopyAnimatorController
             offset = sourceTransition.offset,
             interruptionSource = sourceTransition.interruptionSource,
             orderedInterruption = sourceTransition.orderedInterruption,
-            exitTimeParameter = sourceTransition.exitTimeParameter,
-            exitTimeParameterActive = sourceTransition.exitTimeParameterActive
+            canTransitionToSelf = sourceTransition.canTransitionToSelf,
+            solo = sourceTransition.solo,
+            mute = sourceTransition.mute,
+            name = sourceTransition.name,
+            isExit = sourceTransition.isExit,
+            hideFlags = sourceTransition.hideFlags,
         };
 
         // Set destination state or state machine
@@ -227,23 +231,29 @@ public class CopyAnimatorController
         return newTransition;
     }
 
-    private AnimatorStateTransition CopyTransition(
+    private AnimatorTransition CopyTransition(
         AnimatorTransition sourceTransition,
         Dictionary<AnimatorState, AnimatorState> stateMapping,
         Dictionary<AnimatorStateMachine, AnimatorStateMachine> subStateMachineMapping)
     {
-        var newTransition = new AnimatorStateTransition
+        var newTransition = new AnimatorTransition
         {
-            hasExitTime = sourceTransition.hasExitTime,
-            exitTime = sourceTransition.exitTime,
-            hasFixedDuration = sourceTransition.hasFixedDuration,
-            duration = sourceTransition.duration,
-            offset = sourceTransition.offset,
-            interruptionSource = sourceTransition.interruptionSource,
-            orderedInterruption = sourceTransition.orderedInterruption,
-            exitTimeParameter = sourceTransition.exitTimeParameter,
-            exitTimeParameterActive = sourceTransition.exitTimeParameterActive
+            hideFlags = sourceTransition.hideFlags,
+            isExit = sourceTransition.isExit,
+            solo = sourceTransition.solo,
+            mute = sourceTransition.mute,
+            name = sourceTransition.name,
         };
+
+        // Set destination state or state machine
+        if (sourceTransition.destinationState != null)
+        {
+            newTransition.destinationState = stateMapping[sourceTransition.destinationState];
+        }
+        else if (sourceTransition.destinationStateMachine != null)
+        {
+            newTransition.destinationStateMachine = subStateMachineMapping[sourceTransition.destinationStateMachine];
+        }
 
         // Copy conditions
         foreach (var condition in sourceTransition.conditions)
