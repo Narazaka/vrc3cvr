@@ -69,17 +69,37 @@ public class CopyAnimatorController
             parentStateMachinePosition = sourceStateMachine.parentStateMachinePosition
         };
 
-        // Copy states and sub-state machines
+        // First pass: Create all states and sub-state machines
         var stateMapping = new Dictionary<AnimatorState, AnimatorState>();
         var subStateMachineMapping = new Dictionary<AnimatorStateMachine, AnimatorStateMachine>();
-        
-        // First pass: Create all states and sub-state machines
+        CreateStatesAndStateMachines(sourceStateMachine, newStateMachine, stateMapping, subStateMachineMapping);
+
+        // Second pass: Copy all transitions
+        CopyTransitions(sourceStateMachine, newStateMachine, stateMapping, subStateMachineMapping);
+
+        return newStateMachine;
+    }
+
+    private void CreateStatesAndStateMachines(
+        AnimatorStateMachine sourceStateMachine,
+        AnimatorStateMachine newStateMachine,
+        Dictionary<AnimatorState, AnimatorState> stateMapping,
+        Dictionary<AnimatorStateMachine, AnimatorStateMachine> subStateMachineMapping)
+    {
         foreach (var state in sourceStateMachine.states)
         {
             if (state.state.motion is AnimatorStateMachine subMachine)
             {
                 // Create a new sub-state machine
-                var newSubMachine = CopyStateMachine(subMachine);
+                var newSubMachine = new AnimatorStateMachine
+                {
+                    name = subMachine.name,
+                    hideFlags = subMachine.hideFlags,
+                    anyStatePosition = subMachine.anyStatePosition,
+                    entryPosition = subMachine.entryPosition,
+                    exitPosition = subMachine.exitPosition,
+                    parentStateMachinePosition = subMachine.parentStateMachinePosition
+                };
                 subStateMachineMapping[subMachine] = newSubMachine;
                 
                 // Create a state that references the new sub-state machine
@@ -98,16 +118,38 @@ public class CopyAnimatorController
             newStateMachine.AddState(stateMapping[state.state], state.position);
         }
 
-        // Copy transitions
+        // Recursively create states and state machines for sub-state machines
+        foreach (var state in sourceStateMachine.states)
+        {
+            if (state.state.motion is AnimatorStateMachine subMachine)
+            {
+                CreateStatesAndStateMachines(
+                    subMachine,
+                    subStateMachineMapping[subMachine],
+                    stateMapping,
+                    subStateMachineMapping
+                );
+            }
+        }
+    }
+
+    private void CopyTransitions(
+        AnimatorStateMachine sourceStateMachine,
+        AnimatorStateMachine newStateMachine,
+        Dictionary<AnimatorState, AnimatorState> stateMapping,
+        Dictionary<AnimatorStateMachine, AnimatorStateMachine> subStateMachineMapping)
+    {
+        // Copy any state transitions
         foreach (var transition in sourceStateMachine.anyStateTransitions)
         {
-            var newTransition = CopyTransition(transition, stateMapping);
+            var newTransition = CopyTransition(transition, stateMapping, subStateMachineMapping);
             newStateMachine.AddAnyStateTransition(newTransition);
         }
 
+        // Copy entry transitions
         foreach (var transition in sourceStateMachine.entryTransitions)
         {
-            var newTransition = CopyTransition(transition, stateMapping);
+            var newTransition = CopyTransition(transition, stateMapping, subStateMachineMapping);
             newStateMachine.AddEntryTransition(newTransition);
         }
 
@@ -119,12 +161,24 @@ public class CopyAnimatorController
 
             foreach (var transition in sourceState.transitions)
             {
-                var newTransition = CopyTransition(transition, stateMapping);
+                var newTransition = CopyTransition(transition, stateMapping, subStateMachineMapping);
                 newState.AddTransition(newTransition);
             }
         }
 
-        return newStateMachine;
+        // Recursively copy transitions for sub-state machines
+        foreach (var state in sourceStateMachine.states)
+        {
+            if (state.state.motion is AnimatorStateMachine subMachine)
+            {
+                CopyTransitions(
+                    subMachine,
+                    subStateMachineMapping[subMachine],
+                    stateMapping,
+                    subStateMachineMapping
+                );
+            }
+        }
     }
 
     private AnimatorState CopyState(AnimatorState sourceState)
@@ -150,7 +204,10 @@ public class CopyAnimatorController
         return newState;
     }
 
-    private AnimatorStateTransition CopyTransition(AnimatorStateTransition sourceTransition, Dictionary<AnimatorState, AnimatorState> stateMapping)
+    private AnimatorStateTransition CopyTransition(
+        AnimatorStateTransition sourceTransition,
+        Dictionary<AnimatorState, AnimatorState> stateMapping,
+        Dictionary<AnimatorStateMachine, AnimatorStateMachine> subStateMachineMapping)
     {
         var newTransition = new AnimatorStateTransition
         {
@@ -162,9 +219,18 @@ public class CopyAnimatorController
             interruptionSource = sourceTransition.interruptionSource,
             orderedInterruption = sourceTransition.orderedInterruption,
             exitTimeParameter = sourceTransition.exitTimeParameter,
-            exitTimeParameterActive = sourceTransition.exitTimeParameterActive,
-            destinationState = stateMapping[sourceTransition.destinationState]
+            exitTimeParameterActive = sourceTransition.exitTimeParameterActive
         };
+
+        // Set destination state or state machine
+        if (sourceTransition.destinationState != null)
+        {
+            newTransition.destinationState = stateMapping[sourceTransition.destinationState];
+        }
+        else if (sourceTransition.destinationStateMachine != null)
+        {
+            newTransition.destinationStateMachine = subStateMachineMapping[sourceTransition.destinationStateMachine];
+        }
 
         // Copy conditions
         foreach (var condition in sourceTransition.conditions)
@@ -175,7 +241,10 @@ public class CopyAnimatorController
         return newTransition;
     }
 
-    private AnimatorStateTransition CopyTransition(AnimatorTransition sourceTransition, Dictionary<AnimatorState, AnimatorState> stateMapping)
+    private AnimatorStateTransition CopyTransition(
+        AnimatorTransition sourceTransition,
+        Dictionary<AnimatorState, AnimatorState> stateMapping,
+        Dictionary<AnimatorStateMachine, AnimatorStateMachine> subStateMachineMapping)
     {
         var newTransition = new AnimatorStateTransition
         {
