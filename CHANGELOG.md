@@ -1,3 +1,8 @@
+# 2.0.0-rc.1
+
+- Fix Animator Controller generation to be able to use with MA
+- moved menu "PeanutTools/VRC3CVR" to general "Tools/VRC3CVR"
+
 # 2.0.0-rc.0
 
 - adjust to CCK 3.13.4
