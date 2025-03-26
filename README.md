@@ -2,10 +2,8 @@ Convert a VRChat SDK3 avatar to ChilloutVR with this Unity script.
 
 - Keep a BACKUP of your original project.
 - It is not recommend you convert avatars with custom locomotion controllers, only FX and Gesture controllers.
-- This is an experimental fork of the original project (https://github.com/imagitama/vrc3cvr).
+- This is an experimental fork of the forked project (https://github.com/SaracenOne/vrc3cvr) that is fork of the original project (https://github.com/imagitama/vrc3cvr).
 - It supports improved features and bugfixes over the original such as proper layer masking and conversion of VRC proxy animation.
-
-Alternative tool: https://fluffs.gumroad.com/l/sdk3-to-cck
 
 Tested with:
 
@@ -13,23 +11,13 @@ Tested with:
 - ChilloutVR CCK 3.13.4
 - Unity 2022.3.22f1
 
-Tested using avatar [Canis Woof by Rezillo Ryker](https://www.vrcarena.com/assets/fnADyoq3IE5b4zIZGanA) (CanineRez_UnityVRC_V011 from July 2022 with PhysBones):
-
-<img src="assets/screenshot_caniswoof_fat.png" />
-
-<img src="assets/screenshot_sliders.png" />
-
-## Video
-
-[Watch video](assets/recording_caniswoof.mp4?raw=true)
-
 ## Usage
 
 Go to [Releases](https://github.com/SaracenOne/vrc3cvr/releases/latest) and expand "Assets" and download the `.unitypackage`.
 
 1. Install the ChilloutVR CCK (FAQ channel in their [Discord](https://discord.gg/ABI))
 2. Download and import the vrc3cvr `.unitypackage`
-3. Click PeanutTools -> VRC3CVR
+3. Click **Tools** -> VRC3CVR
 4. Select the VRC avatar you want to convert (ensure you have the VRC SDK in the project)
 5. Click Convert
 
@@ -38,7 +26,7 @@ Want to convert your PhysBones to DynamicBones? Use these tools:
 - https://booth.pm/ja/items/4032295
 - https://github.com/Dreadrith/PhysBone-Converter
 
-You don't need to buy DynamicBones! Use this instead: https://github.com/Markcreator/VRChat-Tools
+You don't need to buy DynamicBones! Use this instead: https://github.com/Markcreator/VRChat-Tools or https://github.com/VRLabs/Dynamic-Bones-Stub
 
 ## What does it do?
 
