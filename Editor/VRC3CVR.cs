@@ -1432,20 +1432,20 @@ public class VRC3CVR : EditorWindow
 
         Debug.Log("Copying base animator...");
 
-        string pathToCreatedAnimator = Application.dataPath + "/" + pathInsideAssets;
+        string pathToCreatedAnimator = "Assets/" + pathInsideAssets;
 
         // ReplaceFile() doesn't actually replace for some reason so make sure there is none already there
         FileUtil.DeleteFileOrDirectory(pathToCreatedAnimator);
 
         AssetDatabase.Refresh();
 
-        FileUtil.ReplaceFile(Application.dataPath + "/ABI.CCK/Animations/AvatarAnimator.controller", pathToCreatedAnimator);
+        var sourceAnimator = AssetDatabase.LoadAssetAtPath<AnimatorController>("Assets/ABI.CCK/Animations/AvatarAnimator.controller");
+        chilloutAnimatorController = new CopyAnimatorController(sourceAnimator).CopyController();
+        AssetDatabase.CreateAsset(chilloutAnimatorController, pathToCreatedAnimator);
 
         AssetDatabase.Refresh();
 
         Debug.Log("Loading animator...");
-
-        chilloutAnimatorController = (AnimatorController)AssetDatabase.LoadAssetAtPath("Assets/" + pathInsideAssets, typeof(AnimatorController));
 
         if (chilloutAnimatorController == null)
         {
