@@ -43,6 +43,7 @@ public class SaveAnimatorController
 
     private void SaveStateMachine(AnimatorStateMachine stateMachine)
     {
+        AssetDatabase.AddObjectToAsset(stateMachine, controller);
         foreach (var behaviour in stateMachine.behaviours)
         {
             if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(behaviour)))
