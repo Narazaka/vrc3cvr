@@ -83,7 +83,10 @@ public class CopyAnimatorController
     {
         foreach (var param in sourceController.parameters)
         {
-            targetController.AddParameter(param.name, param.type);
+            if (!targetController.parameters.Any(p => p.name == param.name))
+            {
+                targetController.AddParameter(param.name, param.type);
+            }
         }
     }
 
