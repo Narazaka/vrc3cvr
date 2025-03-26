@@ -234,7 +234,6 @@ public class CopyAnimatorController
             mirrorParameterActive = sourceState.mirrorParameterActive,
             cycleOffsetParameterActive = sourceState.cycleOffsetParameterActive,
             timeParameterActive = sourceState.timeParameterActive,
-            motion = sourceState.motion,
             tag = sourceState.tag,
             speedParameterActive = sourceState.speedParameterActive,
             cycleOffsetParameter = sourceState.cycleOffsetParameter,
@@ -245,7 +244,62 @@ public class CopyAnimatorController
             writeDefaultValues = sourceState.writeDefaultValues,
         };
 
+        // Copy motion if it's a BlendTree
+        if (sourceState.motion is BlendTree sourceBlendTree)
+        {
+            newState.motion = CopyBlendTree(sourceBlendTree);
+        }
+        else
+        {
+            newState.motion = sourceState.motion;
+        }
+
         return newState;
+    }
+
+    private BlendTree CopyBlendTree(BlendTree sourceBlendTree)
+    {
+        var newBlendTree = new BlendTree
+        {
+            name = sourceBlendTree.name,
+            hideFlags = sourceBlendTree.hideFlags,
+            blendType = sourceBlendTree.blendType,
+            blendParameter = sourceBlendTree.blendParameter,
+            blendParameterY = sourceBlendTree.blendParameterY,
+            minThreshold = sourceBlendTree.minThreshold,
+            maxThreshold = sourceBlendTree.maxThreshold,
+            useAutomaticThresholds = sourceBlendTree.useAutomaticThresholds,
+        };
+
+        // Copy all child motions recursively
+        foreach (var childMotion in sourceBlendTree.children)
+        {
+            var newChildMotion = new ChildMotion
+            {
+                timeScale = childMotion.timeScale,
+                threshold = childMotion.threshold,
+                directBlendParameter = childMotion.directBlendParameter,
+                mirror = childMotion.mirror,
+                cycleOffset = childMotion.cycleOffset,
+                position = childMotion.position,
+            };
+
+            // Recursively copy child BlendTree if it exists
+            if (childMotion.motion is BlendTree childBlendTree)
+            {
+                newChildMotion.motion = CopyBlendTree(childBlendTree);
+            }
+            else
+            {
+                newChildMotion.motion = childMotion.motion;
+            }
+
+            var children = newBlendTree.children;
+            ArrayUtility.Add(ref children, newChildMotion);
+            newBlendTree.children = children;
+        }
+
+        return newBlendTree;
     }
 
     private AnimatorStateTransition CopyTransition(
