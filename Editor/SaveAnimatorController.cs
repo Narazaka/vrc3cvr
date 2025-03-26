@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.Animations;
 using System.Collections.Generic;
+using UnityEngine.EventSystems;
 
 public class SaveAnimatorController
 {
@@ -31,10 +32,7 @@ public class SaveAnimatorController
 
         foreach (var layer in controller.layers)
         {
-            if (layer.stateMachine != null)
-            {
-                SaveStateMachine(layer.stateMachine);
-            }
+            SaveStateMachine(layer.stateMachine);
         }
 
         AssetDatabase.SaveAssets();
@@ -43,7 +41,10 @@ public class SaveAnimatorController
 
     private void SaveStateMachine(AnimatorStateMachine stateMachine)
     {
-        AssetDatabase.AddObjectToAsset(stateMachine, controller);
+        if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(stateMachine)))
+        {
+            AssetDatabase.AddObjectToAsset(stateMachine, controller);
+        }
         foreach (var behaviour in stateMachine.behaviours)
         {
             if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(behaviour)))
