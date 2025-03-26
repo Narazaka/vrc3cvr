@@ -77,6 +77,12 @@ public class CopyAnimatorController
         // Second pass: Copy all transitions
         CopyTransitions(sourceStateMachine, newStateMachine, stateMapping, subStateMachineMapping);
 
+        // Copy default state if it exists
+        if (sourceStateMachine.defaultState != null && stateMapping.ContainsKey(sourceStateMachine.defaultState))
+        {
+            newStateMachine.defaultState = stateMapping[sourceStateMachine.defaultState];
+        }
+
         return newStateMachine;
     }
 
