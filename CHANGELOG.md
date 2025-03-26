@@ -1,3 +1,7 @@
+# 2.0.0-rc.2
+
+- Fix animator's "name"
+
 # 2.0.0-rc.1
 
 - Fix Animator Controller generation to be able to use with MA
