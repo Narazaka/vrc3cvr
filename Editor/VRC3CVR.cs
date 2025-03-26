@@ -1038,37 +1038,225 @@ public class VRC3CVR : EditorWindow
         }
     }
 
+    AnimatorStateTransition[] CopyStateTransitions(AnimatorStateTransition[] sourceTransitions)
+    {
+        if (sourceTransitions == null) return null;
+
+        AnimatorStateTransition[] newTransitions = new AnimatorStateTransition[sourceTransitions.Length];
+        for (int i = 0; i < sourceTransitions.Length; i++)
+        {
+            AnimatorStateTransition sourceTransition = sourceTransitions[i];
+            AnimatorStateTransition newTransition = new AnimatorStateTransition();
+            newTransition.name = sourceTransition.name;
+            newTransition.hideFlags = sourceTransition.hideFlags;
+            newTransition.duration = sourceTransition.duration;
+            newTransition.offset = sourceTransition.offset;
+            newTransition.exitTime = sourceTransition.exitTime;
+            newTransition.hasExitTime = sourceTransition.hasExitTime;
+            newTransition.hasFixedDuration = sourceTransition.hasFixedDuration;
+            newTransition.interruptionSource = sourceTransition.interruptionSource;
+            newTransition.orderedInterruption = sourceTransition.orderedInterruption;
+            newTransition.canTransitionToSelf = sourceTransition.canTransitionToSelf;
+            newTransition.destinationState = sourceTransition.destinationState;
+            newTransition.destinationStateMachine = sourceTransition.destinationStateMachine;
+            newTransition.isExit = sourceTransition.isExit;
+            newTransition.mute = sourceTransition.mute;
+            newTransition.solo = sourceTransition.solo;
+
+            // Copy conditions
+            AnimatorCondition[] newConditions = new AnimatorCondition[sourceTransition.conditions.Length];
+            for (int j = 0; j < sourceTransition.conditions.Length; j++)
+            {
+                AnimatorCondition sourceCondition = sourceTransition.conditions[j];
+                AnimatorCondition newCondition = new AnimatorCondition();
+                newCondition.parameter = sourceCondition.parameter;
+                newCondition.mode = sourceCondition.mode;
+                newCondition.threshold = sourceCondition.threshold;
+                newConditions[j] = newCondition;
+            }
+            newTransition.conditions = newConditions;
+
+            newTransitions[i] = newTransition;
+        }
+        return newTransitions;
+    }
+
+    AnimatorTransition[] CopyTransitions(AnimatorTransition[] sourceTransitions)
+    {
+        if (sourceTransitions == null) return null;
+
+        AnimatorTransition[] newTransitions = new AnimatorTransition[sourceTransitions.Length];
+        for (int i = 0; i < sourceTransitions.Length; i++)
+        {
+            AnimatorTransition sourceTransition = sourceTransitions[i];
+            AnimatorTransition newTransition = new AnimatorTransition();
+            newTransition.name = sourceTransition.name;
+            newTransition.hideFlags = sourceTransition.hideFlags;
+            newTransition.destinationState = sourceTransition.destinationState;
+            newTransition.destinationStateMachine = sourceTransition.destinationStateMachine;
+            newTransition.isExit = sourceTransition.isExit;
+            newTransition.mute = sourceTransition.mute;
+            newTransition.solo = sourceTransition.solo;
+
+            // Copy conditions
+            AnimatorCondition[] newConditions = new AnimatorCondition[sourceTransition.conditions.Length];
+            for (int j = 0; j < sourceTransition.conditions.Length; j++)
+            {
+                AnimatorCondition sourceCondition = sourceTransition.conditions[j];
+                AnimatorCondition newCondition = new AnimatorCondition();
+                newCondition.parameter = sourceCondition.parameter;
+                newCondition.mode = sourceCondition.mode;
+                newCondition.threshold = sourceCondition.threshold;
+                newConditions[j] = newCondition;
+            }
+            newTransition.conditions = newConditions;
+
+            newTransitions[i] = newTransition;
+        }
+        return newTransitions;
+    }
+
+    AnimatorStateMachine CopyStateMachine(AnimatorStateMachine sourceStateMachine)
+    {
+        AnimatorStateMachine newStateMachine = new AnimatorStateMachine();
+        newStateMachine.name = sourceStateMachine.name;
+        newStateMachine.hideFlags = sourceStateMachine.hideFlags;
+        newStateMachine.anyStatePosition = sourceStateMachine.anyStatePosition;
+        newStateMachine.entryPosition = sourceStateMachine.entryPosition;
+        newStateMachine.exitPosition = sourceStateMachine.exitPosition;
+        newStateMachine.parentStateMachinePosition = sourceStateMachine.parentStateMachinePosition;
+
+        // Copy states
+        ChildAnimatorState[] newStates = new ChildAnimatorState[sourceStateMachine.states.Length];
+        for (int i = 0; i < sourceStateMachine.states.Length; i++)
+        {
+            ChildAnimatorState sourceState = sourceStateMachine.states[i];
+            ChildAnimatorState newState = new ChildAnimatorState();
+            newState.position = sourceState.position;
+            newState.state = CopyAnimatorState(sourceState.state);
+            newStates[i] = newState;
+        }
+        newStateMachine.states = newStates;
+
+        // Copy transitions
+        newStateMachine.anyStateTransitions = CopyStateTransitions(sourceStateMachine.anyStateTransitions);
+        newStateMachine.entryTransitions = CopyTransitions(sourceStateMachine.entryTransitions);
+
+        // Copy sub-state machines
+        ChildAnimatorStateMachine[] newStateMachines = new ChildAnimatorStateMachine[sourceStateMachine.stateMachines.Length];
+        for (int i = 0; i < sourceStateMachine.stateMachines.Length; i++)
+        {
+            ChildAnimatorStateMachine sourceChild = sourceStateMachine.stateMachines[i];
+            ChildAnimatorStateMachine newChild = new ChildAnimatorStateMachine();
+            newChild.position = sourceChild.position;
+            newChild.stateMachine = CopyStateMachine(sourceChild.stateMachine);
+            newStateMachines[i] = newChild;
+        }
+        newStateMachine.stateMachines = newStateMachines;
+
+        return newStateMachine;
+    }
+
+    AnimatorState CopyAnimatorState(AnimatorState sourceState)
+    {
+        AnimatorState newState = new AnimatorState();
+        newState.name = sourceState.name;
+        newState.hideFlags = sourceState.hideFlags;
+        newState.speed = sourceState.speed;
+        newState.speedParameter = sourceState.speedParameter;
+        newState.speedParameterActive = sourceState.speedParameterActive;
+        newState.mirror = sourceState.mirror;
+        newState.mirrorParameter = sourceState.mirrorParameter;
+        newState.mirrorParameterActive = sourceState.mirrorParameterActive;
+        newState.cycleOffset = sourceState.cycleOffset;
+        newState.cycleOffsetParameter = sourceState.cycleOffsetParameter;
+        newState.cycleOffsetParameterActive = sourceState.cycleOffsetParameterActive;
+        newState.timeParameter = sourceState.timeParameter;
+        newState.timeParameterActive = sourceState.timeParameterActive;
+
+        // Copy Motion
+        if (sourceState.motion is BlendTree)
+        {
+            newState.motion = CopyBlendTree((BlendTree)sourceState.motion);
+        }
+        else if (sourceState.motion is AnimationClip)
+        {
+            newState.motion = sourceState.motion;
+        }
+
+        // Copy transitions
+        newState.transitions = CopyStateTransitions(sourceState.transitions);
+
+        return newState;
+    }
+
+    BlendTree CopyBlendTree(BlendTree sourceBlendTree)
+    {
+        BlendTree newBlendTree = new BlendTree();
+        newBlendTree.name = sourceBlendTree.name;
+        newBlendTree.blendType = sourceBlendTree.blendType;
+        newBlendTree.blendParameter = sourceBlendTree.blendParameter;
+        newBlendTree.blendParameterY = sourceBlendTree.blendParameterY;
+        newBlendTree.minThreshold = sourceBlendTree.minThreshold;
+        newBlendTree.maxThreshold = sourceBlendTree.maxThreshold;
+        newBlendTree.useAutomaticThresholds = sourceBlendTree.useAutomaticThresholds;
+
+        // Copy child motions
+        ChildMotion[] newChildren = new ChildMotion[sourceBlendTree.children.Length];
+        for (int i = 0; i < sourceBlendTree.children.Length; i++)
+        {
+            ChildMotion sourceChild = sourceBlendTree.children[i];
+            ChildMotion newChild = new ChildMotion();
+            newChild.timeScale = sourceChild.timeScale;
+            newChild.threshold = sourceChild.threshold;
+            newChild.directBlendParameter = sourceChild.directBlendParameter;
+            newChild.mirror = sourceChild.mirror;
+            newChild.cycleOffset = sourceChild.cycleOffset;
+
+            // If child is a BlendTree, copy it recursively
+            if (sourceChild.motion is BlendTree)
+            {
+                newChild.motion = CopyBlendTree((BlendTree)sourceChild.motion);
+            }
+            else
+            {
+                newChild.motion = sourceChild.motion;
+            }
+
+            newChildren[i] = newChild;
+        }
+        newBlendTree.children = newChildren;
+
+        return newBlendTree;
+    }
+
     AnimatorController CopyVrcAnimatorForMerge(AnimatorController animator)
     {
-        string animatorPath = AssetDatabase.GetAssetPath(animator);
+        // Create a temporary AnimatorController
+        AnimatorController tempController = new AnimatorController();
 
-        if (string.IsNullOrEmpty(animatorPath))
+        // Copy parameters
+        tempController.parameters = animator.parameters;
+
+        // Copy layers
+        AnimatorControllerLayer[] newLayers = new AnimatorControllerLayer[animator.layers.Length];
+        for (int i = 0; i < animator.layers.Length; i++)
         {
-            throw new Exception("Cannot copy vrc animator \"" + animator.name + "\": does not seem to exist! " + animatorPath);
+            AnimatorControllerLayer layer = animator.layers[i];
+            AnimatorControllerLayer newLayer = new AnimatorControllerLayer();
+            newLayer.name = layer.name;
+            newLayer.defaultWeight = layer.defaultWeight;
+            newLayer.avatarMask = layer.avatarMask;
+            newLayer.blendingMode = layer.blendingMode;
+            newLayer.syncedLayerIndex = layer.syncedLayerIndex;
+            newLayer.syncedLayerAffectsTiming = layer.syncedLayerAffectsTiming;
+            newLayer.iKPass = layer.iKPass;
+            newLayer.stateMachine = CopyStateMachine(layer.stateMachine);
+            newLayers[i] = newLayer;
         }
+        tempController.layers = newLayers;
 
-        string filename = Path.GetFileName(animatorPath);
-        string pathToCopiedFile = "Assets/" + outputDirName + "/" + filename;
-
-        Debug.Log("Copy " + animatorPath + " -> " + pathToCopiedFile);
-
-        // ReplaceFile() doesn't actually replace for some reason so make sure there is none already there
-        FileUtil.DeleteFileOrDirectory(pathToCopiedFile);
-
-        AssetDatabase.Refresh();
-
-        FileUtil.CopyFileOrDirectory(animatorPath, pathToCopiedFile);
-
-        AssetDatabase.Refresh();
-
-        AnimatorController newAnimatorController = (AnimatorController)AssetDatabase.LoadAssetAtPath(pathToCopiedFile, typeof(AnimatorController));
-
-        if (newAnimatorController == null)
-        {
-            throw new Exception("Failed to load the created animator!");
-        }
-
-        return newAnimatorController;
+        return tempController;
     }
 
     void PurgeAnimator(AnimatorController animatorToPurge)
@@ -1325,9 +1513,9 @@ public class VRC3CVR : EditorWindow
 
                 ProcessStateMachine(layer.stateMachine);
 
-            	layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(animatorID, i, layer.avatarMask);
+                layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(animatorID, i, layer.avatarMask);
 
-				newLayers[newLayersIdx] = layer;
+                newLayers[newLayersIdx] = layer;
                 newLayersIdx++;
             }
         }
@@ -1335,7 +1523,116 @@ public class VRC3CVR : EditorWindow
         Array.Resize(ref newLayers, newLayersIdx);
         chilloutAnimatorController.layers = newLayers;
 
+        // Save all elements to chilloutAnimatorController
+        PersistAnimatorControllerElements(chilloutAnimatorController);
+
+        // Persist the asset
+        EditorUtility.SetDirty(chilloutAnimatorController);
+        AssetDatabase.SaveAssets();
+
         Debug.Log("Merged");
+    }
+
+    void PersistAnimatorControllerElements(AnimatorController animatorController)
+    {
+        if (animatorController == null) return;
+
+        foreach (AnimatorControllerLayer layer in animatorController.layers)
+        {
+            if (layer.stateMachine != null)
+            {
+                AssetDatabase.AddObjectToAsset(layer.stateMachine, animatorController);
+                PersistStateMachineElements(layer.stateMachine, animatorController);
+            }
+        }
+    }
+
+    void PersistStateMachineElements(AnimatorStateMachine stateMachine, AnimatorController animatorController)
+    {
+        if (stateMachine == null) return;
+
+        // Persist states
+        foreach (ChildAnimatorState childState in stateMachine.states)
+        {
+            if (childState.state != null)
+            {
+                AssetDatabase.AddObjectToAsset(childState.state, animatorController);
+                PersistAnimatorStateElements(childState.state, animatorController);
+            }
+        }
+
+        // Persist AnyState transitions
+        if (stateMachine.anyStateTransitions != null)
+        {
+            foreach (AnimatorStateTransition transition in stateMachine.anyStateTransitions)
+            {
+                if (transition != null)
+                {
+                    AssetDatabase.AddObjectToAsset(transition, animatorController);
+                }
+            }
+        }
+
+        // Persist Entry transitions
+        if (stateMachine.entryTransitions != null)
+        {
+            foreach (AnimatorTransition transition in stateMachine.entryTransitions)
+            {
+                if (transition != null)
+                {
+                    AssetDatabase.AddObjectToAsset(transition, animatorController);
+                }
+            }
+        }
+
+        // Persist sub-state machines recursively
+        foreach (ChildAnimatorStateMachine childStateMachine in stateMachine.stateMachines)
+        {
+            if (childStateMachine.stateMachine != null)
+            {
+                AssetDatabase.AddObjectToAsset(childStateMachine.stateMachine, animatorController);
+                PersistStateMachineElements(childStateMachine.stateMachine, animatorController);
+            }
+        }
+    }
+
+    void PersistAnimatorStateElements(AnimatorState state, AnimatorController animatorController)
+    {
+        if (state == null) return;
+
+        // Persist transitions
+        if (state.transitions != null)
+        {
+            foreach (AnimatorStateTransition transition in state.transitions)
+            {
+                if (transition != null)
+                {
+                    AssetDatabase.AddObjectToAsset(transition, animatorController);
+                }
+            }
+        }
+
+        // If Motion is a BlendTree, persist it recursively
+        if (state.motion is BlendTree blendTree)
+        {
+            PersistBlendTree(blendTree, animatorController);
+        }
+    }
+
+    void PersistBlendTree(BlendTree blendTree, AnimatorController animatorController)
+    {
+        if (blendTree == null) return;
+
+        AssetDatabase.AddObjectToAsset(blendTree, animatorController);
+
+        // Persist child BlendTrees recursively
+        foreach (ChildMotion childMotion in blendTree.children)
+        {
+            if (childMotion.motion is BlendTree childBlendTree)
+            {
+                PersistBlendTree(childBlendTree, animatorController);
+            }
+        }
     }
 
     AnimatorControllerLayer[] FixDuplicateLayerNames(AnimatorControllerLayer[] newLayers, AnimatorControllerLayer[] existingLayers) {
