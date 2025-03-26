@@ -6,10 +6,12 @@ using System.Collections.Generic;
 public class CopyAnimatorController
 {
     private readonly AnimatorController sourceController;
+    private readonly string controllerPath;
 
     public CopyAnimatorController(AnimatorController sourceController)
     {
         this.sourceController = sourceController;
+        this.controllerPath = AssetDatabase.GetAssetPath(sourceController);
     }
 
     public AnimatorController CopyController()
@@ -244,8 +246,8 @@ public class CopyAnimatorController
             writeDefaultValues = sourceState.writeDefaultValues,
         };
 
-        // Copy motion if it's a BlendTree
-        if (sourceState.motion is BlendTree sourceBlendTree)
+        // Copy motion if it's a BlendTree and it's persisted in the controller
+        if (sourceState.motion is BlendTree sourceBlendTree && IsBlendTreePersisted(sourceBlendTree))
         {
             newState.motion = CopyBlendTree(sourceBlendTree);
         }
@@ -255,6 +257,20 @@ public class CopyAnimatorController
         }
 
         return newState;
+    }
+
+    private bool IsBlendTreePersisted(BlendTree blendTree)
+    {
+        if (string.IsNullOrEmpty(controllerPath))
+            return false;
+
+        // BlendTreeのパスを取得
+        string blendTreePath = AssetDatabase.GetAssetPath(blendTree);
+        if (string.IsNullOrEmpty(blendTreePath))
+            return false;
+
+        // 同じファイル内に永続化されているかどうかを判定
+        return blendTreePath == controllerPath;
     }
 
     private BlendTree CopyBlendTree(BlendTree sourceBlendTree)
@@ -284,8 +300,8 @@ public class CopyAnimatorController
                 position = childMotion.position,
             };
 
-            // Recursively copy child BlendTree if it exists
-            if (childMotion.motion is BlendTree childBlendTree)
+            // Recursively copy child BlendTree if it exists and is persisted
+            if (childMotion.motion is BlendTree childBlendTree && IsBlendTreePersisted(childBlendTree))
             {
                 newChildMotion.motion = CopyBlendTree(childBlendTree);
             }
