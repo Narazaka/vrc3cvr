@@ -86,50 +86,39 @@ public class CopyAnimatorController
         Dictionary<AnimatorState, AnimatorState> stateMapping,
         Dictionary<AnimatorStateMachine, AnimatorStateMachine> subStateMachineMapping)
     {
+        // First, create all sub-state machines
+        foreach (var subMachine in sourceStateMachine.stateMachines)
+        {
+            var newSubMachine = new AnimatorStateMachine
+            {
+                name = subMachine.stateMachine.name,
+                hideFlags = subMachine.stateMachine.hideFlags,
+                anyStatePosition = subMachine.stateMachine.anyStatePosition,
+                entryPosition = subMachine.stateMachine.entryPosition,
+                exitPosition = subMachine.stateMachine.exitPosition,
+                parentStateMachinePosition = subMachine.stateMachine.parentStateMachinePosition
+            };
+            subStateMachineMapping[subMachine.stateMachine] = newSubMachine;
+            newStateMachine.AddStateMachine(newSubMachine, subMachine.position);
+        }
+
+        // Then create all states
         foreach (var state in sourceStateMachine.states)
         {
-            if (state.state.motion is AnimatorStateMachine subMachine)
-            {
-                // Create a new sub-state machine
-                var newSubMachine = new AnimatorStateMachine
-                {
-                    name = subMachine.name,
-                    hideFlags = subMachine.hideFlags,
-                    anyStatePosition = subMachine.anyStatePosition,
-                    entryPosition = subMachine.entryPosition,
-                    exitPosition = subMachine.exitPosition,
-                    parentStateMachinePosition = subMachine.parentStateMachinePosition
-                };
-                subStateMachineMapping[subMachine] = newSubMachine;
-                
-                // Create a state that references the new sub-state machine
-                var newState = new AnimatorState
-                {
-                    name = state.state.name,
-                    motion = newSubMachine
-                };
-                stateMapping[state.state] = newState;
-            }
-            else
-            {
-                var newState = CopyState(state.state);
-                stateMapping[state.state] = newState;
-            }
-            newStateMachine.AddState(stateMapping[state.state], state.position);
+            var newState = CopyState(state.state);
+            stateMapping[state.state] = newState;
+            newStateMachine.AddState(newState, state.position);
         }
 
         // Recursively create states and state machines for sub-state machines
-        foreach (var state in sourceStateMachine.states)
+        foreach (var subMachine in sourceStateMachine.stateMachines)
         {
-            if (state.state.motion is AnimatorStateMachine subMachine)
-            {
-                CreateStatesAndStateMachines(
-                    subMachine,
-                    subStateMachineMapping[subMachine],
-                    stateMapping,
-                    subStateMachineMapping
-                );
-            }
+            CreateStatesAndStateMachines(
+                subMachine.stateMachine,
+                subStateMachineMapping[subMachine.stateMachine],
+                stateMapping,
+                subStateMachineMapping
+            );
         }
     }
 
@@ -167,17 +156,14 @@ public class CopyAnimatorController
         }
 
         // Recursively copy transitions for sub-state machines
-        foreach (var state in sourceStateMachine.states)
+        foreach (var subMachine in sourceStateMachine.stateMachines)
         {
-            if (state.state.motion is AnimatorStateMachine subMachine)
-            {
-                CopyTransitions(
-                    subMachine,
-                    subStateMachineMapping[subMachine],
-                    stateMapping,
-                    subStateMachineMapping
-                );
-            }
+            CopyTransitions(
+                subMachine.stateMachine,
+                subStateMachineMapping[subMachine.stateMachine],
+                stateMapping,
+                subStateMachineMapping
+            );
         }
     }
 
