@@ -1038,15 +1038,17 @@ public class VRC3CVR : EditorWindow
         }
     }
 
-    AnimatorStateTransition[] CopyStateTransitions(AnimatorStateTransition[] sourceTransitions)
+    private static AnimatorStateTransition[] CopyStateTransitions(AnimatorStateTransition[] sourceTransitions, AnimatorStateMachine newStateMachine)
     {
         if (sourceTransitions == null) return null;
 
-        AnimatorStateTransition[] newTransitions = new AnimatorStateTransition[sourceTransitions.Length];
+        var newTransitions = new AnimatorStateTransition[sourceTransitions.Length];
         for (int i = 0; i < sourceTransitions.Length; i++)
         {
-            AnimatorStateTransition sourceTransition = sourceTransitions[i];
-            AnimatorStateTransition newTransition = new AnimatorStateTransition();
+            var sourceTransition = sourceTransitions[i];
+            if (sourceTransition == null) continue;
+
+            var newTransition = new AnimatorStateTransition();
             newTransition.name = sourceTransition.name;
             newTransition.hideFlags = sourceTransition.hideFlags;
             newTransition.duration = sourceTransition.duration;
@@ -1057,59 +1059,113 @@ public class VRC3CVR : EditorWindow
             newTransition.interruptionSource = sourceTransition.interruptionSource;
             newTransition.orderedInterruption = sourceTransition.orderedInterruption;
             newTransition.canTransitionToSelf = sourceTransition.canTransitionToSelf;
-            newTransition.destinationState = sourceTransition.destinationState;
-            newTransition.destinationStateMachine = sourceTransition.destinationStateMachine;
             newTransition.isExit = sourceTransition.isExit;
             newTransition.mute = sourceTransition.mute;
             newTransition.solo = sourceTransition.solo;
 
-            // Copy conditions
-            AnimatorCondition[] newConditions = new AnimatorCondition[sourceTransition.conditions.Length];
-            for (int j = 0; j < sourceTransition.conditions.Length; j++)
+            // Find the corresponding state in the new state machine
+            if (sourceTransition.destinationState != null)
             {
-                AnimatorCondition sourceCondition = sourceTransition.conditions[j];
-                AnimatorCondition newCondition = new AnimatorCondition();
-                newCondition.parameter = sourceCondition.parameter;
-                newCondition.mode = sourceCondition.mode;
-                newCondition.threshold = sourceCondition.threshold;
-                newConditions[j] = newCondition;
+                var stateName = sourceTransition.destinationState.name;
+                foreach (var state in newStateMachine.states)
+                {
+                    if (state.state.name == stateName)
+                    {
+                        newTransition.destinationState = state.state;
+                        break;
+                    }
+                }
             }
-            newTransition.conditions = newConditions;
+
+            // Find the corresponding state machine in the new state machine
+            if (sourceTransition.destinationStateMachine != null)
+            {
+                var stateMachineName = sourceTransition.destinationStateMachine.name;
+                foreach (var subStateMachine in newStateMachine.stateMachines)
+                {
+                    if (subStateMachine.stateMachine.name == stateMachineName)
+                    {
+                        newTransition.destinationStateMachine = subStateMachine.stateMachine;
+                        break;
+                    }
+                }
+            }
+
+            // Copy conditions
+            if (sourceTransition.conditions != null)
+            {
+                newTransition.conditions = new AnimatorCondition[sourceTransition.conditions.Length];
+                for (int j = 0; j < sourceTransition.conditions.Length; j++)
+                {
+                    var sourceCondition = sourceTransition.conditions[j];
+                    newTransition.conditions[j].mode = sourceCondition.mode;
+                    newTransition.conditions[j].parameter = sourceCondition.parameter;
+                    newTransition.conditions[j].threshold = sourceCondition.threshold;
+                }
+            }
 
             newTransitions[i] = newTransition;
         }
         return newTransitions;
     }
 
-    AnimatorTransition[] CopyTransitions(AnimatorTransition[] sourceTransitions)
+    private static AnimatorTransition[] CopyTransitions(AnimatorTransition[] sourceTransitions, AnimatorStateMachine newStateMachine)
     {
         if (sourceTransitions == null) return null;
 
-        AnimatorTransition[] newTransitions = new AnimatorTransition[sourceTransitions.Length];
+        var newTransitions = new AnimatorTransition[sourceTransitions.Length];
         for (int i = 0; i < sourceTransitions.Length; i++)
         {
-            AnimatorTransition sourceTransition = sourceTransitions[i];
-            AnimatorTransition newTransition = new AnimatorTransition();
+            var sourceTransition = sourceTransitions[i];
+            if (sourceTransition == null) continue;
+
+            var newTransition = new AnimatorTransition();
             newTransition.name = sourceTransition.name;
             newTransition.hideFlags = sourceTransition.hideFlags;
-            newTransition.destinationState = sourceTransition.destinationState;
-            newTransition.destinationStateMachine = sourceTransition.destinationStateMachine;
             newTransition.isExit = sourceTransition.isExit;
             newTransition.mute = sourceTransition.mute;
             newTransition.solo = sourceTransition.solo;
 
-            // Copy conditions
-            AnimatorCondition[] newConditions = new AnimatorCondition[sourceTransition.conditions.Length];
-            for (int j = 0; j < sourceTransition.conditions.Length; j++)
+            // Find the corresponding state in the new state machine
+            if (sourceTransition.destinationState != null)
             {
-                AnimatorCondition sourceCondition = sourceTransition.conditions[j];
-                AnimatorCondition newCondition = new AnimatorCondition();
-                newCondition.parameter = sourceCondition.parameter;
-                newCondition.mode = sourceCondition.mode;
-                newCondition.threshold = sourceCondition.threshold;
-                newConditions[j] = newCondition;
+                var stateName = sourceTransition.destinationState.name;
+                foreach (var state in newStateMachine.states)
+                {
+                    if (state.state.name == stateName)
+                    {
+                        newTransition.destinationState = state.state;
+                        break;
+                    }
+                }
             }
-            newTransition.conditions = newConditions;
+
+            // Find the corresponding state machine in the new state machine
+            if (sourceTransition.destinationStateMachine != null)
+            {
+                var stateMachineName = sourceTransition.destinationStateMachine.name;
+                foreach (var subStateMachine in newStateMachine.stateMachines)
+                {
+                    if (subStateMachine.stateMachine.name == stateMachineName)
+                    {
+                        newTransition.destinationStateMachine = subStateMachine.stateMachine;
+                        break;
+                    }
+                }
+            }
+
+            // Copy conditions
+            if (sourceTransition.conditions != null)
+            {
+                newTransition.conditions = new AnimatorCondition[sourceTransition.conditions.Length];
+                for (int j = 0; j < sourceTransition.conditions.Length; j++)
+                {
+                    var sourceCondition = sourceTransition.conditions[j];
+                    newTransition.conditions[j].mode = sourceCondition.mode;
+                    newTransition.conditions[j].parameter = sourceCondition.parameter;
+                    newTransition.conditions[j].threshold = sourceCondition.threshold;
+                }
+            }
 
             newTransitions[i] = newTransition;
         }
@@ -1138,11 +1194,7 @@ public class VRC3CVR : EditorWindow
         }
         newStateMachine.states = newStates;
 
-        // Copy transitions
-        newStateMachine.anyStateTransitions = CopyStateTransitions(sourceStateMachine.anyStateTransitions);
-        newStateMachine.entryTransitions = CopyTransitions(sourceStateMachine.entryTransitions);
-
-        // Copy sub-state machines
+        // Copy sub-state machines first to ensure correct references in transitions
         ChildAnimatorStateMachine[] newStateMachines = new ChildAnimatorStateMachine[sourceStateMachine.stateMachines.Length];
         for (int i = 0; i < sourceStateMachine.stateMachines.Length; i++)
         {
@@ -1154,7 +1206,38 @@ public class VRC3CVR : EditorWindow
         }
         newStateMachine.stateMachines = newStateMachines;
 
+        // Store transitions for later processing
+        newStateMachine.anyStateTransitions = sourceStateMachine.anyStateTransitions;
+        newStateMachine.entryTransitions = sourceStateMachine.entryTransitions;
+        for (int i = 0; i < sourceStateMachine.states.Length; i++)
+        {
+            newStates[i].state.transitions = sourceStateMachine.states[i].state.transitions;
+        }
+
         return newStateMachine;
+    }
+
+    void UpdateTransitionsInStateMachine(AnimatorStateMachine stateMachine)
+    {
+        if (stateMachine == null) return;
+
+        // Update AnyState transitions
+        stateMachine.anyStateTransitions = CopyStateTransitions(stateMachine.anyStateTransitions, stateMachine);
+
+        // Update Entry transitions
+        stateMachine.entryTransitions = CopyTransitions(stateMachine.entryTransitions, stateMachine);
+
+        // Update transitions for each state
+        for (int i = 0; i < stateMachine.states.Length; i++)
+        {
+            stateMachine.states[i].state.transitions = CopyStateTransitions(stateMachine.states[i].state.transitions, stateMachine);
+        }
+
+        // Update transitions in sub-state machines recursively
+        foreach (var subStateMachine in stateMachine.stateMachines)
+        {
+            UpdateTransitionsInStateMachine(subStateMachine.stateMachine);
+        }
     }
 
     AnimatorState CopyAnimatorState(AnimatorState sourceState)
@@ -1183,9 +1266,7 @@ public class VRC3CVR : EditorWindow
         {
             newState.motion = sourceState.motion;
         }
-
-        // Copy transitions
-        newState.transitions = CopyStateTransitions(sourceState.transitions);
+        newState.transitions = sourceState.transitions;
 
         return newState;
     }
@@ -1523,6 +1604,12 @@ public class VRC3CVR : EditorWindow
         Array.Resize(ref newLayers, newLayersIdx);
         chilloutAnimatorController.layers = newLayers;
 
+        // Update all transitions after all state machines are copied
+        foreach (var layer in chilloutAnimatorController.layers)
+        {
+            UpdateTransitionsInStateMachine(layer.stateMachine);
+        }
+
         // Save all elements to chilloutAnimatorController
         PersistAnimatorControllerElements(chilloutAnimatorController);
 
@@ -1533,100 +1620,101 @@ public class VRC3CVR : EditorWindow
         Debug.Log("Merged");
     }
 
-    void PersistAnimatorControllerElements(AnimatorController animatorController)
+    private static void PersistAnimatorControllerElements(AnimatorController animatorController)
     {
         if (animatorController == null) return;
 
-        foreach (AnimatorControllerLayer layer in animatorController.layers)
+        // Persist layers and their state machines
+        foreach (var layer in animatorController.layers)
         {
-            if (layer.stateMachine != null)
+            if (layer.stateMachine == null) continue;
+            if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(layer.stateMachine)))
             {
                 AssetDatabase.AddObjectToAsset(layer.stateMachine, animatorController);
-                PersistStateMachineElements(layer.stateMachine, animatorController);
             }
+
+            PersistStateMachineElements(layer.stateMachine, animatorController);
         }
     }
 
-    void PersistStateMachineElements(AnimatorStateMachine stateMachine, AnimatorController animatorController)
+    private static void PersistStateMachineElements(AnimatorStateMachine stateMachine, AnimatorController animatorController)
     {
         if (stateMachine == null) return;
 
         // Persist states
-        foreach (ChildAnimatorState childState in stateMachine.states)
+        foreach (var state in stateMachine.states)
         {
-            if (childState.state != null)
+            if (state.state == null) continue;
+            if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(state.state)))
             {
-                AssetDatabase.AddObjectToAsset(childState.state, animatorController);
-                PersistAnimatorStateElements(childState.state, animatorController);
+                AssetDatabase.AddObjectToAsset(state.state, animatorController);
             }
+            PersistAnimatorStateElements(state.state, animatorController);
         }
 
         // Persist AnyState transitions
-        if (stateMachine.anyStateTransitions != null)
+        foreach (var transition in stateMachine.anyStateTransitions)
         {
-            foreach (AnimatorStateTransition transition in stateMachine.anyStateTransitions)
+            if (transition == null) continue;
+            if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(transition)))
             {
-                if (transition != null)
-                {
-                    AssetDatabase.AddObjectToAsset(transition, animatorController);
-                }
+                AssetDatabase.AddObjectToAsset(transition, animatorController);
             }
         }
 
         // Persist Entry transitions
-        if (stateMachine.entryTransitions != null)
+        foreach (var transition in stateMachine.entryTransitions)
         {
-            foreach (AnimatorTransition transition in stateMachine.entryTransitions)
+            if (transition == null) continue;
+            if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(transition)))
             {
-                if (transition != null)
-                {
-                    AssetDatabase.AddObjectToAsset(transition, animatorController);
-                }
+                AssetDatabase.AddObjectToAsset(transition, animatorController);
             }
         }
 
         // Persist sub-state machines recursively
-        foreach (ChildAnimatorStateMachine childStateMachine in stateMachine.stateMachines)
+        foreach (var subStateMachine in stateMachine.stateMachines)
         {
-            if (childStateMachine.stateMachine != null)
+            if (subStateMachine.stateMachine == null) continue;
+            if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(subStateMachine.stateMachine)))
             {
-                AssetDatabase.AddObjectToAsset(childStateMachine.stateMachine, animatorController);
-                PersistStateMachineElements(childStateMachine.stateMachine, animatorController);
+                AssetDatabase.AddObjectToAsset(subStateMachine.stateMachine, animatorController);
             }
+            PersistStateMachineElements(subStateMachine.stateMachine, animatorController);
         }
     }
 
-    void PersistAnimatorStateElements(AnimatorState state, AnimatorController animatorController)
+    private static void PersistAnimatorStateElements(AnimatorState state, AnimatorController animatorController)
     {
         if (state == null) return;
 
         // Persist transitions
-        if (state.transitions != null)
+        foreach (var transition in state.transitions)
         {
-            foreach (AnimatorStateTransition transition in state.transitions)
+            if (transition == null) continue;
+            if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(transition)))
             {
-                if (transition != null)
-                {
-                    AssetDatabase.AddObjectToAsset(transition, animatorController);
-                }
+                AssetDatabase.AddObjectToAsset(transition, animatorController);
             }
         }
 
-        // If Motion is a BlendTree, persist it recursively
+        // Persist BlendTree if exists
         if (state.motion is BlendTree blendTree)
         {
             PersistBlendTree(blendTree, animatorController);
         }
     }
 
-    void PersistBlendTree(BlendTree blendTree, AnimatorController animatorController)
+    private static void PersistBlendTree(BlendTree blendTree, AnimatorController animatorController)
     {
         if (blendTree == null) return;
-
-        AssetDatabase.AddObjectToAsset(blendTree, animatorController);
+        if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(blendTree)))
+        {
+            AssetDatabase.AddObjectToAsset(blendTree, animatorController);
+        }
 
         // Persist child BlendTrees recursively
-        foreach (ChildMotion childMotion in blendTree.children)
+        foreach (var childMotion in blendTree.children)
         {
             if (childMotion.motion is BlendTree childBlendTree)
             {
