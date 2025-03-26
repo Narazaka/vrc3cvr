@@ -188,7 +188,10 @@ public class CopyAnimatorController
             speedParameterActive = sourceState.speedParameterActive,
             cycleOffsetParameter = sourceState.cycleOffsetParameter,
             timeParameter = sourceState.timeParameter,
-            speedParameter = sourceState.speedParameter
+            speedParameter = sourceState.speedParameter,
+            hideFlags = sourceState.hideFlags,
+            mirrorParameter = sourceState.mirrorParameter,
+            writeDefaultValues = sourceState.writeDefaultValues,
         };
 
         return newState;
