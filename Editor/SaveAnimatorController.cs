@@ -17,7 +17,18 @@ public class SaveAnimatorController
         if (string.IsNullOrEmpty(path))
         {
             path = AssetDatabase.GetAssetPath(controller);
+            if (string.IsNullOrEmpty(path))
+            {
+                throw new System.ArgumentException("Save path must be specified for newly created AnimatorController.");
+            }
         }
+
+        // コントローラー自体を永続化
+        if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(controller)))
+        {
+            AssetDatabase.CreateAsset(controller, path);
+        }
+        EditorUtility.SetDirty(controller);
 
         // 各レイヤーのステートマシンとその中のステートを永続化
         foreach (var layer in controller.layers)
@@ -28,8 +39,8 @@ public class SaveAnimatorController
             }
         }
 
-        // コントローラー自体を永続化
         AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
     }
 
     private void SaveStateMachine(AnimatorStateMachine stateMachine)
