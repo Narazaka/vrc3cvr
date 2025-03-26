@@ -69,6 +69,13 @@ public class CopyAnimatorController
             parentStateMachinePosition = sourceStateMachine.parentStateMachinePosition
         };
 
+        // Copy StateMachineBehaviours
+        foreach (var behaviour in sourceStateMachine.behaviours)
+        {
+            var newBehaviour = newStateMachine.AddStateMachineBehaviour(behaviour.GetType());
+            CopyStateMachineBehaviourValues(behaviour, newBehaviour);
+        }
+
         // First pass: Create all states and sub-state machines
         var stateMapping = new Dictionary<AnimatorState, AnimatorState>();
         var subStateMachineMapping = new Dictionary<AnimatorStateMachine, AnimatorStateMachine>();
@@ -84,6 +91,26 @@ public class CopyAnimatorController
         }
 
         return newStateMachine;
+    }
+
+    private void CopyStateMachineBehaviourValues(StateMachineBehaviour sourceBehaviour, StateMachineBehaviour targetBehaviour)
+    {
+        targetBehaviour.hideFlags = sourceBehaviour.hideFlags;
+        
+        // Copy serialized fields
+        var serializedObject = new SerializedObject(targetBehaviour);
+        var sourceSerializedObject = new SerializedObject(sourceBehaviour);
+        var property = sourceSerializedObject.GetIterator();
+        
+        while (property.NextVisible(true))
+        {
+            if (property.propertyType != SerializedPropertyType.Generic)
+            {
+                serializedObject.CopyFromSerializedProperty(property);
+            }
+        }
+        
+        serializedObject.ApplyModifiedProperties();
     }
 
     private void CreateStatesAndStateMachines(
