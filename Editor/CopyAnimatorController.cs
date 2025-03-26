@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.Animations;
 using System.Collections.Generic;
+using System.Linq;
 
 public class CopyAnimatorController
 {
@@ -20,12 +21,12 @@ public class CopyAnimatorController
         var newController = new AnimatorController();
         newController.name = $"{sourceController.name}_Copy";
 
-        CopyController(newController);
+        CopyControllerTo(newController);
 
         return newController;
     }
 
-    public void CopyController(AnimatorController targetController)
+    public void CopyControllerTo(AnimatorController targetController)
     {
         // Copy layers
         foreach (var layer in sourceController.layers)
@@ -33,7 +34,7 @@ public class CopyAnimatorController
             CopyLayer(layer, targetController);
         }
 
-        CopyParameters(targetController);
+        CopyParametersTo(targetController);
     }
 
     public void CopyLayer(AnimatorControllerLayer sourceLayer, AnimatorController targetController)
@@ -77,8 +78,8 @@ public class CopyAnimatorController
         }
         CopyLayer(sourceLayer, targetController);
     }
-    
-    public void CopyParameters(AnimatorController targetController)
+
+    public void CopyParametersTo(AnimatorController targetController)
     {
         foreach (var param in sourceController.parameters)
         {
