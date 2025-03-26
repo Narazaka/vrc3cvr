@@ -157,11 +157,13 @@ public class VRC3CVR : EditorWindow
         EditorGUI.EndDisabledGroup();
         CustomGUI.ItalicLabel("Clones your original avatar to preserve it");
 
-        if (animator != null) {
+        if (animator != null)
+        {
             Transform leftToesTransform = animator.GetBoneTransform(HumanBodyBones.LeftToes);
             Transform righToesTransform = animator.GetBoneTransform(HumanBodyBones.RightToes);
 
-            if (leftToesTransform == null || righToesTransform == null) {
+            if (leftToesTransform == null || righToesTransform == null)
+            {
                 CustomGUI.SmallLineGap();
 
                 CustomGUI.RenderErrorMessage("You do not have a " + (leftToesTransform == null ? "left" : "right") + " toe bone configured");
@@ -176,7 +178,8 @@ public class VRC3CVR : EditorWindow
         EditorGUILayout.EndScrollView();
     }
 
-    bool GetAreToeBonesSet() {
+    bool GetAreToeBonesSet()
+    {
         return true;
     }
 
@@ -185,24 +188,30 @@ public class VRC3CVR : EditorWindow
         return vrcAvatarDescriptor != null;
     }
 
-    void SetAnimator() {
+    void SetAnimator()
+    {
         // this is not necessary for VRC or CVR but it helps people test their controller
         // and lets us query for Toe bones for our GUI
         animator = chilloutAvatarGameObject.GetComponent<Animator>();
         animator.runtimeAnimatorController = chilloutAnimatorController;
     }
 
-    void CreateChilloutAvatar() {
-        if (shouldCloneAvatar) {
+    void CreateChilloutAvatar()
+    {
+        if (shouldCloneAvatar)
+        {
             chilloutAvatarGameObject = Instantiate(vrcAvatarDescriptor.gameObject);
             chilloutAvatarGameObject.name = vrcAvatarDescriptor.gameObject.name + " (ChilloutVR)";
             chilloutAvatarGameObject.SetActive(true);
-        } else {
+        }
+        else
+        {
             chilloutAvatarGameObject = vrcAvatarDescriptor.gameObject;
         }
     }
 
-    void HideOriginalAvatar() {
+    void HideOriginalAvatar()
+    {
         vrcAvatarDescriptor.gameObject.SetActive(false);
     }
 
@@ -245,11 +254,13 @@ public class VRC3CVR : EditorWindow
         ConvertVrcParametersToChillout();
         InsertChilloutOverride();
 
-        if (shouldDeleteVRCAvatarDescriptorAndPipelineManager) {
+        if (shouldDeleteVRCAvatarDescriptorAndPipelineManager)
+        {
             DeleteVrcComponents();
         }
 
-        if (shouldCloneAvatar) {
+        if (shouldCloneAvatar)
+        {
             HideOriginalAvatar();
         }
 
@@ -262,15 +273,20 @@ public class VRC3CVR : EditorWindow
         isConverting = false;
     }
 
-    Transform GetHeadBoneTransform(Animator animator) {
-		if (animator) {
-        	return animator.GetBoneTransform(HumanBodyBones.Head);
-		} else {
-			return null;
-		}
+    Transform GetHeadBoneTransform(Animator animator)
+    {
+        if (animator)
+        {
+            return animator.GetBoneTransform(HumanBodyBones.Head);
+        }
+        else
+        {
+            return null;
+        }
     }
 
-    void InsertChilloutOverride() {
+    void InsertChilloutOverride()
+    {
         Debug.Log("Inserting chillout override controller...");
 
         AnimatorOverrideController overrideController = new AnimatorOverrideController(chilloutAnimatorController);
@@ -319,13 +335,16 @@ public class VRC3CVR : EditorWindow
 
         var vrcComponents = chilloutAvatarGameObject.GetComponentsInChildren(typeof(Component), true).ToList().Where(c => c.GetType().Name.StartsWith("VRC")).ToList();
 
-        if (vrcComponents.Count > 0) {
+        if (vrcComponents.Count > 0)
+        {
             Debug.Log("Found " + vrcComponents.Count + " VRC components");
 
-            foreach (var component in vrcComponents) {
+            foreach (var component in vrcComponents)
+            {
                 string componentName = component.GetType().Name;
 
-                if (!shouldDeletePhysBones && componentName.Contains("PhysBone")) {
+                if (!shouldDeletePhysBones && componentName.Contains("PhysBone"))
+                {
                     continue;
                 }
 
@@ -338,16 +357,22 @@ public class VRC3CVR : EditorWindow
         Debug.Log("VRC components deleted");
     }
 
-    List<int> GetAllIntOptionsForParamFromAnimatorController(string paramName, AnimatorController animatorController) {
+    List<int> GetAllIntOptionsForParamFromAnimatorController(string paramName, AnimatorController animatorController)
+    {
         // TODO: Check special "any state" property
 
         List<int> results = new List<int>();
 
-        foreach (AnimatorControllerLayer layer in animatorController.layers) {
-            foreach (ChildAnimatorState state in layer.stateMachine.states) {
-                foreach (AnimatorStateTransition transition in state.state.transitions) {
-                    foreach (AnimatorCondition condition in transition.conditions) {
-                        if (condition.parameter == paramName && results.Contains((int)condition.threshold) == false) {
+        foreach (AnimatorControllerLayer layer in animatorController.layers)
+        {
+            foreach (ChildAnimatorState state in layer.stateMachine.states)
+            {
+                foreach (AnimatorStateTransition transition in state.state.transitions)
+                {
+                    foreach (AnimatorCondition condition in transition.conditions)
+                    {
+                        if (condition.parameter == paramName && results.Contains((int)condition.threshold) == false)
+                        {
                             Debug.Log("Adding " + condition.threshold + " as option for param " + paramName);
                             results.Add((int)condition.threshold);
                         }
@@ -359,7 +384,8 @@ public class VRC3CVR : EditorWindow
         return results;
     }
 
-    List<int> GetAllIntOptionsForParam(string paramName) {
+    List<int> GetAllIntOptionsForParam(string paramName)
+    {
         List<int> results = new List<int>();
 
         Debug.Log("Getting all int options for param \"" + paramName + "\"...");
@@ -374,8 +400,10 @@ public class VRC3CVR : EditorWindow
 
             List<int> newResults = GetAllIntOptionsForParamFromAnimatorController(paramName, vrcAnimatorControllers[i]);
 
-            foreach (int newResult in newResults) {
-                if (results.Contains(newResult) == false) {
+            foreach (int newResult in newResults)
+            {
+                if (results.Contains(newResult) == false)
+                {
                     results.Add(newResult);
                 }
             }
@@ -383,20 +411,24 @@ public class VRC3CVR : EditorWindow
 
         Debug.Log("Found " + results.Count + " int options: " + string.Join(", ", results.ToArray()));
 
-        if (results.Count == 0) {
+        if (results.Count == 0)
+        {
             Debug.Log("Found 0 int options for param " + paramName + " - this is probably not what you want!");
         }
 
         return results;
     }
 
-    List<CVRAdvancedSettingsDropDownEntry> ConvertIntToGameObjectDropdownOptions(List<int> ints) {
+    List<CVRAdvancedSettingsDropDownEntry> ConvertIntToGameObjectDropdownOptions(List<int> ints)
+    {
         List<CVRAdvancedSettingsDropDownEntry> entries = new List<CVRAdvancedSettingsDropDownEntry>();
 
         ints.Sort();
 
-        foreach (int value in ints) {
-            entries.Add(new CVRAdvancedSettingsDropDownEntry() {
+        foreach (int value in ints)
+        {
+            entries.Add(new CVRAdvancedSettingsDropDownEntry()
+            {
                 name = value.ToString()
             });
         }
@@ -404,11 +436,14 @@ public class VRC3CVR : EditorWindow
         return entries;
     }
 
-    void MatchAnimatorParameterToVRCParameter(VRCExpressionParameter vrcParam) {
+    void MatchAnimatorParameterToVRCParameter(VRCExpressionParameter vrcParam)
+    {
         AnimatorControllerParameter[] parameters = chilloutAnimatorController.parameters;
 
-        for (int i = 0; i < parameters.Length; i++) {
-            if (parameters[i].name == vrcParam.name) {
+        for (int i = 0; i < parameters.Length; i++)
+        {
+            if (parameters[i].name == vrcParam.name)
+            {
                 switch (parameters[i].type)
                 {
                     case AnimatorControllerParameterType.Bool:
@@ -425,37 +460,51 @@ public class VRC3CVR : EditorWindow
         }
         chilloutAnimatorController.parameters = parameters;
     }
-    Dictionary<string, Dictionary<int, string>> FindMenuButtonsAndToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<int, string>> toggleTable) {
-		if (menu != null) {
-	        foreach (VRCExpressionsMenu.Control control in menu.controls) {
-	            if (control.type == VRCExpressionsMenu.Control.ControlType.Toggle || control.type == VRCExpressionsMenu.Control.ControlType.Button) {
-	                Dictionary<int, string> idTable;
-	                if(toggleTable.ContainsKey(control.parameter.name)) {
-	                    idTable = toggleTable[control.parameter.name];
-	                } else {
-	                    idTable = new Dictionary<int, string>();
-	                }
+    Dictionary<string, Dictionary<int, string>> FindMenuButtonsAndToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<int, string>> toggleTable)
+    {
+        if (menu != null)
+        {
+            foreach (VRCExpressionsMenu.Control control in menu.controls)
+            {
+                if (control.type == VRCExpressionsMenu.Control.ControlType.Toggle || control.type == VRCExpressionsMenu.Control.ControlType.Button)
+                {
+                    Dictionary<int, string> idTable;
+                    if (toggleTable.ContainsKey(control.parameter.name))
+                    {
+                        idTable = toggleTable[control.parameter.name];
+                    }
+                    else
+                    {
+                        idTable = new Dictionary<int, string>();
+                    }
 
-	                if (!idTable.ContainsKey((int)control.value)) {
-	                    idTable.Add((int)control.value, control.name);
-	                }
+                    if (!idTable.ContainsKey((int)control.value))
+                    {
+                        idTable.Add((int)control.value, control.name);
+                    }
 
-	                toggleTable[control.parameter.name] = idTable;
-	            } else if (control.type == VRCExpressionsMenu.Control.ControlType.SubMenu) {
-	                toggleTable = FindMenuButtonsAndToggles(control.subMenu, toggleTable);
-	            }
-	        }
-		}
-        
+                    toggleTable[control.parameter.name] = idTable;
+                }
+                else if (control.type == VRCExpressionsMenu.Control.ControlType.SubMenu)
+                {
+                    toggleTable = FindMenuButtonsAndToggles(control.subMenu, toggleTable);
+                }
+            }
+        }
+
         return toggleTable;
     }
 
-    List<CVRAdvancedSettingsDropDownEntry> GetAdvancedSettingsDropDownForParameter(String name, Dictionary<string, Dictionary<int, string>> toggleTable) {
+    List<CVRAdvancedSettingsDropDownEntry> GetAdvancedSettingsDropDownForParameter(String name, Dictionary<string, Dictionary<int, string>> toggleTable)
+    {
         List<CVRAdvancedSettingsDropDownEntry> advancedSettingsDropDownEntries = new List<CVRAdvancedSettingsDropDownEntry>();
 
-        if (toggleTable.ContainsKey(name)) {
-            if (toggleTable[name].Count == 1) {
-                if (toggleTable[name].First().Key == 1) {
+        if (toggleTable.ContainsKey(name))
+        {
+            if (toggleTable[name].Count == 1)
+            {
+                if (toggleTable[name].First().Key == 1)
+                {
                     CVRAdvancedSettingsDropDownEntry menuEntry = new CVRAdvancedSettingsDropDownEntry();
                     menuEntry.name = name;
                     advancedSettingsDropDownEntries.Add(menuEntry);
@@ -465,9 +514,11 @@ public class VRC3CVR : EditorWindow
 
             Dictionary<int, string> idTable = toggleTable[name];
             int lastIndex = idTable.Last().Key;
-            for (int i = 0; i < lastIndex+1; i++) {
+            for (int i = 0; i < lastIndex + 1; i++)
+            {
                 String MenuEntryName = "---";
-                if (idTable.ContainsKey(i)) {
+                if (idTable.ContainsKey(i))
+                {
                     MenuEntryName = idTable[i];
                 }
                 CVRAdvancedSettingsDropDownEntry menuEntry = new CVRAdvancedSettingsDropDownEntry();
@@ -495,7 +546,8 @@ public class VRC3CVR : EditorWindow
 
             Debug.Log("Param \"" + vrcParam.name + "\" type \"" + vrcParam.valueType + "\" default \"" + vrcParam.defaultValue + "\"");
 
-            if (vrcParam.name == "") {
+            if (vrcParam.name == "")
+            {
                 Debug.Log("Empty-named parameter. Skipping.");
                 continue;
             }
@@ -507,26 +559,33 @@ public class VRC3CVR : EditorWindow
                 case VRCExpressionParameters.ValueType.Int:
                     List<CVRAdvancedSettingsDropDownEntry> dropdownOptions = GetAdvancedSettingsDropDownForParameter(vrcParam.name, toggleTable);
 
-                    if (dropdownOptions.Count > 1) {
-                        newParam = new CVRAdvancedSettingsEntry() {
+                    if (dropdownOptions.Count > 1)
+                    {
+                        newParam = new CVRAdvancedSettingsEntry()
+                        {
                             name = vrcParam.name,
                             machineName = vrcParam.name,
                             unlinkNameFromMachineName = true,
                             type = CVRAdvancedSettingsEntry.SettingsType.Dropdown,
-                            setting = new CVRAdvancesAvatarSettingGameObjectDropdown() {
+                            setting = new CVRAdvancesAvatarSettingGameObjectDropdown()
+                            {
                                 defaultValue = (int)vrcParam.defaultValue,
                                 options = dropdownOptions,
                                 usedType = CVRAdvancesAvatarSettingBase.ParameterType.Int
                             }
                         };
-                    } else {
+                    }
+                    else
+                    {
                         Debug.Log("Param has less than 2 options so we are making a toggle instead");
 
-                        newParam = new CVRAdvancedSettingsEntry() {
+                        newParam = new CVRAdvancedSettingsEntry()
+                        {
                             name = vrcParam.name,
                             machineName = vrcParam.name,
                             unlinkNameFromMachineName = true,
-                            setting = new CVRAdvancesAvatarSettingGameObjectToggle() {
+                            setting = new CVRAdvancesAvatarSettingGameObjectToggle()
+                            {
                                 defaultValue = vrcParam.defaultValue == 1 ? true : false,
                                 usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool
                             }
@@ -535,12 +594,14 @@ public class VRC3CVR : EditorWindow
                     break;
 
                 case VRCExpressionParameters.ValueType.Float:
-                    newParam = new CVRAdvancedSettingsEntry() {
+                    newParam = new CVRAdvancedSettingsEntry()
+                    {
                         name = vrcParam.name,
                         machineName = vrcParam.name,
                         unlinkNameFromMachineName = true,
                         type = CVRAdvancedSettingsEntry.SettingsType.Slider,
-                        setting = new CVRAdvancesAvatarSettingSlider() {
+                        setting = new CVRAdvancesAvatarSettingSlider()
+                        {
                             defaultValue = vrcParam.defaultValue,
                             usedType = CVRAdvancesAvatarSettingBase.ParameterType.Float
                         }
@@ -548,11 +609,13 @@ public class VRC3CVR : EditorWindow
                     break;
 
                 case VRCExpressionParameters.ValueType.Bool:
-                    newParam = new CVRAdvancedSettingsEntry() {
+                    newParam = new CVRAdvancedSettingsEntry()
+                    {
                         name = vrcParam.name,
                         machineName = vrcParam.name,
                         unlinkNameFromMachineName = true,
-                        setting = new CVRAdvancesAvatarSettingGameObjectToggle() {
+                        setting = new CVRAdvancesAvatarSettingGameObjectToggle()
+                        {
                             defaultValue = vrcParam.defaultValue != 0 ? true : false,
                             usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool
                         }
@@ -565,7 +628,8 @@ public class VRC3CVR : EditorWindow
 
             MatchAnimatorParameterToVRCParameter(vrcParam);
 
-            if (newParam != null) {
+            if (newParam != null)
+            {
                 newParams.Add(newParam);
             }
         }
@@ -587,7 +651,8 @@ public class VRC3CVR : EditorWindow
                 continue;
             }
 
-            if (i >= (int)VRCBaseAnimatorID.MAX || i < 0) {
+            if (i >= (int)VRCBaseAnimatorID.MAX || i < 0)
+            {
                 Debug.Log("Unknown VRC animator id");
                 return;
             }
@@ -719,7 +784,8 @@ public class VRC3CVR : EditorWindow
                             if (
                                 (condition.parameter == "GestureLeft" && conditionW.parameter == "GestureLeftWeight") ||
                                 (condition.parameter == "GestureRight" && conditionW.parameter == "GestureRightWeight")
-                            ) {
+                            )
+                            {
                                 if (conditionW.mode == AnimatorConditionMode.Less)
                                 {
                                     thresholdHigh = conditionW.threshold;
@@ -730,7 +796,9 @@ public class VRC3CVR : EditorWindow
                                 }
                             }
                         }
-                    } else if (chilloutGestureNumber == 0f) {
+                    }
+                    else if (chilloutGestureNumber == 0f)
+                    {
                         thresholdHigh = 0.01f;
 
                         for (int w = 0; w < transition.conditions.Length; w++)
@@ -776,11 +844,14 @@ public class VRC3CVR : EditorWindow
                     if (chilloutGestureNumber == 1f) // Fist only
                     {
                         thresholdLow = 0.01f;
-                    } else if (chilloutGestureNumber == 0f) {
+                    }
+                    else if (chilloutGestureNumber == 0f)
+                    {
                         thresholdHigh = 0.01f;
                     }
 
-                    if (isDuplicate) {
+                    if (isDuplicate)
+                    {
                         // Add greater than transition to duplicate
                         AnimatorCondition newConditionGreaterThan = new AnimatorCondition();
                         newConditionGreaterThan.parameter = condition.parameter;
@@ -789,7 +860,9 @@ public class VRC3CVR : EditorWindow
 
                         conditionsToAdd.Add(newConditionGreaterThan);
 
-                    } else {
+                    }
+                    else
+                    {
                         // Change transition to use less than
                         AnimatorCondition newConditionLessThan = new AnimatorCondition();
                         newConditionLessThan.parameter = condition.parameter;
@@ -800,7 +873,8 @@ public class VRC3CVR : EditorWindow
 
                         // Duplicate transition to create the "or greater than" transition
                         AnimatorTranstitionType newTransition = new AnimatorTranstitionType();
-                        if (newTransition is AnimatorStateTransition) {
+                        if (newTransition is AnimatorStateTransition)
+                        {
                             AnimatorStateTransition newTransitionTyped = newTransition as AnimatorStateTransition;
                             AnimatorStateTransition transitionTyped = transition as AnimatorStateTransition;
                             newTransitionTyped.duration = transitionTyped.duration;
@@ -847,8 +921,10 @@ public class VRC3CVR : EditorWindow
                     if (
                         (condition.parameter == "GestureLeftWeight" && conditionW.parameter == "GestureLeft") ||
                         (condition.parameter == "GestureRightWeight" && conditionW.parameter == "GestureRight")
-                    ) {
-                        if (conditionW.threshold == 1f) {
+                    )
+                    {
+                        if (conditionW.threshold == 1f)
+                        {
                             gestureFound = true;
                             break;
                         }
@@ -897,61 +973,91 @@ public class VRC3CVR : EditorWindow
         transition.conditions = conditionsToAdd.ToArray();
     }
 
-    Motion ReplaceProxyAnimationClip(Motion clip) {
-        if (clip) {
-            switch (clip.name) {
+    Motion ReplaceProxyAnimationClip(Motion clip)
+    {
+        if (clip)
+        {
+            switch (clip.name)
+            {
                 case "proxy_hands_fist":
-                    if (handCombinedFistAnimationClip) {
+                    if (handCombinedFistAnimationClip)
+                    {
                         return handCombinedFistAnimationClip;
-                    } else {
+                    }
+                    else
+                    {
                         return clip;
                     }
                 case "proxy_hands_gun":
-                    if (handCombinedGunAnimationClip) {
+                    if (handCombinedGunAnimationClip)
+                    {
                         return handCombinedGunAnimationClip;
-                    } else {
+                    }
+                    else
+                    {
                         return clip;
                     }
                 case "proxy_hands_idle":
-                    if (handCombinedRelaxedAnimationClip) {
+                    if (handCombinedRelaxedAnimationClip)
+                    {
                         return handCombinedRelaxedAnimationClip;
-                    } else {
+                    }
+                    else
+                    {
                         return clip;
                     }
                 case "proxy_hands_idle2":
-                    if (handCombinedRelaxedAnimationClip) {
+                    if (handCombinedRelaxedAnimationClip)
+                    {
                         return handCombinedRelaxedAnimationClip;
-                    } else {
+                    }
+                    else
+                    {
                         return clip;
                     }
                 case "proxy_hands_open":
-                    if (handCombinedOpenAnimationClip) {
+                    if (handCombinedOpenAnimationClip)
+                    {
                         return handCombinedOpenAnimationClip;
-                    } else {
+                    }
+                    else
+                    {
                         return clip;
                     }
                 case "proxy_hands_peace":
-                    if (handCombinedPeaceAnimationClip) {
+                    if (handCombinedPeaceAnimationClip)
+                    {
                         return handCombinedPeaceAnimationClip;
-                    } else {
+                    }
+                    else
+                    {
                         return clip;
                     }
                 case "proxy_hands_point":
-                    if (handCombinedPointAnimationClip) {
+                    if (handCombinedPointAnimationClip)
+                    {
                         return handCombinedPointAnimationClip;
-                    } else {
+                    }
+                    else
+                    {
                         return clip;
                     }
                 case "proxy_hands_rock":
-                    if (handCombinedRockNRollAnimationClip) {
+                    if (handCombinedRockNRollAnimationClip)
+                    {
                         return handCombinedRockNRollAnimationClip;
-                    } else {
+                    }
+                    else
+                    {
                         return clip;
                     }
                 case "proxy_hands_thumbs_up":
-                    if (handCombinedThumbsUpAnimationClip) {
+                    if (handCombinedThumbsUpAnimationClip)
+                    {
                         return handCombinedThumbsUpAnimationClip;
-                    } else {
+                    }
+                    else
+                    {
                         return clip;
                     }
                 case "proxy_stand_still":
@@ -969,7 +1075,9 @@ public class VRC3CVR : EditorWindow
                 default:
                     return clip;
             }
-        } else {
+        }
+        else
+        {
             return clip;
         }
     }
@@ -983,40 +1091,54 @@ public class VRC3CVR : EditorWindow
             AnimatorState state = stateMachine.states[s].state;
 
             // assuming they only ever check weight for the Fist animation
-            if (state.timeParameter == "GestureLeftWeight") {
+            if (state.timeParameter == "GestureLeftWeight")
+            {
                 state.timeParameter = "GestureLeft";
-            } else if (state.timeParameter == "GestureRightWeight") {
+            }
+            else if (state.timeParameter == "GestureRightWeight")
+            {
                 state.timeParameter = "GestureRight";
             }
 
             state.timeParameter = state.timeParameter;
 
-            if (state.motion is BlendTree) {
+            if (state.motion is BlendTree)
+            {
                 BlendTree blendTree = (BlendTree)state.motion;
 
                 // X
-                if (blendTree.blendParameter == "GestureLeftWeight") {
+                if (blendTree.blendParameter == "GestureLeftWeight")
+                {
                     blendTree.blendParameter = "GestureLeft";
-                } else if (blendTree.blendParameter == "GestureRightWeight") {
+                }
+                else if (blendTree.blendParameter == "GestureRightWeight")
+                {
                     blendTree.blendParameter = "GestureRight";
                 }
                 // Y
-                if (blendTree.blendParameterY == "GestureLeftWeight") {
+                if (blendTree.blendParameterY == "GestureLeftWeight")
+                {
                     blendTree.blendParameterY = "GestureLeft";
-                } else if (blendTree.blendParameterY == "GestureRightWeight") {
+                }
+                else if (blendTree.blendParameterY == "GestureRightWeight")
+                {
                     blendTree.blendParameterY = "GestureRight";
                 }
 
                 ChildMotion[] blendTreeMotions = blendTree.children;
 
-                for (int i = 0; i < blendTreeMotions.Count(); i++) {
-                    if (blendTreeMotions[i].motion is AnimationClip) {
+                for (int i = 0; i < blendTreeMotions.Count(); i++)
+                {
+                    if (blendTreeMotions[i].motion is AnimationClip)
+                    {
                         blendTreeMotions[i].motion = ReplaceProxyAnimationClip(blendTreeMotions[i].motion);
                     }
                 }
 
                 blendTree.children = blendTreeMotions;
-            } else if (state.motion is AnimationClip) {
+            }
+            else if (state.motion is AnimationClip)
+            {
                 state.motion = ReplaceProxyAnimationClip(state.motion);
             }
 
@@ -1349,9 +1471,12 @@ public class VRC3CVR : EditorWindow
         AssetDatabase.Refresh();
     }
 
-    AvatarMask ReplaceVRCMask(AvatarMask mask) { 
-        if (mask) {
-            switch(mask.name) {
+    AvatarMask ReplaceVRCMask(AvatarMask mask)
+    {
+        if (mask)
+        {
+            switch (mask.name)
+            {
                 case "vrc_Hand Left":
                     return (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrHandLeft.mask", typeof(AvatarMask));
                 case "vrc_Hand Right":
@@ -1367,10 +1492,12 @@ public class VRC3CVR : EditorWindow
         return mask;
     }
 
-    AnimationClip CombineAnimationClips(AnimationClip animationClipA, AnimationClip animationClipB) {
+    AnimationClip CombineAnimationClips(AnimationClip animationClipA, AnimationClip animationClipB)
+    {
         AnimationClip animationClipCombined = new AnimationClip();
 
-        foreach (EditorCurveBinding i in AnimationUtility.GetCurveBindings(animationClipA)) {
+        foreach (EditorCurveBinding i in AnimationUtility.GetCurveBindings(animationClipA))
+        {
             AnimationCurve curve = AnimationUtility.GetEditorCurve(animationClipA, i);
             animationClipCombined.SetCurve(i.path, i.type, i.propertyName, curve);
         }
@@ -1384,24 +1511,28 @@ public class VRC3CVR : EditorWindow
         return animationClipCombined;
     }
 
-    void CreateCombinedHandAnimations() {
+    void CreateCombinedHandAnimations()
+    {
         AnimationClip handLeftGunAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftGun.anim", typeof(AnimationClip));
         AnimationClip handRightGunAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightGun.anim", typeof(AnimationClip));
-        if (handLeftGunAnimationClip && handRightGunAnimationClip) {
+        if (handLeftGunAnimationClip && handRightGunAnimationClip)
+        {
             handCombinedGunAnimationClip = CombineAnimationClips(handLeftGunAnimationClip, handRightGunAnimationClip);
             AssetDatabase.CreateAsset(handCombinedGunAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedGun.anim");
         }
 
         AnimationClip handLeftOpenAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftOpen.anim", typeof(AnimationClip));
         AnimationClip handRightOpenAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightOpen.anim", typeof(AnimationClip));
-        if (handLeftOpenAnimationClip && handRightOpenAnimationClip) {
+        if (handLeftOpenAnimationClip && handRightOpenAnimationClip)
+        {
             handCombinedOpenAnimationClip = CombineAnimationClips(handLeftOpenAnimationClip, handRightOpenAnimationClip);
             AssetDatabase.CreateAsset(handCombinedOpenAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedOpen.anim");
         }
 
         AnimationClip handLeftPeaceAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftPeace.anim", typeof(AnimationClip));
         AnimationClip handRightPeaceAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightPeace.anim", typeof(AnimationClip));
-        if (handLeftPeaceAnimationClip && handRightPeaceAnimationClip) {
+        if (handLeftPeaceAnimationClip && handRightPeaceAnimationClip)
+        {
             handCombinedPeaceAnimationClip = CombineAnimationClips(handLeftPeaceAnimationClip, handRightPeaceAnimationClip);
             AssetDatabase.CreateAsset(handCombinedPeaceAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedPeace.anim");
         }
@@ -1416,14 +1547,16 @@ public class VRC3CVR : EditorWindow
 
         AnimationClip handLeftRockNRollAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftRockNRoll.anim", typeof(AnimationClip));
         AnimationClip handRightRockNRollAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightRockNRoll.anim", typeof(AnimationClip));
-        if (handLeftRockNRollAnimationClip && handRightRockNRollAnimationClip) {
+        if (handLeftRockNRollAnimationClip && handRightRockNRollAnimationClip)
+        {
             handCombinedRockNRollAnimationClip = CombineAnimationClips(handLeftRockNRollAnimationClip, handRightRockNRollAnimationClip);
             AssetDatabase.CreateAsset(handCombinedRockNRollAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedRockNRoll.anim");
         }
 
         AnimationClip handLeftThumbsUpAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftThumbsUp.anim", typeof(AnimationClip));
         AnimationClip handRightThumbsUpAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightThumbsUp.anim", typeof(AnimationClip));
-        if (handLeftThumbsUpAnimationClip && handRightThumbsUpAnimationClip) {
+        if (handLeftThumbsUpAnimationClip && handRightThumbsUpAnimationClip)
+        {
             handCombinedThumbsUpAnimationClip = CombineAnimationClips(handLeftThumbsUpAnimationClip, handRightThumbsUpAnimationClip);
             AssetDatabase.CreateAsset(handCombinedThumbsUpAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedThumbsUp.anim");
         }
@@ -1445,11 +1578,13 @@ public class VRC3CVR : EditorWindow
             // Don't create the asset yet...
         }
 
-        if (handCombinedRelaxedAnimationClip && handCombinedFistAnimationClip) {
+        if (handCombinedRelaxedAnimationClip && handCombinedFistAnimationClip)
+        {
             List<EditorCurveBinding> editorCurveBindingsRelaxed = new List<EditorCurveBinding>();
             List<AnimationCurve> relaxedCurves = new List<AnimationCurve>();
 
-            foreach (EditorCurveBinding i in AnimationUtility.GetCurveBindings(handCombinedRelaxedAnimationClip)) {
+            foreach (EditorCurveBinding i in AnimationUtility.GetCurveBindings(handCombinedRelaxedAnimationClip))
+            {
                 editorCurveBindingsRelaxed.Add(i);
                 AnimationCurve curve = AnimationUtility.GetEditorCurve(handCombinedRelaxedAnimationClip, i);
                 relaxedCurves.Add(curve);
@@ -1458,26 +1593,31 @@ public class VRC3CVR : EditorWindow
             List<EditorCurveBinding> editorCurveBindingsFist = new List<EditorCurveBinding>();
             List<AnimationCurve> fistCurves = new List<AnimationCurve>();
 
-            foreach (EditorCurveBinding i in AnimationUtility.GetCurveBindings(handCombinedFistAnimationClip)) {
+            foreach (EditorCurveBinding i in AnimationUtility.GetCurveBindings(handCombinedFistAnimationClip))
+            {
                 editorCurveBindingsFist.Add(i);
                 AnimationCurve curve = AnimationUtility.GetEditorCurve(handCombinedFistAnimationClip, i);
                 fistCurves.Add(curve);
             }
 
             handCombinedFistAnimationClip.ClearCurves();
-            for (int i = 0; i < fistCurves.Count; i++) {
+            for (int i = 0; i < fistCurves.Count; i++)
+            {
                 AnimationCurve newCurve = new AnimationCurve();
 
                 bool foundMatch = false;
-                for (int j = 0; j < editorCurveBindingsRelaxed.Count; j++) {
-                    if (editorCurveBindingsFist[i].propertyName == editorCurveBindingsRelaxed[j].propertyName) {
+                for (int j = 0; j < editorCurveBindingsRelaxed.Count; j++)
+                {
+                    if (editorCurveBindingsFist[i].propertyName == editorCurveBindingsRelaxed[j].propertyName)
+                    {
                         newCurve.AddKey(relaxedCurves[j].keys[0]);
                         foundMatch = true;
                         continue;
                     }
                 }
 
-                if (!foundMatch) {
+                if (!foundMatch)
+                {
                     newCurve.AddKey(fistCurves[i].keys[0]);
                 }
 
@@ -1491,48 +1631,60 @@ public class VRC3CVR : EditorWindow
         }
     }
 
-    AvatarMask GetCombinedAvatarMask(AvatarMask baseMask, AvatarMask layerMask) { 
-        if (baseMask == null) {
+    AvatarMask GetCombinedAvatarMask(AvatarMask baseMask, AvatarMask layerMask)
+    {
+        if (baseMask == null)
+        {
             return layerMask;
         }
 
-        if (layerMask == null) {
+        if (layerMask == null)
+        {
             return baseMask;
         }
 
-        if (avatarMaskCombineCache.ContainsKey((baseMask, layerMask))) {
+        if (avatarMaskCombineCache.ContainsKey((baseMask, layerMask)))
+        {
             return avatarMaskCombineCache[(baseMask, layerMask)];
-        } else {
+        }
+        else
+        {
             AvatarMask combinedAvatarMask = new AvatarMask();
-            for (int i = 0; i < (int)AvatarMaskBodyPart.LastBodyPart; i++) {
+            for (int i = 0; i < (int)AvatarMaskBodyPart.LastBodyPart; i++)
+            {
                 combinedAvatarMask.SetHumanoidBodyPartActive((AvatarMaskBodyPart)i,
                     layerMask.GetHumanoidBodyPartActive((AvatarMaskBodyPart)i) & baseMask.GetHumanoidBodyPartActive((AvatarMaskBodyPart)i));
             }
             avatarMaskCombineCache[(baseMask, layerMask)] = combinedAvatarMask;
-            if (baseMask.name != "" && layerMask.name != "") {
+            if (baseMask.name != "" && layerMask.name != "")
+            {
                 AssetDatabase.CreateAsset(combinedAvatarMask, "Assets/" + outputDirName + "/" + baseMask.name + "_" + layerMask.name + ".mask");
             }
             return combinedAvatarMask;
         }
     }
 
-    AvatarMask GetAvatarMaskForLayerAndVRCAnimator(VRCBaseAnimatorID animatorID, int layerID, AvatarMask originalMask) {
+    AvatarMask GetAvatarMaskForLayerAndVRCAnimator(VRCBaseAnimatorID animatorID, int layerID, AvatarMask originalMask)
+    {
         if (animatorID >= VRCBaseAnimatorID.MAX)
         {
             Debug.LogError("Invalid base animator id");
         }
 
-        switch(animatorID)
+        switch (animatorID)
         {
             case VRCBaseAnimatorID.BASE:
                 return GetCombinedAvatarMask(ReplaceVRCMask(fullMask), ReplaceVRCMask(originalMask));
             case VRCBaseAnimatorID.ADDITIVE:
                 return GetCombinedAvatarMask(ReplaceVRCMask(fullMask), ReplaceVRCMask(originalMask));
             case VRCBaseAnimatorID.GESTURE:
-                if (layerID == 0) {
+                if (layerID == 0)
+                {
                     gestureMask = ReplaceVRCMask(originalMask);
                     return gestureMask;
-                } else {
+                }
+                else
+                {
                     return GetCombinedAvatarMask(ReplaceVRCMask(gestureMask), ReplaceVRCMask(originalMask));
                 }
             case VRCBaseAnimatorID.ACTION:
@@ -1564,7 +1716,8 @@ public class VRC3CVR : EditorWindow
         AnimatorControllerLayer[] layersToMerge = animatorToMerge.layers;
 
         // Force first layer to all has a weight of 1.0f
-        if (layersToMerge.Length > 0) {
+        if (layersToMerge.Length > 0)
+        {
             layersToMerge[0].defaultWeight = 1.0f;
         }
 
@@ -1579,7 +1732,8 @@ public class VRC3CVR : EditorWindow
 
         for (int i = 0; i < existingLayers.Length; i++)
         {
-            if (existingLayers[i].stateMachine.states.Length > 0) { // Do not copy empty layers
+            if (existingLayers[i].stateMachine.states.Length > 0)
+            { // Do not copy empty layers
                 newLayers[newLayersIdx] = existingLayers[i];
                 newLayersIdx++;
             }
@@ -1589,7 +1743,8 @@ public class VRC3CVR : EditorWindow
         {
             AnimatorControllerLayer layer = layersToMerge[i];
 
-            if (layer.stateMachine.states.Length > 0) { // Do not copy empty layers
+            if (layer.stateMachine.states.Length > 0)
+            { // Do not copy empty layers
                 Debug.Log("Layer \"" + layer.name + "\" with " + layer.stateMachine.states.Length + " states");
 
                 ProcessStateMachine(layer.stateMachine);
@@ -1723,10 +1878,14 @@ public class VRC3CVR : EditorWindow
         }
     }
 
-    AnimatorControllerLayer[] FixDuplicateLayerNames(AnimatorControllerLayer[] newLayers, AnimatorControllerLayer[] existingLayers) {
-        foreach (AnimatorControllerLayer newLayer in newLayers) {
-            foreach (AnimatorControllerLayer existingLayer in existingLayers) {
-                if (existingLayer.name == newLayer.name) {
+    AnimatorControllerLayer[] FixDuplicateLayerNames(AnimatorControllerLayer[] newLayers, AnimatorControllerLayer[] existingLayers)
+    {
+        foreach (AnimatorControllerLayer newLayer in newLayers)
+        {
+            foreach (AnimatorControllerLayer existingLayer in existingLayers)
+            {
+                if (existingLayer.name == newLayer.name)
+                {
                     Debug.Log("Layer \"" + newLayer.name + "\" clashes with an existing layer, renaming...");
 
                     // TODO: This is fragile cause they could have another layer with the same name
@@ -1785,16 +1944,21 @@ public class VRC3CVR : EditorWindow
 
         string[] allowedLayerNames;
 
-        if (convertGestureLayer && vrcAvatarDescriptor.baseAnimationLayers[(int)VRCBaseAnimatorID.GESTURE].animatorController) {
+        if (convertGestureLayer && vrcAvatarDescriptor.baseAnimationLayers[(int)VRCBaseAnimatorID.GESTURE].animatorController)
+        {
             Debug.Log("Deleting CVR hand layers...");
             allowedLayerNames = new string[] { "Locomotion/Emotes" };
-        } else {
+        }
+        else
+        {
             Debug.Log("Not deleting CVR hand layers...");
             allowedLayerNames = new string[] { "Locomotion/Emotes", "LeftHand", "RightHand" };
         }
 
-        foreach (AnimatorControllerLayer layer in chilloutAnimatorController.layers) {
-            if (Array.IndexOf(allowedLayerNames, layer.name) != -1) {
+        foreach (AnimatorControllerLayer layer in chilloutAnimatorController.layers)
+        {
+            if (Array.IndexOf(allowedLayerNames, layer.name) != -1)
+            {
                 newLayers.Add(layer);
             }
         }
@@ -1817,15 +1981,19 @@ public class VRC3CVR : EditorWindow
 
         bodySkinnedMeshRenderer = vrcAvatarDescriptor.VisemeSkinnedMesh;
 
-        if (bodySkinnedMeshRenderer == null) {
+        if (bodySkinnedMeshRenderer == null)
+        {
             Debug.LogWarning("Could not find viseme skinned mesh from VRC component");
-        } else {
+        }
+        else
+        {
             Debug.Log("Body skinned mesh renderer: " + bodySkinnedMeshRenderer);
         }
 
         vrcViewPosition = vrcAvatarDescriptor.ViewPosition;
 
-        if (vrcViewPosition == null){
+        if (vrcViewPosition == null)
+        {
             throw new Exception("Could not find view position from VRC component!");
         }
 
@@ -1833,50 +2001,75 @@ public class VRC3CVR : EditorWindow
 
         vrcVisemeBlendShapes = vrcAvatarDescriptor.VisemeBlendShapes;
 
-        if (vrcViewPosition == null) {
+        if (vrcViewPosition == null)
+        {
             Debug.LogWarning("Could not find viseme blend shapes from VRC component");
-        } else {
-            if (vrcVisemeBlendShapes.Length == 0) {
+        }
+        else
+        {
+            if (vrcVisemeBlendShapes.Length == 0)
+            {
                 Debug.LogWarning("Found 0 viseme blend shapes from VRC component");
-            } else {
+            }
+            else
+            {
                 Debug.Log("Visemes: " + string.Join(", ", vrcVisemeBlendShapes));
             }
         }
 
         int[] eyelidsBlendshapes = vrcAvatarDescriptor.customEyeLookSettings.eyelidsBlendshapes;
 
-        if (eyelidsBlendshapes.Length >= 1 && eyelidsBlendshapes[0] != -1) {
-            if (bodySkinnedMeshRenderer != null) {
+        if (eyelidsBlendshapes.Length >= 1 && eyelidsBlendshapes[0] != -1)
+        {
+            if (bodySkinnedMeshRenderer != null)
+            {
                 int blinkBlendshapeIdx = eyelidsBlendshapes[0];
                 Mesh mesh = bodySkinnedMeshRenderer.sharedMesh;
 
-                if (blinkBlendshapeIdx > mesh.blendShapeCount) {
+                if (blinkBlendshapeIdx > mesh.blendShapeCount)
+                {
                     Debug.LogWarning("Could not use eyelid blendshape at index " + blinkBlendshapeIdx.ToString() + ": does not exist in mesh!");
-                } else {
+                }
+                else
+                {
                     blinkBlendshapeName = mesh.GetBlendShapeName(blinkBlendshapeIdx);
                     Debug.Log("Blink blendshape: " + blinkBlendshapeName);
                 }
-            } else {
+            }
+            else
+            {
                 Debug.LogWarning("Eyelid blendshapes are set but no skinned mesh renderer found");
             }
-        } else {
+        }
+        else
+        {
             Debug.Log("No blink blendshape set");
         }
 
         VRCAvatarDescriptor.CustomAnimLayer[] vrcCustomAnimLayers = vrcAvatarDescriptor.baseAnimationLayers;
         vrcAnimatorControllers = new AnimatorController[vrcCustomAnimLayers.Length];
 
-        for (int i = 0; i < vrcCustomAnimLayers.Length; i++) {
+        for (int i = 0; i < vrcCustomAnimLayers.Length; i++)
+        {
             // Ignore animators not checked for conversion
-            if (i == (int)VRCBaseAnimatorID.BASE && !convertLocomotionLayer){
+            if (i == (int)VRCBaseAnimatorID.BASE && !convertLocomotionLayer)
+            {
                 continue;
-            } else if(i == (int)VRCBaseAnimatorID.ADDITIVE && !convertAdditiveLayer) {
+            }
+            else if (i == (int)VRCBaseAnimatorID.ADDITIVE && !convertAdditiveLayer)
+            {
                 continue;
-            } else if(i == (int)VRCBaseAnimatorID.GESTURE && !convertGestureLayer) {
+            }
+            else if (i == (int)VRCBaseAnimatorID.GESTURE && !convertGestureLayer)
+            {
                 continue;
-            } else if(i == (int)VRCBaseAnimatorID.ACTION && !convertActionLayer) {
+            }
+            else if (i == (int)VRCBaseAnimatorID.ACTION && !convertActionLayer)
+            {
                 continue;
-            } else if(i == (int)VRCBaseAnimatorID.FX && !convertFXLayer) {
+            }
+            else if (i == (int)VRCBaseAnimatorID.FX && !convertFXLayer)
+            {
                 continue;
             }
 
@@ -1886,21 +2079,24 @@ public class VRC3CVR : EditorWindow
         Debug.Log("Found number of vrc base animation layers: " + vrcAvatarDescriptor.baseAnimationLayers.Length);
     }
 
-    SkinnedMeshRenderer GetSkinnedMeshRendererInCVRAvatar() {
+    SkinnedMeshRenderer GetSkinnedMeshRendererInCVRAvatar()
+    {
         string pathToSkinnedMeshRenderer = GetPathToGameObjectInsideAvatar(bodySkinnedMeshRenderer.gameObject);
 
         Debug.Log("Path to body skinned mesh renderer: " + pathToSkinnedMeshRenderer);
 
         var match = cvrAvatar.transform.Find(pathToSkinnedMeshRenderer.Remove(0, 1));
 
-        if (match == null) {
+        if (match == null)
+        {
             Debug.LogWarning("Could not find body inside the CVR avatar");
             return null;
         }
 
         SkinnedMeshRenderer skinnedMeshRenderer = match.GetComponent<SkinnedMeshRenderer>();
 
-        if (skinnedMeshRenderer == null) {
+        if (skinnedMeshRenderer == null)
+        {
             Debug.LogWarning("Could not find body skinned mesh renderer inside the CVR avatar");
             return null;
         }
@@ -1915,7 +2111,8 @@ public class VRC3CVR : EditorWindow
         {
             obj = obj.transform.parent.gameObject;
 
-            if (obj.transform.parent != null) {
+            if (obj.transform.parent != null)
+            {
                 path = "/" + obj.name + path;
             }
         }
@@ -1926,20 +2123,26 @@ public class VRC3CVR : EditorWindow
     {
         Debug.Log("Populating chillout avatar component...");
 
-        if (bodySkinnedMeshRenderer != null) {
+        if (bodySkinnedMeshRenderer != null)
+        {
             Debug.Log("Setting face mesh...");
 
             cvrAvatar.bodyMesh = GetSkinnedMeshRendererInCVRAvatar();
-        } else {
+        }
+        else
+        {
             Debug.Log("No body skinned mesh renderer found so not setting CVR body mesh");
         }
 
         Debug.Log("Setting blinking...");
 
-        if (string.IsNullOrEmpty(blinkBlendshapeName) == false) {
+        if (string.IsNullOrEmpty(blinkBlendshapeName) == false)
+        {
             cvrAvatar.useBlinkBlendshapes = true;
             cvrAvatar.blinkBlendshape[0] = blinkBlendshapeName;
-        } else {
+        }
+        else
+        {
             Debug.LogWarning("Cannot set blink: no blendshapes found");
         }
 
@@ -1959,7 +2162,8 @@ public class VRC3CVR : EditorWindow
 
         // Set the voice position to the root of the head bone by default since that will match VRC behaviour (I think)
         Transform headBoneTransform = GetHeadBoneTransform(cvrAvatar.GetComponent<Animator>());
-        if (headBoneTransform){
+        if (headBoneTransform)
+        {
             cvrAvatar.voicePosition = cvrAvatar.transform.transform.InverseTransformPoint(headBoneTransform.transform.position);
             cvrAvatar.voicePosition.Scale(cvrAvatar.gameObject.transform.localScale);
         }
