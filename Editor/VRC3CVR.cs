@@ -70,7 +70,7 @@ public class VRC3CVR : EditorWindow
     AnimationClip handCombinedThumbsUpAnimationClip;
 
 
-    [MenuItem("PeanutTools/VRC3CVR")]
+    [MenuItem("Tools/VRC3CVR")]
     public static void ShowWindow()
     {
         var window = GetWindow<VRC3CVR>();
