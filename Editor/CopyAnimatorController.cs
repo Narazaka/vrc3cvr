@@ -20,19 +20,20 @@ public class CopyAnimatorController
         var newController = new AnimatorController();
         newController.name = $"{sourceController.name}_Copy";
 
+        CopyController(newController);
+
+        return newController;
+    }
+
+    public void CopyController(AnimatorController targetController)
+    {
         // Copy layers
         foreach (var layer in sourceController.layers)
         {
-            CopyLayer(layer, newController);
+            CopyLayer(layer, targetController);
         }
 
-        // Copy parameters
-        foreach (var param in sourceController.parameters)
-        {
-            newController.AddParameter(param.name, param.type);
-        }
-
-        return newController;
+        CopyParameters(targetController);
     }
 
     public void CopyLayer(AnimatorControllerLayer sourceLayer, AnimatorController targetController)
@@ -59,6 +60,30 @@ public class CopyAnimatorController
         var layers = targetController.layers;
         ArrayUtility.Add(ref layers, newLayer);
         targetController.layers = layers;
+    }
+
+    public void CopyLayer(int index, AnimatorController targetController)
+    {
+        var sourceLayer = sourceController.layers[index];
+        CopyLayer(sourceLayer, targetController);
+    }
+
+    public void CopyLayer(string name, AnimatorController targetController)
+    {
+        var sourceLayer = sourceController.layers.FirstOrDefault(layer => layer.name == name);
+        if (sourceLayer == null)
+        {
+            throw new System.ArgumentException($"Layer with name {name} not found in source controller");
+        }
+        CopyLayer(sourceLayer, targetController);
+    }
+    
+    public void CopyParameters(AnimatorController targetController)
+    {
+        foreach (var param in sourceController.parameters)
+        {
+            targetController.AddParameter(param.name, param.type);
+        }
     }
 
     private AnimatorStateMachine CopyStateMachine(AnimatorStateMachine sourceStateMachine)
