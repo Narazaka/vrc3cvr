@@ -1403,6 +1403,9 @@ public class VRC3CVR : EditorWindow
                 ProcessStateMachine(layer.stateMachine);
 
                 layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(animatorID, i, layer.avatarMask);
+                var layers = newAnimatorController.layers;
+                layers[i] = layer;
+                newAnimatorController.layers = layers;
             }
         }
 
