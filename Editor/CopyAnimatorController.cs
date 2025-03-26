@@ -42,7 +42,7 @@ public class CopyAnimatorController
         // Create a new layer
         var newLayer = new AnimatorControllerLayer
         {
-            name = sourceLayer.name,
+            name = targetController.MakeUniqueLayerName(sourceLayer.name),
             defaultWeight = sourceLayer.defaultWeight,
             blendingMode = sourceLayer.blendingMode,
             syncedLayerIndex = sourceLayer.syncedLayerIndex,
