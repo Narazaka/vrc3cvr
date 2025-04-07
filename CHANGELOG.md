@@ -1,3 +1,9 @@
+# 2.0.0-rc.6
+
+- Bool/Float Menu name detection
+- GUI rework
+- ja-JP localization
+
 # 2.0.0-rc.5
 
 - fix save
