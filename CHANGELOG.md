@@ -1,3 +1,7 @@
+# 2.0.0-rc.7
+
+- feat: adjust to vrc menu order
+
 # 2.0.0-rc.6
 
 - Bool/Float Menu name detection
