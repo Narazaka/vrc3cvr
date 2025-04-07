@@ -12,6 +12,7 @@ using VRC.SDK3.Avatars.Components;
 using ABI.CCK.Components;
 using ABI.CCK.Scripts;
 using PeanutTools_VRC3CVR;
+using PeanutTools_VRC3CVR.Localization;
 
 public class VRC3CVR : EditorWindow
 {
@@ -78,12 +79,41 @@ public class VRC3CVR : EditorWindow
         window.minSize = new Vector2(250, 50);
     }
 
+    class T
+    {
+        public static istring Description => new istring("Convert your VRChat avatar to ChilloutVR", "VRChatアバターをChilloutVRアバターに変換");
+        public static istring Step1 => new istring("Step 1: Select your avatar", "Step 1: アバターを選択");
+        public static istring Avatar => new istring("Avatar", "アバター");
+        public static istring Step2 => new istring("Step 2: Configure settings", "Step 2: 設定");
+        public static istring ConvertLocomotionAnimator => new istring("Convert Locomotion Animator (NOT RECOMMEND)", "Locomotionレイヤーを変換 (非推奨)");
+        public static istring ConvertLocomotionAnimatorDescription => new istring("Locomotion state machines will very likely not convert over correctly and this option is better left unticked for now", "Locomotionステートマシンは正しく変換されない可能性が高く、このオプションは今のところチェックを外しておくことをお勧めします");
+        public static istring ConvertAdditiveAnimator => new istring("Convert Additive Animator (additive blend layers)", "Additiveレイヤーを変換");
+        public static istring ConvertAdditiveAnimatorDescription => new istring("Additive state machine is commonly used for additively blended animations on the base avatar. May cause bicycle pose on certain avatars.", "Additiveステートマシンは、ベースアバターの加算ブレンドアニメーションに一般的に使用されます。特定のアバターで自転車ポーズを引き起こす可能性があります。");
+        public static istring ConvertGestureAnimator => new istring("Convert Gesture Animator (hands)", "Gestureレイヤーを変換 (手)");
+        public static istring ConvertGestureAnimatorDescription => new istring("If your avatar overwrites the default finger animations when performing expressions", "アバターが表情を実行するときにデフォルトの指のアニメーションを上書きする場合はON");
+        public static istring ConvertActionAnimator => new istring("Convert Action Animator (NOT RECOMMEND)", "Actionレイヤーを変換 (非推奨)");
+        public static istring ConvertActionAnimatorDescription => new istring("Actions (mostly used for emotes) will very likely not convert over correctly and this option is better left unticked for now", "アクション (主にエモートに使用される) は正しく変換されない可能性が高く、このオプションは今のところチェックを外しておくことをお勧めします");
+        public static istring ConvertFXAnimator => new istring("Convert FX Animator (blendshapes, particles, ect.)", "FXレイヤーを変換 (ブレンドシェイプ、パーティクルなど)");
+        public static istring ConvertFXAnimatorDescription => new istring("FX state machine is commonly used all effects which don't affect the underlying rig, such as blendshapes and particle effects.", "FXステートマシンは、ブレンドシェイプやパーティクルエフェクトなど、基礎的なリグに影響を与えないすべてのエフェクトに一般的に使用されます。");
+        public static istring CloneAvatar => new istring("Clone avatar", "アバターをクローン");
+        public static istring DeleteVRCAvatarDescriptorAndPipelineManager => new istring("Delete VRC Avatar Descriptor and Pipeline Manager", "VRC Avatar DescriptorとPipeline Managerを削除");
+        public static istring DeletePhysBonesAndColliders => new istring("Delete PhysBones and colliders", "PhysBonesとコライダーを削除");
+        public static istring DeleteContactsDescription => new istring("Always deletes contact receivers and senders", "VRC Contact ReceiverとSenderは常に削除されます");
+        public static istring Step3 => new istring("Step 3: Convert", "Step 3: 変換");
+        public static istring Convert => new istring("Convert", "変換");
+        public static istring ConvertDescription => new istring("Clones your original avatar to preserve it", "元のアバターをクローンして変換します");
+        public static istring ToeError(bool left) => new istring("You do not have a " + (left ? "left" : "right") + " toe bone configured", $"{(left ? "左足" : "右足")}のつま先のボーンが設定されていません");
+        public static istring ToeErrorDescription => new istring("You must configure this before you upload your avatar", "アバターをアップロードする前に設定してください");
+    }
+
     void OnGUI()
     {
-        scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
+        scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, GUILayout.Width(position.width));
 
         CustomGUI.BoldLabel("VRC3CVR");
-        CustomGUI.ItalicLabel("Convert your VRChat avatar to ChilloutVR");
+        CustomGUI.HelpLabel(T.Description);
+
+        Localization.DrawLocaleSelector();
 
         CustomGUI.LineGap();
 
@@ -91,71 +121,71 @@ public class VRC3CVR : EditorWindow
 
         CustomGUI.LineGap();
 
-        CustomGUI.BoldLabel("Step 1: Select your avatar");
+        CustomGUI.BoldLabel(T.Step1);
 
         CustomGUI.SmallLineGap();
 
-        vrcAvatarDescriptor = (VRCAvatarDescriptor)EditorGUILayout.ObjectField("Avatar", vrcAvatarDescriptor, typeof(VRCAvatarDescriptor));
+        vrcAvatarDescriptor = (VRCAvatarDescriptor)EditorGUILayout.ObjectField(T.Avatar, vrcAvatarDescriptor, typeof(VRCAvatarDescriptor));
 
         CustomGUI.SmallLineGap();
 
-        CustomGUI.BoldLabel("Step 2: Configure settings");
+        CustomGUI.BoldLabel(T.Step2);
 
         CustomGUI.SmallLineGap();
 
-        convertLocomotionLayer = GUILayout.Toggle(convertLocomotionLayer, "Convert Locomotion Animator (NOT RECOMMEND)");
-        CustomGUI.ItalicLabel("Locomotion state machines will very likely not convert over correctly and this option is better left unticked for now");
+        convertLocomotionLayer = GUILayout.Toggle(convertLocomotionLayer, T.ConvertLocomotionAnimator);
+        CustomGUI.HelpLabel(T.ConvertLocomotionAnimatorDescription);
 
         CustomGUI.SmallLineGap();
 
-        convertAdditiveLayer = GUILayout.Toggle(convertAdditiveLayer, "Convert Additive Animator (additive blend layers)");
-        CustomGUI.ItalicLabel("Additive state machine is commonly used for additively blended animations on the base avatar. May cause bicycle pose on certain avatars.");
+        convertAdditiveLayer = GUILayout.Toggle(convertAdditiveLayer, T.ConvertAdditiveAnimator);
+        CustomGUI.HelpLabel(T.ConvertAdditiveAnimatorDescription);
 
         CustomGUI.SmallLineGap();
 
-        convertGestureLayer = GUILayout.Toggle(convertGestureLayer, "Convert Gesture Animator (hands)");
-        CustomGUI.ItalicLabel("If your avatar overwrites the default finger animations when performing expressions");
+        convertGestureLayer = GUILayout.Toggle(convertGestureLayer, T.ConvertGestureAnimator);
+        CustomGUI.HelpLabel(T.ConvertGestureAnimatorDescription);
 
         CustomGUI.SmallLineGap();
 
-        convertActionLayer = GUILayout.Toggle(convertActionLayer, "Convert Action Animator (NOT RECOMMEND)");
-        CustomGUI.ItalicLabel("Actions (mostly used for emotes) will very likely not convert over correctly and this option is better left unticked for now");
+        convertActionLayer = GUILayout.Toggle(convertActionLayer, T.ConvertActionAnimator);
+        CustomGUI.HelpLabel(T.ConvertActionAnimatorDescription);
 
         CustomGUI.SmallLineGap();
 
-        convertFXLayer = GUILayout.Toggle(convertFXLayer, "Convert FX Animator (blendshapes, particles, ect.)");
-        CustomGUI.ItalicLabel("FX state machine is commonly used all effects which don't affect the underlying rig, such as blendshapes and particle effects.");
+        convertFXLayer = GUILayout.Toggle(convertFXLayer, T.ConvertFXAnimator);
+        CustomGUI.HelpLabel(T.ConvertFXAnimatorDescription);
 
         CustomGUI.SmallLineGap();
 
-        GUILayout.Label("Need to convert your PhysBones to DynamicBones? Use this tool: https://booth.pm/ja/items/4032295");
+        CustomGUI.RenderLink("Physbone -> DynamicBone Tool?", "https://github.com/Dreadrith/PhysBone-Converter");
 
         CustomGUI.SmallLineGap();
 
-        shouldCloneAvatar = GUILayout.Toggle(shouldCloneAvatar, "Clone avatar");
+        shouldCloneAvatar = GUILayout.Toggle(shouldCloneAvatar, T.CloneAvatar);
 
         CustomGUI.SmallLineGap();
 
-        shouldDeleteVRCAvatarDescriptorAndPipelineManager = GUILayout.Toggle(shouldDeleteVRCAvatarDescriptorAndPipelineManager, "Delete VRC Avatar Descriptor and Pipeline Manager");
+        shouldDeleteVRCAvatarDescriptorAndPipelineManager = GUILayout.Toggle(shouldDeleteVRCAvatarDescriptorAndPipelineManager, T.DeleteVRCAvatarDescriptorAndPipelineManager);
 
         CustomGUI.SmallLineGap();
 
-        shouldDeletePhysBones = GUILayout.Toggle(shouldDeletePhysBones, "Delete PhysBones and colliders");
-        CustomGUI.ItalicLabel("Always deletes contact receivers and senders");
+        shouldDeletePhysBones = GUILayout.Toggle(shouldDeletePhysBones, T.DeletePhysBonesAndColliders);
+        CustomGUI.HelpLabel(T.DeleteContactsDescription);
 
         CustomGUI.SmallLineGap();
 
-        CustomGUI.BoldLabel("Step 3: Convert");
+        CustomGUI.BoldLabel(T.Step3);
 
         CustomGUI.SmallLineGap();
 
         EditorGUI.BeginDisabledGroup(GetIsReadyForConvert() == false);
-        if (GUILayout.Button("Convert"))
+        if (GUILayout.Button(T.Convert))
         {
             Convert();
         }
         EditorGUI.EndDisabledGroup();
-        CustomGUI.ItalicLabel("Clones your original avatar to preserve it");
+        CustomGUI.HelpLabel(T.ConvertDescription);
 
         if (animator != null)
         {
@@ -166,8 +196,8 @@ public class VRC3CVR : EditorWindow
             {
                 CustomGUI.SmallLineGap();
 
-                CustomGUI.RenderErrorMessage("You do not have a " + (leftToesTransform == null ? "left" : "right") + " toe bone configured");
-                CustomGUI.RenderWarningMessage("You must configure this before you upload your avatar");
+                CustomGUI.RenderErrorMessage(T.ToeError(leftToesTransform == null));
+                CustomGUI.RenderWarningMessage(T.ToeErrorDescription);
             }
         }
 
