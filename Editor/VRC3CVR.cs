@@ -464,6 +464,37 @@ public class VRC3CVR : EditorWindow
     {
         if (menu != null)
         {
+            void TreatChanging(VRCExpressionsMenu.Control control)
+            {
+                if (!string.IsNullOrEmpty(control.parameter.name))
+                {
+                    if (!toggleTable.TryGetValue(control.parameter.name, out var idTable))
+                    {
+                        idTable = new Dictionary<float, string>();
+                    }
+                    if (!idTable.ContainsKey(control.value))
+                    {
+                        idTable.Add(1, $"{control.name} Changing");
+                    }
+                    toggleTable[control.parameter.name] = idTable;
+                }
+            }
+            void TreatLabeledSubParameter(VRCExpressionsMenu.Control control, int index, int labelIndex, string fallbackSuffix)
+            {
+                if (control.subParameters != null && control.subParameters.Length > index && control.subParameters[index] != null && !string.IsNullOrEmpty(control.subParameters[index].name))
+                {
+                    var parameterName = control.subParameters[index].name;
+                    if (!toggleTable.TryGetValue(parameterName, out var idTable))
+                    {
+                        idTable = new Dictionary<float, string>();
+                    }
+                    if (!idTable.ContainsKey(control.value))
+                    {
+                        idTable.Add(float.NaN, control.labels != null && control.labels.Length > labelIndex && !string.IsNullOrWhiteSpace(control.labels[labelIndex].name) ? $"{control.name} {control.labels[labelIndex].name}" : $"{control.name} {fallbackSuffix}");
+                    }
+                    toggleTable[parameterName] = idTable;
+                }
+            }
             foreach (VRCExpressionsMenu.Control control in menu.controls)
             {
                 if (control.type == VRCExpressionsMenu.Control.ControlType.Toggle || control.type == VRCExpressionsMenu.Control.ControlType.Button)
@@ -487,18 +518,7 @@ public class VRC3CVR : EditorWindow
                 }
                 else if (control.type == VRCExpressionsMenu.Control.ControlType.RadialPuppet)
                 {
-                    if (!string.IsNullOrEmpty(control.parameter.name))
-                    {
-                        if (!toggleTable.TryGetValue(control.parameter.name, out var idTable))
-                        {
-                            idTable = new Dictionary<float, string>();
-                        }
-                        if (!idTable.ContainsKey(control.value))
-                        {
-                            idTable.Add(1, $"{control.name} Changing");
-                        }
-                        toggleTable[control.parameter.name] = idTable;
-                    }
+                    TreatChanging(control);
                     if (control.subParameters != null && control.subParameters.Length >= 1 && control.subParameters[0] != null && !string.IsNullOrEmpty(control.subParameters[0].name))
                     {
                         var parameterName = control.subParameters[0].name;
@@ -512,6 +532,20 @@ public class VRC3CVR : EditorWindow
                         }
                         toggleTable[parameterName] = idTable;
                     }
+                }
+                else if (control.type == VRCExpressionsMenu.Control.ControlType.TwoAxisPuppet)
+                {
+                    TreatChanging(control);
+                    TreatLabeledSubParameter(control, 0, 1, "Horizontal");
+                    TreatLabeledSubParameter(control, 1, 0, "Vertical");
+                }
+                else if (control.type == VRCExpressionsMenu.Control.ControlType.FourAxisPuppet)
+                {
+                    TreatChanging(control);
+                    TreatLabeledSubParameter(control, 0, 0, "Up");
+                    TreatLabeledSubParameter(control, 1, 1, "Right");
+                    TreatLabeledSubParameter(control, 2, 2, "Down");
+                    TreatLabeledSubParameter(control, 3, 3, "Left");
                 }
                 else if (control.type == VRCExpressionsMenu.Control.ControlType.SubMenu)
                 {
