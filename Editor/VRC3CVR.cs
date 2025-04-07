@@ -460,7 +460,7 @@ public class VRC3CVR : EditorWindow
         }
         chilloutAnimatorController.parameters = parameters;
     }
-    Dictionary<string, Dictionary<int, string>> FindMenuButtonsAndToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<int, string>> toggleTable)
+    Dictionary<string, Dictionary<float, string>> FindMenuButtonsAndToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<float, string>> toggleTable)
     {
         if (menu != null)
         {
@@ -468,22 +468,50 @@ public class VRC3CVR : EditorWindow
             {
                 if (control.type == VRCExpressionsMenu.Control.ControlType.Toggle || control.type == VRCExpressionsMenu.Control.ControlType.Button)
                 {
-                    Dictionary<int, string> idTable;
+                    Dictionary<float, string> idTable;
                     if (toggleTable.ContainsKey(control.parameter.name))
                     {
                         idTable = toggleTable[control.parameter.name];
                     }
                     else
                     {
-                        idTable = new Dictionary<int, string>();
+                        idTable = new Dictionary<float, string>();
                     }
 
-                    if (!idTable.ContainsKey((int)control.value))
+                    if (!idTable.ContainsKey(control.value))
                     {
-                        idTable.Add((int)control.value, control.name);
+                        idTable.Add(control.value, control.name);
                     }
 
                     toggleTable[control.parameter.name] = idTable;
+                }
+                else if (control.type == VRCExpressionsMenu.Control.ControlType.RadialPuppet)
+                {
+                    if (!string.IsNullOrEmpty(control.parameter.name))
+                    {
+                        if (!toggleTable.TryGetValue(control.parameter.name, out var idTable))
+                        {
+                            idTable = new Dictionary<float, string>();
+                        }
+                        if (!idTable.ContainsKey(control.value))
+                        {
+                            idTable.Add(1, $"{control.name} Changing");
+                        }
+                        toggleTable[control.parameter.name] = idTable;
+                    }
+                    if (control.subParameters != null && control.subParameters.Length >= 1 && control.subParameters[0] != null && !string.IsNullOrEmpty(control.subParameters[0].name))
+                    {
+                        var parameterName = control.subParameters[0].name;
+                        if (!toggleTable.TryGetValue(parameterName, out var idTable))
+                        {
+                            idTable = new Dictionary<float, string>();
+                        }
+                        if (!idTable.ContainsKey(control.value))
+                        {
+                            idTable.Add(float.NaN, control.name);
+                        }
+                        toggleTable[parameterName] = idTable;
+                    }
                 }
                 else if (control.type == VRCExpressionsMenu.Control.ControlType.SubMenu)
                 {
@@ -495,7 +523,7 @@ public class VRC3CVR : EditorWindow
         return toggleTable;
     }
 
-    List<CVRAdvancedSettingsDropDownEntry> GetAdvancedSettingsDropDownForParameter(String name, Dictionary<string, Dictionary<int, string>> toggleTable)
+    List<CVRAdvancedSettingsDropDownEntry> GetAdvancedSettingsDropDownForParameter(String name, Dictionary<string, Dictionary<float, string>> toggleTable)
     {
         List<CVRAdvancedSettingsDropDownEntry> advancedSettingsDropDownEntries = new List<CVRAdvancedSettingsDropDownEntry>();
 
@@ -512,8 +540,8 @@ public class VRC3CVR : EditorWindow
                 }
             }
 
-            Dictionary<int, string> idTable = toggleTable[name];
-            int lastIndex = idTable.Last().Key;
+            Dictionary<float, string> idTable = toggleTable[name];
+            int lastIndex = (int)idTable.Last().Key;
             for (int i = 0; i < lastIndex + 1; i++)
             {
                 String MenuEntryName = "---";
@@ -538,7 +566,7 @@ public class VRC3CVR : EditorWindow
 
         List<CVRAdvancedSettingsEntry> newParams = new List<CVRAdvancedSettingsEntry>();
 
-        Dictionary<string, Dictionary<int, string>> toggleTable = FindMenuButtonsAndToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<int, string>>());
+        Dictionary<string, Dictionary<float, string>> toggleTable = FindMenuButtonsAndToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<float, string>>());
 
         for (int i = 0; i < vrcParams?.parameters?.Length; i++)
         {
@@ -596,7 +624,7 @@ public class VRC3CVR : EditorWindow
                 case VRCExpressionParameters.ValueType.Float:
                     newParam = new CVRAdvancedSettingsEntry()
                     {
-                        name = vrcParam.name,
+                        name = toggleTable.TryGetValue(vrcParam.name, out var floatIdTable) && floatIdTable.Count > 0 ? floatIdTable.First().Value ?? vrcParam.name : vrcParam.name,
                         machineName = vrcParam.name,
                         unlinkNameFromMachineName = true,
                         type = CVRAdvancedSettingsEntry.SettingsType.Slider,
@@ -611,7 +639,7 @@ public class VRC3CVR : EditorWindow
                 case VRCExpressionParameters.ValueType.Bool:
                     newParam = new CVRAdvancedSettingsEntry()
                     {
-                        name = vrcParam.name,
+                        name = toggleTable.TryGetValue(vrcParam.name, out var idTable) && idTable.Count > 0 ? idTable.OrderBy(p => p.Key == 1 ? float.PositiveInfinity : p.Key).Last().Value ?? vrcParam.name : vrcParam.name,
                         machineName = vrcParam.name,
                         unlinkNameFromMachineName = true,
                         setting = new CVRAdvancesAvatarSettingGameObjectToggle()
