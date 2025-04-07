@@ -34,6 +34,7 @@ public class VRC3CVR : EditorWindow
     bool convertFXLayer = true;
     Vector2 scrollPosition;
     GameObject chilloutAvatarGameObject;
+    bool adjustToVrcMenuOrder = true;
     bool shouldCloneAvatar = true;
     bool shouldDeleteVRCAvatarDescriptorAndPipelineManager = true;
     bool shouldDeletePhysBones = true;
@@ -81,29 +82,30 @@ public class VRC3CVR : EditorWindow
 
     class T
     {
-        public static istring Description => new istring("Convert your VRChat avatar to ChilloutVR", "VRChatƒAƒoƒ^[‚ðChilloutVRƒAƒoƒ^[‚É•ÏŠ·");
-        public static istring Step1 => new istring("Step 1: Select your avatar", "Step 1: ƒAƒoƒ^[‚ð‘I‘ð");
-        public static istring Avatar => new istring("Avatar", "ƒAƒoƒ^[");
-        public static istring Step2 => new istring("Step 2: Configure settings", "Step 2: Ý’è");
-        public static istring ConvertLocomotionAnimator => new istring("Convert Locomotion Animator (NOT RECOMMEND)", "LocomotionƒŒƒCƒ„[‚ð•ÏŠ· (”ñ„§)");
-        public static istring ConvertLocomotionAnimatorDescription => new istring("Locomotion state machines will very likely not convert over correctly and this option is better left unticked for now", "LocomotionƒXƒe[ƒgƒ}ƒVƒ“‚Í³‚µ‚­•ÏŠ·‚³‚ê‚È‚¢‰Â”\«‚ª‚‚­A‚±‚ÌƒIƒvƒVƒ‡ƒ“‚Í¡‚Ì‚Æ‚±‚ëƒ`ƒFƒbƒN‚ðŠO‚µ‚Ä‚¨‚­‚±‚Æ‚ð‚¨Š©‚ß‚µ‚Ü‚·");
-        public static istring ConvertAdditiveAnimator => new istring("Convert Additive Animator (additive blend layers)", "AdditiveƒŒƒCƒ„[‚ð•ÏŠ·");
-        public static istring ConvertAdditiveAnimatorDescription => new istring("Additive state machine is commonly used for additively blended animations on the base avatar. May cause bicycle pose on certain avatars.", "AdditiveƒXƒe[ƒgƒ}ƒVƒ“‚ÍAƒx[ƒXƒAƒoƒ^[‚Ì‰ÁŽZƒuƒŒƒ“ƒhƒAƒjƒ[ƒVƒ‡ƒ“‚Éˆê”Ê“I‚ÉŽg—p‚³‚ê‚Ü‚·B“Á’è‚ÌƒAƒoƒ^[‚ÅŽ©“]ŽÔƒ|[ƒY‚ðˆø‚«‹N‚±‚·‰Â”\«‚ª‚ ‚è‚Ü‚·B");
-        public static istring ConvertGestureAnimator => new istring("Convert Gesture Animator (hands)", "GestureƒŒƒCƒ„[‚ð•ÏŠ· (Žè)");
-        public static istring ConvertGestureAnimatorDescription => new istring("If your avatar overwrites the default finger animations when performing expressions", "ƒAƒoƒ^[‚ª•\î‚ðŽÀs‚·‚é‚Æ‚«‚ÉƒfƒtƒHƒ‹ƒg‚ÌŽw‚ÌƒAƒjƒ[ƒVƒ‡ƒ“‚ðã‘‚«‚·‚éê‡‚ÍON");
-        public static istring ConvertActionAnimator => new istring("Convert Action Animator (NOT RECOMMEND)", "ActionƒŒƒCƒ„[‚ð•ÏŠ· (”ñ„§)");
-        public static istring ConvertActionAnimatorDescription => new istring("Actions (mostly used for emotes) will very likely not convert over correctly and this option is better left unticked for now", "ƒAƒNƒVƒ‡ƒ“ (Žå‚ÉƒGƒ‚[ƒg‚ÉŽg—p‚³‚ê‚é) ‚Í³‚µ‚­•ÏŠ·‚³‚ê‚È‚¢‰Â”\«‚ª‚‚­A‚±‚ÌƒIƒvƒVƒ‡ƒ“‚Í¡‚Ì‚Æ‚±‚ëƒ`ƒFƒbƒN‚ðŠO‚µ‚Ä‚¨‚­‚±‚Æ‚ð‚¨Š©‚ß‚µ‚Ü‚·");
-        public static istring ConvertFXAnimator => new istring("Convert FX Animator (blendshapes, particles, ect.)", "FXƒŒƒCƒ„[‚ð•ÏŠ· (ƒuƒŒƒ“ƒhƒVƒFƒCƒvAƒp[ƒeƒBƒNƒ‹‚È‚Ç)");
-        public static istring ConvertFXAnimatorDescription => new istring("FX state machine is commonly used all effects which don't affect the underlying rig, such as blendshapes and particle effects.", "FXƒXƒe[ƒgƒ}ƒVƒ“‚ÍAƒuƒŒƒ“ƒhƒVƒFƒCƒv‚âƒp[ƒeƒBƒNƒ‹ƒGƒtƒFƒNƒg‚È‚ÇAŠî‘b“I‚ÈƒŠƒO‚É‰e‹¿‚ð—^‚¦‚È‚¢‚·‚×‚Ä‚ÌƒGƒtƒFƒNƒg‚Éˆê”Ê“I‚ÉŽg—p‚³‚ê‚Ü‚·B");
-        public static istring CloneAvatar => new istring("Clone avatar", "ƒAƒoƒ^[‚ðƒNƒ[ƒ“");
-        public static istring DeleteVRCAvatarDescriptorAndPipelineManager => new istring("Delete VRC Avatar Descriptor and Pipeline Manager", "VRC Avatar Descriptor‚ÆPipeline Manager‚ðíœ");
-        public static istring DeletePhysBonesAndColliders => new istring("Delete PhysBones and colliders", "PhysBones‚ÆƒRƒ‰ƒCƒ_[‚ðíœ");
-        public static istring DeleteContactsDescription => new istring("Always deletes contact receivers and senders", "VRC Contact Receiver‚ÆSender‚Íí‚Éíœ‚³‚ê‚Ü‚·");
-        public static istring Step3 => new istring("Step 3: Convert", "Step 3: •ÏŠ·");
-        public static istring Convert => new istring("Convert", "•ÏŠ·");
-        public static istring ConvertDescription => new istring("Clones your original avatar to preserve it", "Œ³‚ÌƒAƒoƒ^[‚ðƒNƒ[ƒ“‚µ‚Ä•ÏŠ·‚µ‚Ü‚·");
-        public static istring ToeError(bool left) => new istring("You do not have a " + (left ? "left" : "right") + " toe bone configured", $"{(left ? "¶‘«" : "‰E‘«")}‚Ì‚Â‚Üæ‚Ìƒ{[ƒ“‚ªÝ’è‚³‚ê‚Ä‚¢‚Ü‚¹‚ñ");
-        public static istring ToeErrorDescription => new istring("You must configure this before you upload your avatar", "ƒAƒoƒ^[‚ðƒAƒbƒvƒ[ƒh‚·‚é‘O‚ÉÝ’è‚µ‚Ä‚­‚¾‚³‚¢");
+        public static istring Description => new istring("Convert your VRChat avatar to ChilloutVR", "VRChatã‚¢ãƒã‚¿ãƒ¼ã‚’ChilloutVRã‚¢ãƒã‚¿ãƒ¼ã«å¤‰æ›");
+        public static istring Step1 => new istring("Step 1: Select your avatar", "Step 1: ã‚¢ãƒã‚¿ãƒ¼ã‚’é¸æŠž");
+        public static istring Avatar => new istring("Avatar", "ã‚¢ãƒã‚¿ãƒ¼");
+        public static istring Step2 => new istring("Step 2: Configure settings", "Step 2: è¨­å®š");
+        public static istring ConvertLocomotionAnimator => new istring("Convert Locomotion Animator (NOT RECOMMEND)", "Locomotionãƒ¬ã‚¤ãƒ¤ãƒ¼ã‚’å¤‰æ› (éžæŽ¨å¥¨)");
+        public static istring ConvertLocomotionAnimatorDescription => new istring("Locomotion state machines will very likely not convert over correctly and this option is better left unticked for now", "Locomotionã‚¹ãƒ†ãƒ¼ãƒˆãƒžã‚·ãƒ³ã¯æ­£ã—ãå¤‰æ›ã•ã‚Œãªã„å¯èƒ½æ€§ãŒé«˜ãã€ã“ã®ã‚ªãƒ—ã‚·ãƒ§ãƒ³ã¯ä»Šã®ã¨ã“ã‚ãƒã‚§ãƒƒã‚¯ã‚’å¤–ã—ã¦ãŠãã“ã¨ã‚’ãŠå‹§ã‚ã—ã¾ã™");
+        public static istring ConvertAdditiveAnimator => new istring("Convert Additive Animator (additive blend layers)", "Additiveãƒ¬ã‚¤ãƒ¤ãƒ¼ã‚’å¤‰æ›");
+        public static istring ConvertAdditiveAnimatorDescription => new istring("Additive state machine is commonly used for additively blended animations on the base avatar. May cause bicycle pose on certain avatars.", "Additiveã‚¹ãƒ†ãƒ¼ãƒˆãƒžã‚·ãƒ³ã¯ã€ãƒ™ãƒ¼ã‚¹ã‚¢ãƒã‚¿ãƒ¼ã®åŠ ç®—ãƒ–ãƒ¬ãƒ³ãƒ‰ã‚¢ãƒ‹ãƒ¡ãƒ¼ã‚·ãƒ§ãƒ³ã«ä¸€èˆ¬çš„ã«ä½¿ç”¨ã•ã‚Œã¾ã™ã€‚ç‰¹å®šã®ã‚¢ãƒã‚¿ãƒ¼ã§è‡ªè»¢è»Šãƒãƒ¼ã‚ºã‚’å¼•ãèµ·ã“ã™å¯èƒ½æ€§ãŒã‚ã‚Šã¾ã™ã€‚");
+        public static istring ConvertGestureAnimator => new istring("Convert Gesture Animator (hands)", "Gestureãƒ¬ã‚¤ãƒ¤ãƒ¼ã‚’å¤‰æ› (æ‰‹)");
+        public static istring ConvertGestureAnimatorDescription => new istring("If your avatar overwrites the default finger animations when performing expressions", "ã‚¢ãƒã‚¿ãƒ¼ãŒè¡¨æƒ…ã‚’å®Ÿè¡Œã™ã‚‹ã¨ãã«ãƒ‡ãƒ•ã‚©ãƒ«ãƒˆã®æŒ‡ã®ã‚¢ãƒ‹ãƒ¡ãƒ¼ã‚·ãƒ§ãƒ³ã‚’ä¸Šæ›¸ãã™ã‚‹å ´åˆã¯ON");
+        public static istring ConvertActionAnimator => new istring("Convert Action Animator (NOT RECOMMEND)", "Actionãƒ¬ã‚¤ãƒ¤ãƒ¼ã‚’å¤‰æ› (éžæŽ¨å¥¨)");
+        public static istring ConvertActionAnimatorDescription => new istring("Actions (mostly used for emotes) will very likely not convert over correctly and this option is better left unticked for now", "ã‚¢ã‚¯ã‚·ãƒ§ãƒ³ (ä¸»ã«ã‚¨ãƒ¢ãƒ¼ãƒˆã«ä½¿ç”¨ã•ã‚Œã‚‹) ã¯æ­£ã—ãå¤‰æ›ã•ã‚Œãªã„å¯èƒ½æ€§ãŒé«˜ãã€ã“ã®ã‚ªãƒ—ã‚·ãƒ§ãƒ³ã¯ä»Šã®ã¨ã“ã‚ãƒã‚§ãƒƒã‚¯ã‚’å¤–ã—ã¦ãŠãã“ã¨ã‚’ãŠå‹§ã‚ã—ã¾ã™");
+        public static istring ConvertFXAnimator => new istring("Convert FX Animator (blendshapes, particles, ect.)", "FXãƒ¬ã‚¤ãƒ¤ãƒ¼ã‚’å¤‰æ› (ãƒ–ãƒ¬ãƒ³ãƒ‰ã‚·ã‚§ã‚¤ãƒ—ã€ãƒ‘ãƒ¼ãƒ†ã‚£ã‚¯ãƒ«ãªã©)");
+        public static istring ConvertFXAnimatorDescription => new istring("FX state machine is commonly used all effects which don't affect the underlying rig, such as blendshapes and particle effects.", "FXã‚¹ãƒ†ãƒ¼ãƒˆãƒžã‚·ãƒ³ã¯ã€ãƒ–ãƒ¬ãƒ³ãƒ‰ã‚·ã‚§ã‚¤ãƒ—ã‚„ãƒ‘ãƒ¼ãƒ†ã‚£ã‚¯ãƒ«ã‚¨ãƒ•ã‚§ã‚¯ãƒˆãªã©ã€åŸºç¤Žçš„ãªãƒªã‚°ã«å½±éŸ¿ã‚’ä¸Žãˆãªã„ã™ã¹ã¦ã®ã‚¨ãƒ•ã‚§ã‚¯ãƒˆã«ä¸€èˆ¬çš„ã«ä½¿ç”¨ã•ã‚Œã¾ã™ã€‚");
+        public static istring AdjustToVrcMenuOrder => new istring("Adjust to VRC menu order", "VRCãƒ¡ãƒ‹ãƒ¥ãƒ¼ã®é †åºã«èª¿æ•´");
+        public static istring CloneAvatar => new istring("Clone avatar", "ã‚¢ãƒã‚¿ãƒ¼ã‚’ã‚¯ãƒ­ãƒ¼ãƒ³");
+        public static istring DeleteVRCAvatarDescriptorAndPipelineManager => new istring("Delete VRC Avatar Descriptor and Pipeline Manager", "VRC Avatar Descriptorã¨Pipeline Managerã‚’å‰Šé™¤");
+        public static istring DeletePhysBonesAndColliders => new istring("Delete PhysBones and colliders", "PhysBonesã¨ã‚³ãƒ©ã‚¤ãƒ€ãƒ¼ã‚’å‰Šé™¤");
+        public static istring DeleteContactsDescription => new istring("Always deletes contact receivers and senders", "VRC Contact Receiverã¨Senderã¯å¸¸ã«å‰Šé™¤ã•ã‚Œã¾ã™");
+        public static istring Step3 => new istring("Step 3: Convert", "Step 3: å¤‰æ›");
+        public static istring Convert => new istring("Convert", "å¤‰æ›");
+        public static istring ConvertDescription => new istring("Clones your original avatar to preserve it", "å…ƒã®ã‚¢ãƒã‚¿ãƒ¼ã‚’ã‚¯ãƒ­ãƒ¼ãƒ³ã—ã¦å¤‰æ›ã—ã¾ã™");
+        public static istring ToeError(bool left) => new istring("You do not have a " + (left ? "left" : "right") + " toe bone configured", $"{(left ? "å·¦è¶³" : "å³è¶³")}ã®ã¤ã¾å…ˆã®ãƒœãƒ¼ãƒ³ãŒè¨­å®šã•ã‚Œã¦ã„ã¾ã›ã‚“");
+        public static istring ToeErrorDescription => new istring("You must configure this before you upload your avatar", "ã‚¢ãƒã‚¿ãƒ¼ã‚’ã‚¢ãƒƒãƒ—ãƒ­ãƒ¼ãƒ‰ã™ã‚‹å‰ã«è¨­å®šã—ã¦ãã ã•ã„");
     }
 
     void OnGUI()
@@ -159,6 +161,10 @@ public class VRC3CVR : EditorWindow
         CustomGUI.SmallLineGap();
 
         CustomGUI.RenderLink("Physbone -> DynamicBone Tool?", "https://github.com/Dreadrith/PhysBone-Converter");
+
+        CustomGUI.SmallLineGap();
+
+        adjustToVrcMenuOrder = GUILayout.Toggle(adjustToVrcMenuOrder, T.AdjustToVrcMenuOrder);
 
         CustomGUI.SmallLineGap();
 
@@ -490,6 +496,16 @@ public class VRC3CVR : EditorWindow
         }
         chilloutAnimatorController.parameters = parameters;
     }
+
+    List<string> parameterOrder;
+    void AddParameterOrder(string name)
+    {
+        if (!parameterOrder.Contains(name))
+        {
+            parameterOrder.Add(name);
+        }
+    }
+
     Dictionary<string, Dictionary<float, string>> FindMenuButtonsAndToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<float, string>> toggleTable)
     {
         if (menu != null)
@@ -498,6 +514,7 @@ public class VRC3CVR : EditorWindow
             {
                 if (!string.IsNullOrEmpty(control.parameter.name))
                 {
+                    AddParameterOrder(control.parameter.name);
                     if (!toggleTable.TryGetValue(control.parameter.name, out var idTable))
                     {
                         idTable = new Dictionary<float, string>();
@@ -514,6 +531,7 @@ public class VRC3CVR : EditorWindow
                 if (control.subParameters != null && control.subParameters.Length > index && control.subParameters[index] != null && !string.IsNullOrEmpty(control.subParameters[index].name))
                 {
                     var parameterName = control.subParameters[index].name;
+                    AddParameterOrder(parameterName);
                     if (!toggleTable.TryGetValue(parameterName, out var idTable))
                     {
                         idTable = new Dictionary<float, string>();
@@ -529,6 +547,7 @@ public class VRC3CVR : EditorWindow
             {
                 if (control.type == VRCExpressionsMenu.Control.ControlType.Toggle || control.type == VRCExpressionsMenu.Control.ControlType.Button)
                 {
+                    AddParameterOrder(control.parameter.name);
                     Dictionary<float, string> idTable;
                     if (toggleTable.ContainsKey(control.parameter.name))
                     {
@@ -552,6 +571,7 @@ public class VRC3CVR : EditorWindow
                     if (control.subParameters != null && control.subParameters.Length >= 1 && control.subParameters[0] != null && !string.IsNullOrEmpty(control.subParameters[0].name))
                     {
                         var parameterName = control.subParameters[0].name;
+                        AddParameterOrder(parameterName);
                         if (!toggleTable.TryGetValue(parameterName, out var idTable))
                         {
                             idTable = new Dictionary<float, string>();
@@ -630,6 +650,7 @@ public class VRC3CVR : EditorWindow
 
         List<CVRAdvancedSettingsEntry> newParams = new List<CVRAdvancedSettingsEntry>();
 
+        parameterOrder = new List<string>();
         Dictionary<string, Dictionary<float, string>> toggleTable = FindMenuButtonsAndToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<float, string>>());
 
         for (int i = 0; i < vrcParams?.parameters?.Length; i++)
@@ -724,6 +745,14 @@ public class VRC3CVR : EditorWindow
             {
                 newParams.Add(newParam);
             }
+        }
+
+        if (adjustToVrcMenuOrder)
+        {
+            newParams = newParams.OrderBy(p => {
+                var index = parameterOrder.IndexOf(p.machineName);
+                return index == -1 ? int.MaxValue : index;
+            }).ToList();
         }
 
         cvrAvatar.avatarSettings.settings = newParams;
