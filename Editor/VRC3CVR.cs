@@ -18,7 +18,7 @@ public class VRC3CVR : EditorWindow
 {
     Animator animator;
     bool isConverting = false;
-    VRCAvatarDescriptor vrcAvatarDescriptor;
+    public VRCAvatarDescriptor vrcAvatarDescriptor;
     CVRAvatar cvrAvatar;
     SkinnedMeshRenderer bodySkinnedMeshRenderer;
     Vector3 vrcViewPosition;
@@ -26,20 +26,21 @@ public class VRC3CVR : EditorWindow
     string blinkBlendshapeName;
     AnimatorController chilloutAnimatorController;
     AnimatorController[] vrcAnimatorControllers;
-    string outputDirName = "VRC3CVR_Output";
-    bool convertLocomotionLayer = false;
-    bool convertAdditiveLayer = false;
-    bool convertGestureLayer = true;
-    bool convertActionLayer = false;
-    bool convertFXLayer = true;
-    bool convertVRCAnimatorLocomotionControl = true;
-    bool convertVRCAnimatorTrackingControl = true;
+    public string outputDirName = "VRC3CVR_Output";
+    public bool convertLocomotionLayer = false;
+    public bool convertAdditiveLayer = false;
+    public bool convertGestureLayer = true;
+    public bool convertActionLayer = false;
+    public bool convertFXLayer = true;
+    public bool convertVRCAnimatorLocomotionControl = true;
+    public bool convertVRCAnimatorTrackingControl = true;
     Vector2 scrollPosition;
     GameObject chilloutAvatarGameObject;
-    bool adjustToVrcMenuOrder = true;
-    bool shouldCloneAvatar = true;
-    bool shouldDeleteVRCAvatarDescriptorAndPipelineManager = true;
-    bool shouldDeletePhysBones = true;
+    public GameObject chilloutAvatar => chilloutAvatarGameObject;
+    public bool adjustToVrcMenuOrder = true;
+    public bool shouldCloneAvatar = true;
+    public bool shouldDeleteVRCAvatarDescriptorAndPipelineManager = true;
+    public bool shouldDeletePhysBones = true;
 
     [Serializable]
     public enum VRCBaseAnimatorID
@@ -267,7 +268,7 @@ public class VRC3CVR : EditorWindow
         vrcAvatarDescriptor.gameObject.SetActive(false);
     }
 
-    void Convert()
+    public void Convert()
     {
         if (isConverting == true)
         {
