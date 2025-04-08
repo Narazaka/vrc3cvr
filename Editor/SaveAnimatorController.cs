@@ -109,6 +109,13 @@ public class SaveAnimatorController
         {
             SaveBlendTree(blendTree);
         }
+        else if (state.motion is AnimationClip clip)
+        {
+            if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(clip)))
+            {
+                AssetDatabase.AddObjectToAsset(clip, controller);
+            }
+        }
 
         if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(state)))
         {
