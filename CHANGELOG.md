@@ -1,3 +1,7 @@
+# 2.0.0-rc.8
+
+- fix: Fixed problem with transitions between state machines not being copied (This is a problem for complex animators)
+
 # 2.0.0-rc.7
 
 - feat: adjust to vrc menu order
