@@ -1,7 +1,7 @@
 # 2.0.0-rc.9
 
 - feat: VRCParameterDriver conversion
-- feat: VRCAnimatorTrackingControl conversion
+- feat: VRCAnimatorTrackingControl conversion (partial: except eyes, fingers, mouth)
 - feat: VRCAnimatorLocomotionControl conversion
 
 # 2.0.0-rc.8
