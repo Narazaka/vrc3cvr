@@ -46,7 +46,7 @@ So you have to bring the converted avatars from 2022 to 2021.
 
 But...
 
-Export packages often have the problem of including script assets that should not be exported.
+"Export Package.." often have the problem of including script assets that should not be exported.
 So I created an extension that allows exporting without script assets, etc.
 Install [Export Package (Advanced)](https://github.com/Narazaka/ExportPackageAdvanced) and simply replace "Export Package..." to "Export Package (Advanced)..."
 
