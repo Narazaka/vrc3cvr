@@ -1,3 +1,9 @@
+# 2.0.0-rc.9
+
+- feat: VRCParameterDriver conversion
+- feat: VRCAnimatorTrackingControl conversion
+- feat: VRCAnimatorLocomotionControl conversion
+
 # 2.0.0-rc.8
 
 - fix: Fixed problem with transitions between state machines not being copied (This is a problem for complex animators)
