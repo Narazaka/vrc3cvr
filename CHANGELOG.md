@@ -1,3 +1,7 @@
+# 2.0.0-rc.11
+
+- feat: make some methods and fields public for automation
+
 # 2.0.0-rc.10
 
 - fix: convert error with some avatars
