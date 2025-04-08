@@ -1,5 +1,7 @@
 # VRC3CVR
 
+- **[日本語](README.ja.md)**
+
 Convert a VRChat SDK3 avatar to ChilloutVR with this Unity script.
 
 - Keep a BACKUP of your original project.
