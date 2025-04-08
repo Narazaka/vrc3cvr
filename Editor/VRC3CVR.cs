@@ -1203,7 +1203,7 @@ public class VRC3CVR : EditorWindow
         }
     }
 
-    void ProcessStateMachine(AnimatorStateMachine stateMachine)
+    void ProcessStateMachine(AnimatorStateMachine stateMachine, ref AnimatorControllerParameter[] parameters)
     {
         for (int s = 0; s < stateMachine.states.Length; s++)
         {
@@ -1263,6 +1263,155 @@ public class VRC3CVR : EditorWindow
                 state.motion = ReplaceProxyAnimationClip(state.motion);
             }
 
+            var parameters2 = parameters;
+            AnimatorDriverTask.ParameterType TypeOf(string name)
+            {
+                var parameter = parameters2.FirstOrDefault(p => p.name == name);
+                if (parameter == null) return AnimatorDriverTask.ParameterType.Float;
+                switch (parameter.type)
+                {
+                    case AnimatorControllerParameterType.Bool: return AnimatorDriverTask.ParameterType.Bool;
+                    case AnimatorControllerParameterType.Int: return AnimatorDriverTask.ParameterType.Int;
+                    case AnimatorControllerParameterType.Float: return AnimatorDriverTask.ParameterType.Float;
+                    case AnimatorControllerParameterType.Trigger: return AnimatorDriverTask.ParameterType.Trigger;
+                }
+                return AnimatorDriverTask.ParameterType.None;
+            }
+
+            foreach (var behaviour in state.behaviours)
+            {
+                if (behaviour is VRCAvatarParameterDriver)
+                {
+                    var vrcDriver = behaviour as VRCAvatarParameterDriver;
+                    var cvrDriver = state.AddStateMachineBehaviour<AnimatorDriver>();
+                    cvrDriver.localOnly = vrcDriver.localOnly;
+                    for (int i = 0; i < vrcDriver.parameters.Count; i++)
+                    {
+                        var vrcParameter = vrcDriver.parameters[i];
+                        if (vrcParameter.type == VRC.SDKBase.VRC_AvatarParameterDriver.ChangeType.Set)
+                        {
+                            cvrDriver.EnterTasks.Add(new AnimatorDriverTask
+                            {
+                                op = AnimatorDriverTask.Operator.Set,
+                                targetName = vrcParameter.name,
+                                targetType = TypeOf(vrcParameter.name),
+                                aType = AnimatorDriverTask.SourceType.Static,
+                                aValue = vrcParameter.value,
+                            });
+                        }
+                        else if (vrcParameter.type == VRC.SDKBase.VRC_AvatarParameterDriver.ChangeType.Add)
+                        {
+                            cvrDriver.EnterTasks.Add(new AnimatorDriverTask
+                            {
+                                op = AnimatorDriverTask.Operator.Addition,
+                                targetName = vrcParameter.name,
+                                targetType = TypeOf(vrcParameter.name),
+                                aType = AnimatorDriverTask.SourceType.Parameter,
+                                aParamType = TypeOf(vrcParameter.name),
+                                aName = vrcParameter.name,
+                                bType = AnimatorDriverTask.SourceType.Static,
+                                bValue = vrcParameter.value,
+                            });
+                        }
+                        else if (vrcParameter.type == VRC.SDKBase.VRC_AvatarParameterDriver.ChangeType.Random)
+                        {
+                            var type = TypeOf(vrcParameter.name);
+                            if (type == AnimatorDriverTask.ParameterType.Int || type == AnimatorDriverTask.ParameterType.Float)
+                            {
+                                cvrDriver.EnterTasks.Add(new AnimatorDriverTask
+                                {
+                                    op = AnimatorDriverTask.Operator.Set,
+                                    targetName = vrcParameter.name,
+                                    targetType = type,
+                                    aType = AnimatorDriverTask.SourceType.Random,
+                                    aValue = vrcParameter.valueMin,
+                                    aMax = vrcParameter.valueMax,
+                                });
+                            }
+                            else
+                            {
+                                var newParameter = new AnimatorControllerParameter { type = AnimatorControllerParameterType.Float, name = vrcParameter.name + "_Random_" + GUID.Generate().ToString() };
+                                ArrayUtility.Add(ref parameters, newParameter);
+                                cvrDriver.EnterTasks.Add(new AnimatorDriverTask
+                                {
+                                    op = AnimatorDriverTask.Operator.Set,
+                                    targetName = newParameter.name,
+                                    targetType = AnimatorDriverTask.ParameterType.Float,
+                                    aType = AnimatorDriverTask.SourceType.Random,
+                                    aParamType = TypeOf(vrcParameter.name),
+                                    aValue = 0f,
+                                    aMax = 1f,
+                                });
+                                cvrDriver.EnterTasks.Add(new AnimatorDriverTask
+                                {
+                                    op = AnimatorDriverTask.Operator.LessThen,
+                                    targetName = vrcParameter.name,
+                                    targetType = TypeOf(vrcParameter.name),
+                                    aType = AnimatorDriverTask.SourceType.Parameter,
+                                    aParamType = AnimatorDriverTask.ParameterType.Float,
+                                    aName = newParameter.name,
+                                    bType = AnimatorDriverTask.SourceType.Static,
+                                    bValue = vrcParameter.chance,
+                                });
+                            }
+                        }
+                        else
+                        {
+                            if (vrcParameter.convertRange)
+                            {
+                                // src (srcMin - srcMax) => dst (dstMin - dstMax)
+                                // dst = (src - srcMin) * (dstMax - dstMin) / (srcMax - srcMin) + dstMin
+                                cvrDriver.EnterTasks.Add(new AnimatorDriverTask
+                                {
+                                    op = AnimatorDriverTask.Operator.Subtraction,
+                                    targetName = vrcParameter.name,
+                                    targetType = TypeOf(vrcParameter.name),
+                                    aType = AnimatorDriverTask.SourceType.Parameter,
+                                    aParamType = TypeOf(vrcParameter.source),
+                                    aName = vrcParameter.source,
+                                    bType = AnimatorDriverTask.SourceType.Static,
+                                    bValue = vrcParameter.sourceMin,
+                                });
+                                cvrDriver.EnterTasks.Add(new AnimatorDriverTask
+                                {
+                                    op = AnimatorDriverTask.Operator.Multiplication,
+                                    targetName = vrcParameter.name,
+                                    targetType = TypeOf(vrcParameter.name),
+                                    aType = AnimatorDriverTask.SourceType.Parameter,
+                                    aParamType = TypeOf(vrcParameter.name),
+                                    aName = vrcParameter.name,
+                                    bType = AnimatorDriverTask.SourceType.Static,
+                                    bValue = (vrcParameter.destMax - vrcParameter.destMin) / (vrcParameter.sourceMax - vrcParameter.sourceMin),
+                                });
+                                cvrDriver.EnterTasks.Add(new AnimatorDriverTask
+                                {
+                                    op = AnimatorDriverTask.Operator.Addition,
+                                    targetName = vrcParameter.name,
+                                    targetType = TypeOf(vrcParameter.name),
+                                    aType = AnimatorDriverTask.SourceType.Parameter,
+                                    aParamType = TypeOf(vrcParameter.name),
+                                    aName = vrcParameter.name,
+                                    bType = AnimatorDriverTask.SourceType.Static,
+                                    bValue = vrcParameter.destMin,
+                                });
+                            }
+                            else
+                            {
+                                cvrDriver.EnterTasks.Add(new AnimatorDriverTask
+                                {
+                                    op = AnimatorDriverTask.Operator.Set,
+                                    targetName = vrcParameter.name,
+                                    targetType = TypeOf(vrcParameter.name),
+                                    aType = AnimatorDriverTask.SourceType.Parameter,
+                                    aParamType = TypeOf(vrcParameter.source),
+                                    aName = vrcParameter.source,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
             AnimatorStateTransition[] newTransitions = ProcessTransitions(state.transitions);
             state.transitions = newTransitions;
         }
@@ -1277,7 +1426,7 @@ public class VRC3CVR : EditorWindow
 
         foreach (ChildAnimatorStateMachine childStateMachine in stateMachine.stateMachines)
         {
-            ProcessStateMachine(childStateMachine.stateMachine);
+            ProcessStateMachine(childStateMachine.stateMachine, ref parameters);
         }
     }
 
@@ -1521,7 +1670,9 @@ public class VRC3CVR : EditorWindow
             { // Do not copy empty layers
                 Debug.Log("Layer \"" + layer.name + "\" with " + layer.stateMachine.states.Length + " states");
 
-                ProcessStateMachine(layer.stateMachine);
+                var parameters = newAnimatorController.parameters;
+                ProcessStateMachine(layer.stateMachine, ref parameters);
+                newAnimatorController.parameters = parameters;
 
                 layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(animatorID, i, layer.avatarMask);
                 var layers = newAnimatorController.layers;
