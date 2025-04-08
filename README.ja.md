@@ -47,7 +47,7 @@ VRChatはUnity 2022.3.22f1、CCKはUnity 2021.3.45f1が必要です。
 
 1. 変換したアバターをProjectタブにドラッグ＆ドロップしてPrefabを作成します。
 2. Prefabを右クリックして「Export Package...」を選びます。
-3. `.unitypackage`を保存します。
+3. アバターの`.unitypackage`を好きな場所に保存します。
 
 ただし…
 
