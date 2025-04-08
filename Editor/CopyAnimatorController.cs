@@ -244,6 +244,15 @@ public class CopyAnimatorController
         // Recursively copy transitions for sub-state machines
         foreach (var subMachine in sourceStateMachine.stateMachines)
         {
+            var sourceStateMachineTransitions = sourceStateMachine.GetStateMachineTransitions(subMachine.stateMachine);
+            var newStateMachineTransitions = newStateMachine.GetStateMachineTransitions(subStateMachineMapping[subMachine.stateMachine]);
+            foreach (var transition in sourceStateMachineTransitions)
+            {
+                var newTransition = CopyTransition(transition, stateMapping, subStateMachineMapping);
+                ArrayUtility.Add(ref newStateMachineTransitions, newTransition);
+            }
+            newStateMachine.SetStateMachineTransitions(subStateMachineMapping[subMachine.stateMachine], newStateMachineTransitions);
+
             CopyTransitions(
                 subMachine.stateMachine,
                 subStateMachineMapping[subMachine.stateMachine],

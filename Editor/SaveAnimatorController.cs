@@ -76,6 +76,13 @@ public class SaveAnimatorController
 
         foreach (var subMachine in stateMachine.stateMachines)
         {
+            foreach (var transition in stateMachine.GetStateMachineTransitions(subMachine.stateMachine))
+            {
+                if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(transition)))
+                {
+                    AssetDatabase.AddObjectToAsset(transition, controller);
+                }
+            }
             SaveStateMachine(subMachine.stateMachine);
         }
     }
