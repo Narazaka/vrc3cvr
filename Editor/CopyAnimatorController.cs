@@ -102,13 +102,6 @@ public class CopyAnimatorController
             parentStateMachinePosition = sourceStateMachine.parentStateMachinePosition
         };
 
-        // Copy StateMachineBehaviours
-        foreach (var behaviour in sourceStateMachine.behaviours)
-        {
-            var newBehaviour = newStateMachine.AddStateMachineBehaviour(behaviour.GetType());
-            CopyStateMachineBehaviourValues(behaviour, newBehaviour);
-        }
-
         // First pass: Create all states and sub-state machines
         var stateMapping = new Dictionary<AnimatorState, AnimatorState>();
         var subStateMachineMapping = new Dictionary<AnimatorStateMachine, AnimatorStateMachine>();
@@ -116,6 +109,8 @@ public class CopyAnimatorController
 
         // Second pass: Copy all transitions
         CopyTransitions(sourceStateMachine, newStateMachine, stateMapping, subStateMachineMapping);
+
+        CopyBehaviours(sourceStateMachine, newStateMachine, stateMapping, subStateMachineMapping);
 
         // Copy default state if it exists
         if (sourceStateMachine.defaultState != null && stateMapping.ContainsKey(sourceStateMachine.defaultState))
@@ -254,6 +249,36 @@ public class CopyAnimatorController
             newStateMachine.SetStateMachineTransitions(subStateMachineMapping[subMachine.stateMachine], newStateMachineTransitions);
 
             CopyTransitions(
+                subMachine.stateMachine,
+                subStateMachineMapping[subMachine.stateMachine],
+                stateMapping,
+                subStateMachineMapping
+            );
+        }
+    }
+
+    private void CopyBehaviours(
+        AnimatorStateMachine sourceStateMachine,
+        AnimatorStateMachine newStateMachine,
+        Dictionary<AnimatorState, AnimatorState> stateMapping,
+        Dictionary<AnimatorStateMachine, AnimatorStateMachine> subStateMachineMapping)
+    {
+        foreach (var behaviour in sourceStateMachine.behaviours)
+        {
+            var newBehaviour = newStateMachine.AddStateMachineBehaviour(behaviour.GetType());
+            CopyStateMachineBehaviourValues(behaviour, newBehaviour);
+        }
+        foreach (var state in sourceStateMachine.states)
+        {
+            foreach (var behaviour in state.state.behaviours)
+            {
+                var newBehaviour = stateMapping[state.state].AddStateMachineBehaviour(behaviour.GetType());
+                CopyStateMachineBehaviourValues(behaviour, newBehaviour);
+            }
+        }
+        foreach (var subMachine in sourceStateMachine.stateMachines)
+        {
+            CopyBehaviours(
                 subMachine.stateMachine,
                 subStateMachineMapping[subMachine.stateMachine],
                 stateMapping,
