@@ -1,3 +1,7 @@
+# 2.0.0-rc.10
+
+- fix: convert error with some avatars
+
 # 2.0.0-rc.9
 
 - feat: VRCParameterDriver conversion
