@@ -32,6 +32,8 @@ public class VRC3CVR : EditorWindow
     bool convertGestureLayer = true;
     bool convertActionLayer = false;
     bool convertFXLayer = true;
+    bool convertVRCAnimatorLocomotionControl = true;
+    bool convertVRCAnimatorTrackingControl = true;
     Vector2 scrollPosition;
     GameObject chilloutAvatarGameObject;
     bool adjustToVrcMenuOrder = true;
@@ -96,6 +98,10 @@ public class VRC3CVR : EditorWindow
         public static istring ConvertActionAnimatorDescription => new istring("Actions (mostly used for emotes) will very likely not convert over correctly and this option is better left unticked for now", "アクション (主にエモートに使用される) は正しく変換されない可能性が高く、このオプションは今のところチェックを外しておくことをお勧めします");
         public static istring ConvertFXAnimator => new istring("Convert FX Animator (blendshapes, particles, ect.)", "FXレイヤーを変換 (ブレンドシェイプ、パーティクルなど)");
         public static istring ConvertFXAnimatorDescription => new istring("FX state machine is commonly used all effects which don't affect the underlying rig, such as blendshapes and particle effects.", "FXステートマシンは、ブレンドシェイプやパーティクルエフェクトなど、基礎的なリグに影響を与えないすべてのエフェクトに一般的に使用されます。");
+        public static istring ConvertVRCAnimatorLocomotionControl => new istring("Convert VRC Animator Locomotion Control", "VRC Animator Locomotion Controlを変換");
+        public static istring ConvertVRCAnimatorLocomotionControlDescription => new istring("Converts the VRC Animator Locomotion Control to BodyControl", "VRC Animator Locomotion ControlをBodyControlに変換");
+        public static istring ConvertVRCAnimatorTrackingControl => new istring("Convert VRC Animator Tracking Control", "VRC Animator Tracking Controlを変換");
+        public static istring ConvertVRCAnimatorTrackingControlDescription => new istring("Converts the VRC Animator Tracking Control to BodyControl", "VRC Animator Tracking ControlをBodyControlに変換");
         public static istring AdjustToVrcMenuOrder => new istring("Adjust to VRC menu order", "VRCメニューの順序に調整");
         public static istring CloneAvatar => new istring("Clone avatar", "アバターをクローン");
         public static istring DeleteVRCAvatarDescriptorAndPipelineManager => new istring("Delete VRC Avatar Descriptor and Pipeline Manager", "VRC Avatar DescriptorとPipeline Managerを削除");
@@ -157,6 +163,16 @@ public class VRC3CVR : EditorWindow
 
         convertFXLayer = GUILayout.Toggle(convertFXLayer, T.ConvertFXAnimator);
         CustomGUI.HelpLabel(T.ConvertFXAnimatorDescription);
+
+        CustomGUI.SmallLineGap();
+
+        convertVRCAnimatorLocomotionControl = GUILayout.Toggle(convertVRCAnimatorLocomotionControl, T.ConvertVRCAnimatorLocomotionControl);
+        CustomGUI.HelpLabel(T.ConvertVRCAnimatorLocomotionControlDescription);
+
+        CustomGUI.SmallLineGap();
+
+        convertVRCAnimatorTrackingControl = GUILayout.Toggle(convertVRCAnimatorTrackingControl, T.ConvertVRCAnimatorTrackingControl);
+        CustomGUI.HelpLabel(T.ConvertVRCAnimatorTrackingControlDescription);
 
         CustomGUI.SmallLineGap();
 
@@ -1408,6 +1424,48 @@ public class VRC3CVR : EditorWindow
                                 });
                             }
                         }
+                    }
+                }
+                else if (behaviour is VRCAnimatorLocomotionControl)
+                {
+                    var bodyControl = state.behaviours.FirstOrDefault(b => b is BodyControl) as BodyControl;
+                    if (bodyControl == null) bodyControl = state.AddStateMachineBehaviour<BodyControl>();
+                    var vrcLocomotionControl = behaviour as VRCAnimatorLocomotionControl;
+                    bodyControl.EnterTasks.Add(new BodyControlTask
+                    {
+                        target = BodyControlTask.BodyMask.Locomotion,
+                        targetWeight = vrcLocomotionControl.disableLocomotion ? 0f : 1f,
+                    });
+                }
+                else if (behaviour is VRCAnimatorTrackingControl)
+                {
+                    var vrcTrackingControl = behaviour as VRCAnimatorTrackingControl;
+                    if (vrcTrackingControl.trackingHead != VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.NoChange ||
+                        vrcTrackingControl.trackingLeftHand != VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.NoChange ||
+                        vrcTrackingControl.trackingRightHand != VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.NoChange ||
+                        vrcTrackingControl.trackingLeftFoot != VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.NoChange ||
+                        vrcTrackingControl.trackingRightFoot != VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.NoChange ||
+                        vrcTrackingControl.trackingHip != VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.NoChange)
+                    {
+                        var bodyControl = state.behaviours.FirstOrDefault(b => b is BodyControl) as BodyControl;
+                        if (bodyControl == null) bodyControl = state.AddStateMachineBehaviour<BodyControl>();
+                        void Adjust(VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType vrcTrackingType, BodyControlTask.BodyMask cvrBodyMask)
+                        {
+                            if (vrcTrackingType != VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.NoChange)
+                            {
+                                bodyControl.EnterTasks.Add(new BodyControlTask
+                                {
+                                    target = cvrBodyMask,
+                                    targetWeight = vrcTrackingType == VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.Tracking ? 1f : 0f,
+                                });
+                            }
+                        }
+                        Adjust(vrcTrackingControl.trackingHead, BodyControlTask.BodyMask.Head);
+                        Adjust(vrcTrackingControl.trackingLeftHand, BodyControlTask.BodyMask.LeftArm);
+                        Adjust(vrcTrackingControl.trackingRightHand, BodyControlTask.BodyMask.RightArm);
+                        Adjust(vrcTrackingControl.trackingLeftFoot, BodyControlTask.BodyMask.LeftLeg);
+                        Adjust(vrcTrackingControl.trackingRightFoot, BodyControlTask.BodyMask.RightLeg);
+                        Adjust(vrcTrackingControl.trackingHip, BodyControlTask.BodyMask.Pelvis);
                     }
                 }
             }
