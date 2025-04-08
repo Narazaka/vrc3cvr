@@ -552,7 +552,7 @@ public class VRC3CVR : EditorWindow
                     {
                         idTable = new Dictionary<float, string>();
                     }
-                    if (!idTable.ContainsKey(control.value))
+                    if (!idTable.ContainsKey(float.NaN))
                     {
                         idTable.Add(float.NaN, control.labels != null && control.labels.Length > labelIndex && !string.IsNullOrWhiteSpace(control.labels[labelIndex].name) ? $"{control.name} {control.labels[labelIndex].name}" : $"{control.name} {fallbackSuffix}");
                     }
@@ -592,7 +592,7 @@ public class VRC3CVR : EditorWindow
                         {
                             idTable = new Dictionary<float, string>();
                         }
-                        if (!idTable.ContainsKey(control.value))
+                        if (!idTable.ContainsKey(float.NaN))
                         {
                             idTable.Add(float.NaN, control.name);
                         }
