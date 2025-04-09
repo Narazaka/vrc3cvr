@@ -1742,6 +1742,26 @@ public class VRC3CVR : EditorWindow
 
         new CopyAnimatorController(newAnimatorController).CopyControllerTo(chilloutAnimatorController);
 
+        // convenient for preview
+        if (chilloutAnimatorController.parameters.Any(p => p.name == "Grounded" && p.defaultBool == false))
+        {
+            var parameters = chilloutAnimatorController.parameters;
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                if (parameters[i].name == "Grounded")
+                {
+                    parameters[i] = new AnimatorControllerParameter
+                    {
+                        name = "Grounded",
+                        type = AnimatorControllerParameterType.Bool,
+                        defaultBool = true,
+                    };
+                    break;
+                }
+            }
+            chilloutAnimatorController.parameters = parameters;
+        }
+
         // Save all elements to chilloutAnimatorController
         new SaveAnimatorController(chilloutAnimatorController).Save();
 
