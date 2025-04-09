@@ -1,3 +1,7 @@
+# 2.0.0-rc.12
+
+- feat: Grounded param = true by default (convenient for preview)
+
 # 2.0.0-rc.11
 
 - feat: make some methods and fields public for automation
