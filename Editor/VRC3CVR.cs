@@ -27,6 +27,8 @@ public class VRC3CVR : EditorWindow
     string blinkBlendshapeName;
     AnimatorController chilloutAnimatorController;
     AnimatorController[] vrcAnimatorControllers;
+    Dictionary<string, string[]> contactComponentPathRemap;
+    HashSet<string> constantContactProxiedParameters;
     public string outputDirName = "VRC3CVR_Output";
     public bool convertLocomotionLayer = false;
     public bool convertAdditiveLayer = false;
@@ -35,7 +37,7 @@ public class VRC3CVR : EditorWindow
     public bool convertFXLayer = true;
     public bool convertVRCAnimatorLocomotionControl = true;
     public bool convertVRCAnimatorTrackingControl = true;
-    public bool convertVRCContactSendersAndReceivers = false;
+    public bool convertVRCContactSendersAndReceivers = true;
     Vector2 scrollPosition;
     GameObject chilloutAvatarGameObject;
     public GameObject chilloutAvatar => chilloutAvatarGameObject;
@@ -106,7 +108,7 @@ public class VRC3CVR : EditorWindow
         public static istring ConvertVRCAnimatorTrackingControl => new istring("Convert VRC Animator Tracking Control", "VRC Animator Tracking Controlを変換");
         public static istring ConvertVRCAnimatorTrackingControlDescription => new istring("Converts the VRC Animator Tracking Control to BodyControl", "VRC Animator Tracking ControlをBodyControlに変換");
         public static istring ConvertVRCContactSendersAndReceivers => new istring("Convert VRC Contact Senders and Receivers to CVR Pointer and CVR Advanced Avatar Trigger", "VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換");
-        public static istring ConvertVRCContactSendersAndReceiversDescription => new istring("Very Experimental, may not work as expected", "非常に実験的で、期待通りに動作しない場合があります");
+        public static istring ConvertVRCContactSendersAndReceiversDescription => new istring("Unlike VRC Contact, CVR Pointer and Trigger only change values when the contact collides. This difference may cause compatibility issues.", "VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。");
         public static istring AdjustToVrcMenuOrder => new istring("Adjust to VRC menu order", "VRCメニューの順序に調整");
         public static istring CloneAvatar => new istring("Clone avatar", "アバターをクローン");
         public static istring DeleteVRCAvatarDescriptorAndPipelineManager => new istring("Delete VRC Avatar Descriptor and Pipeline Manager", "VRC Avatar DescriptorとPipeline Managerを削除");
@@ -310,9 +312,15 @@ public class VRC3CVR : EditorWindow
         GetValuesFromVrcAvatar();
         CreateChilloutComponentIfNeeded();
         PopulateChilloutComponent();
-        if (convertVRCContactSendersAndReceivers) ConvertContactsToCVRComponents();
         CreateEmptyChilloutAnimator();
         MergeVrcAnimatorsIntoChilloutAnimator();
+        if (convertVRCContactSendersAndReceivers)
+        {
+            ConvertContactsToCVRComponents();
+            RemapAnimationOfContactComponent();
+            MakeProxyLayersOfConstantContactParameters();
+        }
+        SaveChilloutAnimator();
         SetAnimator();
         ConvertVrcParametersToChillout();
         InsertChilloutOverride();
@@ -1292,19 +1300,7 @@ public class VRC3CVR : EditorWindow
             }
 
             var parameters2 = parameters;
-            AnimatorDriverTask.ParameterType TypeOf(string name)
-            {
-                var parameter = parameters2.FirstOrDefault(p => p.name == name);
-                if (parameter == null) return AnimatorDriverTask.ParameterType.Float;
-                switch (parameter.type)
-                {
-                    case AnimatorControllerParameterType.Bool: return AnimatorDriverTask.ParameterType.Bool;
-                    case AnimatorControllerParameterType.Int: return AnimatorDriverTask.ParameterType.Int;
-                    case AnimatorControllerParameterType.Float: return AnimatorDriverTask.ParameterType.Float;
-                    case AnimatorControllerParameterType.Trigger: return AnimatorDriverTask.ParameterType.Trigger;
-                }
-                return AnimatorDriverTask.ParameterType.None;
-            }
+            AnimatorDriverTask.ParameterType TypeOf(string name) => AnimatorDriverParameterType(parameters2, name);
 
             foreach (var behaviour in state.behaviours)
             {
@@ -1498,6 +1494,20 @@ public class VRC3CVR : EditorWindow
         {
             ProcessStateMachine(childStateMachine.stateMachine, ref parameters);
         }
+    }
+
+    static AnimatorDriverTask.ParameterType AnimatorDriverParameterType(AnimatorControllerParameter[] parameters, string name)
+    {
+        var parameter = parameters.FirstOrDefault(p => p.name == name);
+        if (parameter == null) return AnimatorDriverTask.ParameterType.Float;
+        switch (parameter.type)
+        {
+            case AnimatorControllerParameterType.Bool: return AnimatorDriverTask.ParameterType.Bool;
+            case AnimatorControllerParameterType.Int: return AnimatorDriverTask.ParameterType.Int;
+            case AnimatorControllerParameterType.Float: return AnimatorDriverTask.ParameterType.Float;
+            case AnimatorControllerParameterType.Trigger: return AnimatorDriverTask.ParameterType.Trigger;
+        }
+        return AnimatorDriverTask.ParameterType.None;
     }
 
     AvatarMask ReplaceVRCMask(AvatarMask mask)
@@ -1753,6 +1763,11 @@ public class VRC3CVR : EditorWindow
 
         new CopyAnimatorController(newAnimatorController).CopyControllerTo(chilloutAnimatorController);
 
+        Debug.Log("Merged");
+    }
+
+    void SaveChilloutAnimator()
+    {
         // convenient for preview
         if (chilloutAnimatorController.parameters.Any(p => p.name == "Grounded" && p.defaultBool == false))
         {
@@ -1775,8 +1790,6 @@ public class VRC3CVR : EditorWindow
 
         // Save all elements to chilloutAnimatorController
         new SaveAnimatorController(chilloutAnimatorController).Save();
-
-        Debug.Log("Merged");
     }
 
     void CreateEmptyChilloutAnimator()
@@ -2087,18 +2100,23 @@ public class VRC3CVR : EditorWindow
     {
         var senders = chilloutAvatarGameObject.GetComponentsInChildren<VRCContactSender>(true);
         var receivers = chilloutAvatarGameObject.GetComponentsInChildren<VRCContactReceiver>(true);
+        contactComponentPathRemap = new Dictionary<string, string[]>();
+        constantContactProxiedParameters = new HashSet<string>();
         foreach (var sender in senders)
         {
             if (sender.collisionTags.Count == 0)
             {
                 continue;
             }
+            var originalPath = ChilloutAvatarRelativePath(sender);
+            var remappedPaths = new List<string>();
             var collisionTags = sender.collisionTags.Select(CollisionTagToCVRType).Distinct().ToArray(); ;
             if (collisionTags.Length == 1)
             {
                 var contactGameObject = SuitableContactObjectWithCollider(sender.gameObject, sender);
                 var cvrPointer = contactGameObject.AddComponent<CVRPointer>();
                 cvrPointer.type = collisionTags.FirstOrDefault();
+                remappedPaths.Add(ChilloutAvatarRelativePath(contactGameObject));
             }
             else
             {
@@ -2113,7 +2131,12 @@ public class VRC3CVR : EditorWindow
                     var contactGameObject = SuitableContactObjectWithCollider(gameObject, sender);
                     var cvrPointer = contactGameObject.AddComponent<CVRPointer>();
                     cvrPointer.type = collisionTag;
+                    remappedPaths.Add(ChilloutAvatarRelativePath(contactGameObject));
                 }
+            }
+            if (!(remappedPaths.Count == 1 && remappedPaths[0] == originalPath))
+            {
+                contactComponentPathRemap[originalPath] = remappedPaths.ToArray();
             }
             DestroyImmediate(sender);
         }
@@ -2124,17 +2147,29 @@ public class VRC3CVR : EditorWindow
                 continue;
             }
             var contactGameObject = SuitableContactObjectWithCollider(receiver.gameObject, receiver);
-            var cvrTrigger = receiver.gameObject.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
+            var cvrTrigger = contactGameObject.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
             cvrTrigger.useAdvancedTrigger = true;
             cvrTrigger.isLocalInteractable = receiver.allowSelf;
             cvrTrigger.isNetworkInteractable = receiver.allowOthers;
             cvrTrigger.allowedTypes = receiver.collisionTags.Select(CollisionTagToCVRType).Distinct().ToArray();
             if (receiver.receiverType == VRC.Dynamics.ContactReceiver.ReceiverType.Constant)
             {
+                var proxyParameter = ConstantContactProxiedParameterName(receiver.parameter);
+                constantContactProxiedParameters.Add(receiver.parameter);
+                // Count the number of pointers that are inside, so that if one is inside, it will be true
+                // see MakeProxyLayersOfConstantContactParameters
                 cvrTrigger.enterTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
                 {
-                    updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Toggle,
-                    settingName = receiver.parameter,
+                    updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Add,
+                    settingName = proxyParameter,
+                    settingValue = 1f,
+                    delay = 0f,
+                    holdTime = 0f,
+                });
+                cvrTrigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
+                {
+                    updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Subtract,
+                    settingName = proxyParameter,
                     settingValue = 1f,
                     delay = 0f,
                     holdTime = 0f,
@@ -2165,26 +2200,251 @@ public class VRC3CVR : EditorWindow
                 {
                     updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromDistance,
                     settingName = receiver.parameter,
-                    minValue = 0f,
-                    maxValue = 1f,
+                    // caution: this is inverted!
+                    minValue = 1f,
+                    maxValue = 0f,
                 });
+            }
+            var originalPath = ChilloutAvatarRelativePath(receiver);
+            var remappedPath = ChilloutAvatarRelativePath(contactGameObject);
+            if (originalPath != remappedPath)
+            {
+                contactComponentPathRemap[originalPath] = new[] { remappedPath };
             }
             DestroyImmediate(receiver);
         }
     }
 
-    GameObject SuitableContactObjectWithCollider(GameObject targetGameObject, VRC.Dynamics.ContactBase contact)
+    void RemapAnimationOfContactComponent()
+    {
+        foreach (var layer in chilloutAnimatorController.layers)
+        {
+            if (layer.stateMachine != null)
+            {
+                RemapAnimationOfContactComponent(layer.stateMachine);
+            }
+        }
+    }
+
+    void RemapAnimationOfContactComponent(AnimatorStateMachine stateMachine)
+    {
+        foreach (var childState in stateMachine.states)
+        {
+            if (childState.state.motion is AnimationClip)
+            {
+                var newClip = RemapAnimationClipOfContactComponent(childState.state.motion as AnimationClip);
+                if (newClip != null)
+                {
+                    childState.state.motion = newClip;
+                }
+            }
+            if (childState.state.motion is BlendTree)
+            {
+                RemapAnimationOfContactComponent(childState.state.motion as BlendTree);
+            }
+        }
+        foreach (var childStateMachine in stateMachine.stateMachines)
+        {
+            RemapAnimationOfContactComponent(childStateMachine.stateMachine);
+        }
+    }
+
+    void RemapAnimationOfContactComponent(BlendTree blendTree)
+    {
+        var children = blendTree.children;
+        for (var i = 0; i < children.Length; ++i)
+        {
+            var childMotion = children[i];
+            if (childMotion.motion is AnimationClip)
+            {
+                var newClip = RemapAnimationClipOfContactComponent(childMotion.motion as AnimationClip);
+                if (newClip != null)
+                {
+                    childMotion.motion = newClip;
+                    children[i] = childMotion;
+                }
+            }
+            else if (childMotion.motion is BlendTree)
+            {
+                RemapAnimationOfContactComponent(childMotion.motion as BlendTree);
+            }
+        }
+        blendTree.children = children;
+    }
+
+    AnimationClip RemapAnimationClipOfContactComponent(AnimationClip clip)
+    {
+        var bindings = AnimationUtility.GetCurveBindings(clip);
+        AnimationClip newClip = null;
+        foreach (var binding in bindings)
+        {
+            if ((binding.type == typeof(VRCContactReceiver) || binding.type == typeof(VRCContactSender)))
+            {
+                if (newClip == null)
+                {
+                    newClip = new AnimationClip
+                    {
+                        name = clip.name + "_Remapped",
+                        legacy = clip.legacy,
+                        frameRate = clip.frameRate,
+                        wrapMode = clip.wrapMode,
+                    };
+                    EditorUtility.CopySerialized(clip, newClip);
+                }
+                var curve = AnimationUtility.GetEditorCurve(newClip, binding);
+                if (!contactComponentPathRemap.TryGetValue(binding.path, out var remappedPaths))
+                {
+                    remappedPaths = new string[] { binding.path };
+                }
+                foreach (var remappedPath in remappedPaths)
+                {
+                    var newBinding = binding;
+                    newBinding.path = remappedPath;
+                    newBinding.type = newBinding.type == typeof(VRCContactReceiver) ? typeof(CVRAdvancedAvatarSettingsTrigger) : typeof(CVRPointer);
+                    AnimationUtility.SetEditorCurve(newClip, newBinding, curve);
+                }
+            }
+        }
+        if (newClip != null) Debug.Log($"Remapped: {clip}");
+        return newClip;
+    }
+
+    void MakeProxyLayersOfConstantContactParameters()
+    {
+        var emptyClip = new AnimationClip
+        {
+            name = "MakeProxyLayersOfConstantContactParameters_Empty",
+        };
+        var parameters = chilloutAnimatorController.parameters;
+        AnimatorDriverTask.ParameterType TypeOf(string name) => AnimatorDriverParameterType(parameters, name);
+
+        foreach (var parameterName in constantContactProxiedParameters)
+        {
+            var proxyParameter = new AnimatorControllerParameter
+            {
+                name = ConstantContactProxiedParameterName(parameterName),
+                type = AnimatorControllerParameterType.Int,
+                defaultInt = 0,
+            };
+            ArrayUtility.Add(ref parameters, proxyParameter);
+            var activeState = new AnimatorState
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                name = "Active",
+                writeDefaultValues = true,
+                motion = emptyClip,
+                transitions = new AnimatorStateTransition[]
+                {
+                    new AnimatorStateTransition
+                    {
+                        hideFlags = HideFlags.HideInHierarchy,
+                        hasExitTime = false,
+                        hasFixedDuration = true,
+                        exitTime = 0f,
+                        duration = 0f,
+                        offset = 0f,
+                        isExit = true,
+                        conditions = new AnimatorCondition[]
+                        {
+                            new AnimatorCondition
+                            {
+                                mode = AnimatorConditionMode.Equals,
+                                parameter = proxyParameter.name,
+                                threshold = 0f,
+                            },
+                        },
+                    },
+                },
+                behaviours = new StateMachineBehaviour[]
+                {
+                    new AnimatorDriver
+                    {
+                        hideFlags = HideFlags.HideInHierarchy,
+                        localOnly = false,
+                        EnterTasks = new List<AnimatorDriverTask>
+                        {
+                            new AnimatorDriverTask
+                            {
+                                op = AnimatorDriverTask.Operator.Set,
+                                targetName = parameterName,
+                                targetType = TypeOf(parameterName),
+                                aType = AnimatorDriverTask.SourceType.Static,
+                                aValue = 1f,
+                            },
+                        },
+                        ExitTasks = new List<AnimatorDriverTask>
+                        {
+                            new AnimatorDriverTask
+                            {
+                                op = AnimatorDriverTask.Operator.Set,
+                                targetName = parameterName,
+                                targetType = TypeOf(parameterName),
+                                aType = AnimatorDriverTask.SourceType.Static,
+                                aValue = 0f,
+                            },
+                        },
+                    },
+                },
+            };
+            var idleState = new AnimatorState
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                name = "Idle",
+                writeDefaultValues = true,
+                motion = emptyClip,
+                transitions = new AnimatorStateTransition[]
+                {
+                    new AnimatorStateTransition
+                    {
+                        hideFlags = HideFlags.HideInHierarchy,
+                        hasExitTime = false,
+                        hasFixedDuration = true,
+                        exitTime = 0f,
+                        duration = 0f,
+                        offset = 0f,
+                        destinationState = activeState,
+                        conditions = new AnimatorCondition[]
+                        {
+                            new AnimatorCondition
+                            {
+                                mode = AnimatorConditionMode.Greater,
+                                parameter = proxyParameter.name,
+                                threshold = 0f,
+                            },
+                        },
+                    },
+                },
+            };
+            var layerName = chilloutAnimatorController.MakeUniqueLayerName(ConstantContactProxiedParameterName(parameterName));
+            var layer = new AnimatorControllerLayer
+            {
+                name = layerName,
+                defaultWeight = 1f,
+                blendingMode = AnimatorLayerBlendingMode.Override,
+                avatarMask = emptyMask,
+                stateMachine = new AnimatorStateMachine
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    name = layerName,
+                    entryPosition = new Vector3(0, -100),
+                    exitPosition = new Vector3(0, 200),
+                    anyStatePosition = new Vector3(0, -300),
+                    defaultState = idleState,
+                    states = new ChildAnimatorState[]
+                    {
+                        new ChildAnimatorState { state = idleState, position = new Vector3(0, 0) },
+                        new ChildAnimatorState { state = activeState, position = new Vector3(0, 100) },
+                    },
+                },
+            };
+            chilloutAnimatorController.AddLayer(layer);
+        }
+        chilloutAnimatorController.parameters = parameters;
+    }
+
+    static GameObject SuitableContactObjectWithCollider(GameObject targetGameObject, VRC.Dynamics.ContactBase contact)
     {
         var contactGameObject = targetGameObject;
-        var capsureAxis = CapsureAxis(contact.rotation);
-        if (contact.shapeType == VRC.Dynamics.ContactBase.ShapeType.Capsule && capsureAxis == -1)
-        {
-            contactGameObject = new GameObject("CVRPointer");
-            contactGameObject.transform.SetParent(targetGameObject.transform, false);
-            contactGameObject.transform.localPosition = Vector3.zero;
-            contactGameObject.transform.localRotation = Quaternion.identity;
-            contactGameObject.transform.localScale = Vector3.one;
-        }
         if (contact.shapeType == VRC.Dynamics.ContactBase.ShapeType.Sphere)
         {
             var collider = contactGameObject.AddComponent<SphereCollider>();
@@ -2194,41 +2454,23 @@ public class VRC3CVR : EditorWindow
         }
         else
         {
+            contactGameObject = new GameObject("CVRPointer");
+            contactGameObject.transform.SetParent(targetGameObject.transform, false);
+            contactGameObject.transform.localPosition = Vector3.zero;
+            contactGameObject.transform.localRotation = Quaternion.identity;
+            contactGameObject.transform.localScale = Vector3.one;
             var collider = contactGameObject.AddComponent<CapsuleCollider>();
             collider.isTrigger = true;
             collider.radius = contact.radius;
             collider.height = contact.height;
             collider.center = contact.position;
-            if (capsureAxis == -1)
-            {
-                contactGameObject.transform.localRotation = contact.rotation;
-            }
-            else
-            {
-                collider.direction = capsureAxis;
-            }
+            collider.direction = 1; // Y
+            contactGameObject.transform.localRotation = contact.rotation;
         }
         return contactGameObject;
     }
 
-    int CapsureAxis(Quaternion rotation)
-    {
-        if (rotation == Quaternion.identity)
-        {
-            return 1; // Y
-        }
-        if (rotation == Quaternion.Euler(90, 0, 0) || rotation == Quaternion.Euler(-90, 0, 0))
-        {
-            return 2; // Z
-        }
-        if (rotation == Quaternion.Euler(0, 0, 90) || rotation == Quaternion.Euler(0, 0, -90))
-        {
-            return 0; // X
-        }
-        return -1; // Unknown
-    }
-
-    string CollisionTagToCVRType(string collisionTag)
+    static string CollisionTagToCVRType(string collisionTag)
     {
         // cf. https://discord.com/channels/410126604237406209/797279576459968555/1127093496923308103
         // https://discord.com/channels/410126604237406209/588350685255565344/1327758763242815539
@@ -2244,8 +2486,30 @@ public class VRC3CVR : EditorWindow
             case "FingerIndexL":
             case "FingerIndexR":
                 return "index";
+            case "Head":
+                return "mouth";
             default:
                 return collisionTag;
         }
+    }
+
+    static string ConstantContactProxiedParameterName(string parameterName)
+    {
+        return $"{parameterName}_CVRAdvancedAvatarSettingsTrigger_Proxy";
+    }
+
+    string ChilloutAvatarRelativePath(Component child) => ChilloutAvatarRelativePath(child.transform);
+    string ChilloutAvatarRelativePath(GameObject child) => ChilloutAvatarRelativePath(child.transform);
+    string ChilloutAvatarRelativePath(Transform child) => RelativePath(chilloutAvatar.transform, child);
+
+    static string RelativePath(Transform parent, Transform child)
+    {
+        string path = child.name;
+        while (child.parent != null && child.parent != parent)
+        {
+            child = child.parent;
+            path = child.name + "/" + path;
+        }
+        return path;
     }
 }
