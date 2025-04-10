@@ -53,6 +53,80 @@ public class VRC3CVRCollisionTagConvertionConfig
     [Tooltip("index")] public Operation FingerLittle;
     [Tooltip("index")] public Operation FingerLittleL;
     [Tooltip("index")] public Operation FingerLittleR;
+    public Operation All
+    {
+        set
+        {
+            Head = value;
+            Hands = value;
+            AllFingers = value;
+        }
+    }
+    public Operation Hands
+    {
+        set
+        {
+            Hand = value;
+            HandL = value;
+            HandR = value;
+        }
+    }
+    public Operation AllFingers
+    {
+        set
+        {
+            Fingers = value;
+            FingerIndexes = value;
+            FingerMiddles = value;
+            FingerRings = value;
+            FingerLittles = value;
+        }
+    }
+    public Operation Fingers
+    {
+        set
+        {
+            Finger = value;
+            FingerL = value;
+            FingerR = value;
+        }
+    }
+    public Operation FingerIndexes
+    {
+        set
+        {
+            FingerIndex = value;
+            FingerIndexL = value;
+            FingerIndexR = value;
+        }
+    }
+    public Operation FingerMiddles
+    {
+        set
+        {
+            FingerMiddle = value;
+            FingerMiddleL = value;
+            FingerMiddleR = value;
+        }
+    }
+    public Operation FingerRings
+    {
+        set
+        {
+            FingerRing = value;
+            FingerRingL = value;
+            FingerRingR = value;
+        }
+    }
+    public Operation FingerLittles
+    {
+        set
+        {
+            FingerLittle = value;
+            FingerLittleL = value;
+            FingerLittleR = value;
+        }
+    }
 
     public Func<string, string[]> CollisionTagToCVRType(VRC3CVRCollisionTagConvertionConfig baseConfig) => (string collisionTag) => CollisionTagToCVRType(baseConfig, collisionTag);
     public string[] CollisionTagToCVRType(VRC3CVRCollisionTagConvertionConfig baseConfig, string collisionTag)
