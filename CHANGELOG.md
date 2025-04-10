@@ -1,7 +1,7 @@
 # 2.0.0-rc.13
 
 - feat: VRC Contacts conversion
-  - new: VRC3CVRCollisionTagConvertion component which besides (Attach to the same object as VRCContacts)
+  - new: VRC3CVRCollisionTagConvertion component (Attach to the same object as VRCContacts)
 - fix: Default values for animator-only parameters were being cleared to zero.
 
 # 2.0.0-rc.12
