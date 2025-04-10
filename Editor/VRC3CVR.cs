@@ -39,6 +39,7 @@ public class VRC3CVR : EditorWindow
     public bool convertVRCAnimatorTrackingControl = true;
     public bool convertVRCContactSendersAndReceivers = true;
     public VRC3CVRCollisionTagConvertionConfig collisionTagConvertionConfig = VRC3CVRCollisionTagConvertionConfig.DefaultConfig;
+    public bool createVRCContactEquivalentPointers = true;
     Vector2 scrollPosition;
     GameObject chilloutAvatarGameObject;
     public GameObject chilloutAvatar => chilloutAvatarGameObject;
@@ -115,6 +116,8 @@ public class VRC3CVR : EditorWindow
         public static istring ConvertVRCContactSendersAndReceiversDescription => new istring("Unlike VRC Contact, CVR Pointer and Trigger only change values when the contact collides. This difference may cause compatibility issues.", "VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。");
         public static istring CollisionTagConvertionConfig => new istring("Collision Tag Convertion Config", "Collision Tag 変換設定");
         public static istring CollisionTagConvertionConfigDescription => new istring("Convert \"Head\" to \"mouth\" and \"Hand\"s and \"Finger\"s to \"index\"?", "\"Hand\"を\"mouth\"に、\"Hand\"等と\"Finger\"等を\"index\"に変換する?");
+        public static istring CreateVRCContactEquivalentPointers => new istring("Create VRC Contact Equivalent CVR Pointers", "VRC Contact 相当の CVR Pointer を作成");
+        public static istring CreateVRCContactEquivalentPointersDescription => new istring("Creates CVR Pointers for VRC default Contact Senders", "VRCデフォルトの VRC Contact Senderに相当するCVR Pointerを作成します");
         public static istring AdjustToVrcMenuOrder => new istring("Adjust to VRC menu order", "VRCメニューの順序に調整");
         public static istring CloneAvatar => new istring("Clone avatar", "アバターをクローン");
         public static istring DeleteVRCAvatarDescriptorAndPipelineManager => new istring("Delete VRC Avatar Descriptor and Pipeline Manager", "VRC Avatar DescriptorとPipeline Managerを削除");
@@ -201,6 +204,11 @@ public class VRC3CVR : EditorWindow
 
         EditorGUILayout.PropertyField(collisionTagConvertionConfigProperty, T.CollisionTagConvertionConfig.GUIContent, true);
         CustomGUI.HelpLabel(T.CollisionTagConvertionConfigDescription);
+
+        CustomGUI.SmallLineGap();
+
+        createVRCContactEquivalentPointers = GUILayout.Toggle(createVRCContactEquivalentPointers, T.CreateVRCContactEquivalentPointers);
+        CustomGUI.HelpLabel(T.CreateVRCContactEquivalentPointersDescription);
 
         CustomGUI.SmallLineGap();
 
@@ -336,6 +344,10 @@ public class VRC3CVR : EditorWindow
             ConvertContactsToCVRComponents();
             RemapAnimationOfContactComponent();
             MakeProxyLayersOfConstantContactParameters();
+        }
+        if (createVRCContactEquivalentPointers)
+        {
+            CreateVRCContactEquivalentPointers();
         }
         SaveChilloutAnimator();
         SetAnimator();
@@ -2113,6 +2125,51 @@ public class VRC3CVR : EditorWindow
         Repaint();
     }
 
+    void CreateVRCContactEquivalentPointers()
+    {
+        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_head, "Head");
+        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_torso, "Torso");
+        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_handL, "Hand", "HandL");
+        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_handR, "Hand", "HandR");
+        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_footL, "Foot", "FootL");
+        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_footR, "Foot", "FootR");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerIndexL, "Finger", "FingerL", "FingerIndex", "FingerIndexL");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerIndexR, "Finger", "FingerR", "FingerIndex", "FingerIndexR");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerMiddleL, "Finger", "FingerL", "FingerMiddle", "FingerMiddleL");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerMiddleR, "Finger", "FingerR", "FingerMiddle", "FingerMiddleR");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerRingL, "Finger", "FingerL", "FingerRing", "FingerRingL");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerRingR, "Finger", "FingerR", "FingerRing", "FingerRingR");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerLittleL, "Finger", "FingerL", "FingerLittle", "FingerLittleL");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerLittleR, "Finger", "FingerR", "FingerLittle", "FingerLittleR");
+    }
+
+    void AddContactEquivalentPointer(bool forceSphere, VRCAvatarDescriptor.ColliderConfig config,  params string[] collisionTags)
+    {
+        if (config.state == VRCAvatarDescriptor.ColliderConfig.State.Disabled)
+        {
+            return;
+        }
+        var transform = cvrAvatar.transform.Find(RelativePath(vrcAvatarDescriptor.transform, config.transform));
+        foreach (var collisionTag in collisionTags)
+        {
+            var name = GameObjectUtility.GetUniqueNameForSibling(transform, $"{transform.name}_{collisionTag}");
+            var gameObject = new GameObject(name);
+            gameObject.transform.SetParent(transform, false);
+            gameObject.transform.localPosition = Vector3.zero;
+            gameObject.transform.localRotation = Quaternion.identity;
+            gameObject.transform.localScale = Vector3.one;
+            var contactGameObject = SuitableContactObjectWithCollider(
+                gameObject, config.height == 0 || forceSphere ? VRC.Dynamics.ContactBase.ShapeType.Sphere : VRC.Dynamics.ContactBase.ShapeType.Capsule,
+                config.radius,
+                config.position,
+                config.height,
+                config.rotation
+                );
+            var cvrPointer = contactGameObject.AddComponent<CVRPointer>();
+            cvrPointer.type = collisionTag;
+        }
+    }
+
     void ConvertContactsToCVRComponents()
     {
         var senders = chilloutAvatarGameObject.GetComponentsInChildren<VRCContactSender>(true);
@@ -2467,30 +2524,32 @@ public class VRC3CVR : EditorWindow
         chilloutAnimatorController.parameters = parameters;
     }
 
-    static GameObject SuitableContactObjectWithCollider(GameObject targetGameObject, VRC.Dynamics.ContactBase contact)
+    static GameObject SuitableContactObjectWithCollider(GameObject targetGameObject, VRC.Dynamics.ContactBase contact) =>
+        SuitableContactObjectWithCollider(targetGameObject, contact.shapeType, contact.radius, contact.position, contact.height, contact.rotation);
+
+    static GameObject SuitableContactObjectWithCollider(GameObject targetGameObject, VRC.Dynamics.ContactBase.ShapeType shapeType, float radius, Vector3 position, float height, Quaternion rotation)
     {
         var contactGameObject = targetGameObject;
-        if (contact.shapeType == VRC.Dynamics.ContactBase.ShapeType.Sphere)
+        if (shapeType == VRC.Dynamics.ContactBase.ShapeType.Sphere)
         {
             var collider = contactGameObject.AddComponent<SphereCollider>();
             collider.isTrigger = true;
-            collider.radius = contact.radius;
-            collider.center = contact.position;
+            collider.radius = radius;
+            collider.center = position;
         }
         else
         {
             contactGameObject = new GameObject("CVRPointer");
             contactGameObject.transform.SetParent(targetGameObject.transform, false);
-            contactGameObject.transform.localPosition = Vector3.zero;
-            contactGameObject.transform.localRotation = Quaternion.identity;
+            contactGameObject.transform.localPosition = position;
+            contactGameObject.transform.localRotation = rotation;
             contactGameObject.transform.localScale = Vector3.one;
             var collider = contactGameObject.AddComponent<CapsuleCollider>();
             collider.isTrigger = true;
-            collider.radius = contact.radius;
-            collider.height = contact.height;
-            collider.center = contact.position;
+            collider.radius = radius;
+            collider.height = height;
+            collider.center = Vector3.zero;
             collider.direction = 1; // Y
-            contactGameObject.transform.localRotation = contact.rotation;
         }
         return contactGameObject;
     }
