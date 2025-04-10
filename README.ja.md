@@ -83,6 +83,8 @@ ChilloutVRのデフォルトUIでは非ASCII文字（日本語等）が文字化
 - 各Animator Controller（Gesture、FXなど）をCVR用に変換  
   - `GestureLeftWeight` / `GestureRightWeight` を `GestureLeft` / `GestureRight` に変換  
   - VRCParameterDriverなども変換
+- VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換
+  - VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。
 
 ## ジェスチャーマッピング
 
