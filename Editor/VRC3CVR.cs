@@ -2276,9 +2276,8 @@ public class VRC3CVR : EditorWindow
                 {
                     updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromDistance,
                     settingName = receiver.parameter,
-                    // caution: this is inverted!
-                    minValue = 1f,
-                    maxValue = 0f,
+                    minValue = 0f,
+                    maxValue = 1f,
                 });
             }
             var originalPath = ChilloutAvatarRelativePath(receiver);
@@ -2532,10 +2531,18 @@ public class VRC3CVR : EditorWindow
         var contactGameObject = targetGameObject;
         if (shapeType == VRC.Dynamics.ContactBase.ShapeType.Sphere)
         {
+            if (position != Vector3.zero)
+            {
+                contactGameObject = new GameObject("CVRPointer");
+                contactGameObject.transform.SetParent(targetGameObject.transform, false);
+                contactGameObject.transform.localPosition = position;
+                contactGameObject.transform.localRotation = Quaternion.identity;
+                contactGameObject.transform.localScale = Vector3.one;
+            }
             var collider = contactGameObject.AddComponent<SphereCollider>();
             collider.isTrigger = true;
             collider.radius = radius;
-            collider.center = position;
+            collider.center = Vector3.zero;
         }
         else
         {
