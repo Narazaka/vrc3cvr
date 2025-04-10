@@ -2276,8 +2276,9 @@ public class VRC3CVR : EditorWindow
                 {
                     updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromDistance,
                     settingName = receiver.parameter,
-                    minValue = 0f,
-                    maxValue = 1f,
+                    // caution: inversed!
+                    minValue = 1f,
+                    maxValue = 0f,
                 });
             }
             var originalPath = ChilloutAvatarRelativePath(receiver);
