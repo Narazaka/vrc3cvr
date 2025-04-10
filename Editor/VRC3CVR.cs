@@ -38,6 +38,7 @@ public class VRC3CVR : EditorWindow
     public bool convertVRCAnimatorLocomotionControl = true;
     public bool convertVRCAnimatorTrackingControl = true;
     public bool convertVRCContactSendersAndReceivers = true;
+    public VRC3CVRCollisionTagConvertionConfig collisionTagConvertionConfig = VRC3CVRCollisionTagConvertionConfig.DefaultConfig;
     Vector2 scrollPosition;
     GameObject chilloutAvatarGameObject;
     public GameObject chilloutAvatar => chilloutAvatarGameObject;
@@ -78,6 +79,9 @@ public class VRC3CVR : EditorWindow
     AnimationClip handCombinedRockNRollAnimationClip;
     AnimationClip handCombinedThumbsUpAnimationClip;
 
+    SerializedObject serializedObject;
+    SerializedProperty collisionTagConvertionConfigProperty;
+
 
     [MenuItem("Tools/VRC3CVR")]
     public static void ShowWindow()
@@ -109,6 +113,8 @@ public class VRC3CVR : EditorWindow
         public static istring ConvertVRCAnimatorTrackingControlDescription => new istring("Converts the VRC Animator Tracking Control to BodyControl", "VRC Animator Tracking ControlをBodyControlに変換");
         public static istring ConvertVRCContactSendersAndReceivers => new istring("Convert VRC Contact Senders and Receivers to CVR Pointer and CVR Advanced Avatar Trigger", "VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換");
         public static istring ConvertVRCContactSendersAndReceiversDescription => new istring("Unlike VRC Contact, CVR Pointer and Trigger only change values when the contact collides. This difference may cause compatibility issues.", "VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。");
+        public static istring CollisionTagConvertionConfig => new istring("Collision Tag Convertion Config", "Collision Tag 変換設定");
+        public static istring CollisionTagConvertionConfigDescription => new istring("Convert \"Head\" to \"mouth\" and \"Hand\"s and \"Finger\"s to \"index\"?", "\"Hand\"を\"mouth\"に、\"Hand\"等と\"Finger\"等を\"index\"に変換する?");
         public static istring AdjustToVrcMenuOrder => new istring("Adjust to VRC menu order", "VRCメニューの順序に調整");
         public static istring CloneAvatar => new istring("Clone avatar", "アバターをクローン");
         public static istring DeleteVRCAvatarDescriptorAndPipelineManager => new istring("Delete VRC Avatar Descriptor and Pipeline Manager", "VRC Avatar DescriptorとPipeline Managerを削除");
@@ -121,8 +127,15 @@ public class VRC3CVR : EditorWindow
         public static istring ToeErrorDescription => new istring("You must configure this before you upload your avatar", "アバターをアップロードする前に設定してください");
     }
 
+    void OnEnable()
+    {
+        serializedObject = new SerializedObject(this);
+        collisionTagConvertionConfigProperty = serializedObject.FindProperty(nameof(collisionTagConvertionConfig));
+    }
+
     void OnGUI()
     {
+        serializedObject.UpdateIfRequiredOrScript();
         scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, GUILayout.Width(position.width));
 
         CustomGUI.BoldLabel("VRC3CVR");
@@ -186,6 +199,9 @@ public class VRC3CVR : EditorWindow
         convertVRCContactSendersAndReceivers = GUILayout.Toggle(convertVRCContactSendersAndReceivers, T.ConvertVRCContactSendersAndReceivers);
         CustomGUI.HelpLabel(T.ConvertVRCContactSendersAndReceiversDescription);
 
+        EditorGUILayout.PropertyField(collisionTagConvertionConfigProperty, T.CollisionTagConvertionConfig.GUIContent, true);
+        CustomGUI.HelpLabel(T.CollisionTagConvertionConfigDescription);
+
         CustomGUI.SmallLineGap();
 
         CustomGUI.RenderLink("Physbone -> DynamicBone Tool?", "https://github.com/Dreadrith/PhysBone-Converter");
@@ -240,6 +256,7 @@ public class VRC3CVR : EditorWindow
         CustomGUI.MyLinks("vrc3cvr");
 
         EditorGUILayout.EndScrollView();
+        serializedObject.ApplyModifiedProperties();
     }
 
     bool GetAreToeBonesSet()
@@ -2108,9 +2125,10 @@ public class VRC3CVR : EditorWindow
             {
                 continue;
             }
+            var collisionTagToCVRType = MakeCollisionTagToCVRType(sender.GetComponent<VRC3CVRCollisionTagConvertion>());
             var originalPath = ChilloutAvatarRelativePath(sender);
             var remappedPaths = new List<string>();
-            var collisionTags = sender.collisionTags.Select(CollisionTagToCVRType).Distinct().ToArray(); ;
+            var collisionTags = sender.collisionTags.SelectMany(collisionTagToCVRType).Distinct().ToArray(); ;
             if (collisionTags.Length == 1)
             {
                 var contactGameObject = SuitableContactObjectWithCollider(sender.gameObject, sender);
@@ -2146,12 +2164,13 @@ public class VRC3CVR : EditorWindow
             {
                 continue;
             }
+            var collisionTagToCVRType = MakeCollisionTagToCVRType(receiver.GetComponent<VRC3CVRCollisionTagConvertion>());
             var contactGameObject = SuitableContactObjectWithCollider(receiver.gameObject, receiver);
             var cvrTrigger = contactGameObject.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
             cvrTrigger.useAdvancedTrigger = true;
             cvrTrigger.isLocalInteractable = receiver.allowSelf;
             cvrTrigger.isNetworkInteractable = receiver.allowOthers;
-            cvrTrigger.allowedTypes = receiver.collisionTags.Select(CollisionTagToCVRType).Distinct().ToArray();
+            cvrTrigger.allowedTypes = receiver.collisionTags.SelectMany(collisionTagToCVRType).Distinct().ToArray();
             if (receiver.receiverType == VRC.Dynamics.ContactReceiver.ReceiverType.Constant)
             {
                 var proxyParameter = ConstantContactProxiedParameterName(receiver.parameter);
@@ -2213,6 +2232,12 @@ public class VRC3CVR : EditorWindow
             }
             DestroyImmediate(receiver);
         }
+    }
+
+    Func<string, string[]> MakeCollisionTagToCVRType(VRC3CVRCollisionTagConvertion conversion)
+    {
+        var config = conversion == null ? new VRC3CVRCollisionTagConvertionConfig() : conversion.config;
+        return config.CollisionTagToCVRType(collisionTagConvertionConfig);
     }
 
     void RemapAnimationOfContactComponent()
@@ -2468,29 +2493,6 @@ public class VRC3CVR : EditorWindow
             contactGameObject.transform.localRotation = contact.rotation;
         }
         return contactGameObject;
-    }
-
-    static string CollisionTagToCVRType(string collisionTag)
-    {
-        // cf. https://discord.com/channels/410126604237406209/797279576459968555/1127093496923308103
-        // https://discord.com/channels/410126604237406209/588350685255565344/1327758763242815539
-        switch (collisionTag)
-        {
-            case "Hand":
-            case "HandL":
-            case "HandR":
-            case "Finger":
-            case "FingerL":
-            case "FingerR":
-            case "FingerIndex":
-            case "FingerIndexL":
-            case "FingerIndexR":
-                return "index";
-            case "Head":
-                return "mouth";
-            default:
-                return collisionTag;
-        }
     }
 
     static string ConstantContactProxiedParameterName(string parameterName)
