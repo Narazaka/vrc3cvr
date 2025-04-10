@@ -1,3 +1,8 @@
+# 2.0.0-rc.13
+
+- feat: VRC Contacts conversion
+- fix: Default values for animator-only parameters were being cleared to zero.
+
 # 2.0.0-rc.12
 
 - feat: Grounded param = true by default (convenient for preview)
