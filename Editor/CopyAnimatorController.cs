@@ -85,7 +85,14 @@ public class CopyAnimatorController
         {
             if (!targetController.parameters.Any(p => p.name == param.name))
             {
-                targetController.AddParameter(param.name, param.type);
+                targetController.AddParameter(new AnimatorControllerParameter
+                {
+                    name = param.name,
+                    type = param.type,
+                    defaultBool = param.defaultBool,
+                    defaultInt = param.defaultInt,
+                    defaultFloat = param.defaultFloat,
+                });
             }
         }
     }
