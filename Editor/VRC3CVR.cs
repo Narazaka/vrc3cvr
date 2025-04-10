@@ -13,6 +13,7 @@ using ABI.CCK.Components;
 using ABI.CCK.Scripts;
 using PeanutTools_VRC3CVR;
 using PeanutTools_VRC3CVR.Localization;
+using VRC.SDK3.Dynamics.Contact.Components;
 
 public class VRC3CVR : EditorWindow
 {
@@ -34,6 +35,7 @@ public class VRC3CVR : EditorWindow
     public bool convertFXLayer = true;
     public bool convertVRCAnimatorLocomotionControl = true;
     public bool convertVRCAnimatorTrackingControl = true;
+    public bool convertVRCContactSendersAndReceivers = false;
     Vector2 scrollPosition;
     GameObject chilloutAvatarGameObject;
     public GameObject chilloutAvatar => chilloutAvatarGameObject;
@@ -103,6 +105,8 @@ public class VRC3CVR : EditorWindow
         public static istring ConvertVRCAnimatorLocomotionControlDescription => new istring("Converts the VRC Animator Locomotion Control to BodyControl", "VRC Animator Locomotion ControlをBodyControlに変換");
         public static istring ConvertVRCAnimatorTrackingControl => new istring("Convert VRC Animator Tracking Control", "VRC Animator Tracking Controlを変換");
         public static istring ConvertVRCAnimatorTrackingControlDescription => new istring("Converts the VRC Animator Tracking Control to BodyControl", "VRC Animator Tracking ControlをBodyControlに変換");
+        public static istring ConvertVRCContactSendersAndReceivers => new istring("Convert VRC Contact Senders and Receivers to CVR Pointer and CVR Advanced Avatar Trigger", "VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換");
+        public static istring ConvertVRCContactSendersAndReceiversDescription => new istring("Very Experimental, may not work as expected", "非常に実験的で、期待通りに動作しない場合があります");
         public static istring AdjustToVrcMenuOrder => new istring("Adjust to VRC menu order", "VRCメニューの順序に調整");
         public static istring CloneAvatar => new istring("Clone avatar", "アバターをクローン");
         public static istring DeleteVRCAvatarDescriptorAndPipelineManager => new istring("Delete VRC Avatar Descriptor and Pipeline Manager", "VRC Avatar DescriptorとPipeline Managerを削除");
@@ -174,6 +178,11 @@ public class VRC3CVR : EditorWindow
 
         convertVRCAnimatorTrackingControl = GUILayout.Toggle(convertVRCAnimatorTrackingControl, T.ConvertVRCAnimatorTrackingControl);
         CustomGUI.HelpLabel(T.ConvertVRCAnimatorTrackingControlDescription);
+
+        CustomGUI.SmallLineGap();
+
+        convertVRCContactSendersAndReceivers = GUILayout.Toggle(convertVRCContactSendersAndReceivers, T.ConvertVRCContactSendersAndReceivers);
+        CustomGUI.HelpLabel(T.ConvertVRCContactSendersAndReceiversDescription);
 
         CustomGUI.SmallLineGap();
 
@@ -301,6 +310,7 @@ public class VRC3CVR : EditorWindow
         GetValuesFromVrcAvatar();
         CreateChilloutComponentIfNeeded();
         PopulateChilloutComponent();
+        if (convertVRCContactSendersAndReceivers) ConvertContactsToCVRComponents();
         CreateEmptyChilloutAnimator();
         MergeVrcAnimatorsIntoChilloutAnimator();
         SetAnimator();
@@ -766,7 +776,8 @@ public class VRC3CVR : EditorWindow
 
         if (adjustToVrcMenuOrder)
         {
-            newParams = newParams.OrderBy(p => {
+            newParams = newParams.OrderBy(p =>
+            {
                 var index = parameterOrder.IndexOf(p.machineName);
                 return index == -1 ? int.MaxValue : index;
             }).ToList();
@@ -2070,5 +2081,171 @@ public class VRC3CVR : EditorWindow
         Debug.Log("CVRAvatar component added");
 
         Repaint();
+    }
+
+    void ConvertContactsToCVRComponents()
+    {
+        var senders = chilloutAvatarGameObject.GetComponentsInChildren<VRCContactSender>(true);
+        var receivers = chilloutAvatarGameObject.GetComponentsInChildren<VRCContactReceiver>(true);
+        foreach (var sender in senders)
+        {
+            if (sender.collisionTags.Count == 0)
+            {
+                continue;
+            }
+            var collisionTags = sender.collisionTags.Select(CollisionTagToCVRType).Distinct().ToArray(); ;
+            if (collisionTags.Length == 1)
+            {
+                var contactGameObject = SuitableContactObjectWithCollider(sender.gameObject, sender);
+                var cvrPointer = contactGameObject.AddComponent<CVRPointer>();
+                cvrPointer.type = collisionTags.FirstOrDefault();
+            }
+            else
+            {
+                foreach (var collisionTag in collisionTags)
+                {
+                    var name = GameObjectUtility.GetUniqueNameForSibling(sender.transform, $"{sender.name}_{collisionTag}");
+                    var gameObject = new GameObject(name);
+                    gameObject.transform.SetParent(sender.transform, false);
+                    gameObject.transform.localPosition = Vector3.zero;
+                    gameObject.transform.localRotation = Quaternion.identity;
+                    gameObject.transform.localScale = Vector3.one;
+                    var contactGameObject = SuitableContactObjectWithCollider(gameObject, sender);
+                    var cvrPointer = contactGameObject.AddComponent<CVRPointer>();
+                    cvrPointer.type = collisionTag;
+                }
+            }
+            DestroyImmediate(sender);
+        }
+        foreach (var receiver in receivers)
+        {
+            if (receiver.collisionTags.Count == 0)
+            {
+                continue;
+            }
+            var contactGameObject = SuitableContactObjectWithCollider(receiver.gameObject, receiver);
+            var cvrTrigger = receiver.gameObject.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
+            cvrTrigger.useAdvancedTrigger = true;
+            cvrTrigger.isLocalInteractable = receiver.allowSelf;
+            cvrTrigger.isNetworkInteractable = receiver.allowOthers;
+            cvrTrigger.allowedTypes = receiver.collisionTags.Select(CollisionTagToCVRType).Distinct().ToArray();
+            if (receiver.receiverType == VRC.Dynamics.ContactReceiver.ReceiverType.Constant)
+            {
+                cvrTrigger.enterTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
+                {
+                    updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Toggle,
+                    settingName = receiver.parameter,
+                    settingValue = 1f,
+                    delay = 0f,
+                    holdTime = 0f,
+                });
+            }
+            else if (receiver.receiverType == VRC.Dynamics.ContactReceiver.ReceiverType.OnEnter)
+            {
+                cvrTrigger.enterTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
+                {
+                    updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
+                    settingName = receiver.parameter,
+                    settingValue = 1f,
+                    delay = 0f,
+                    holdTime = 0f,
+                });
+                cvrTrigger.enterTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
+                {
+                    updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
+                    settingName = receiver.parameter,
+                    settingValue = 0f,
+                    delay = 1f / 60,
+                    holdTime = 0f,
+                });
+            }
+            else
+            {
+                cvrTrigger.stayTasks.Add(new CVRAdvancedAvatarSettingsTriggerTaskStay
+                {
+                    updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromDistance,
+                    settingName = receiver.parameter,
+                    minValue = 0f,
+                    maxValue = 1f,
+                });
+            }
+            DestroyImmediate(receiver);
+        }
+    }
+
+    GameObject SuitableContactObjectWithCollider(GameObject targetGameObject, VRC.Dynamics.ContactBase contact)
+    {
+        var contactGameObject = targetGameObject;
+        var capsureAxis = CapsureAxis(contact.rotation);
+        if (contact.shapeType == VRC.Dynamics.ContactBase.ShapeType.Capsule && capsureAxis == -1)
+        {
+            contactGameObject = new GameObject("CVRPointer");
+            contactGameObject.transform.SetParent(targetGameObject.transform, false);
+            contactGameObject.transform.localPosition = Vector3.zero;
+            contactGameObject.transform.localRotation = Quaternion.identity;
+            contactGameObject.transform.localScale = Vector3.one;
+        }
+        if (contact.shapeType == VRC.Dynamics.ContactBase.ShapeType.Sphere)
+        {
+            var collider = contactGameObject.AddComponent<SphereCollider>();
+            collider.isTrigger = true;
+            collider.radius = contact.radius;
+            collider.center = contact.position;
+        }
+        else
+        {
+            var collider = contactGameObject.AddComponent<CapsuleCollider>();
+            collider.isTrigger = true;
+            collider.radius = contact.radius;
+            collider.height = contact.height;
+            collider.center = contact.position;
+            if (capsureAxis == -1)
+            {
+                contactGameObject.transform.localRotation = contact.rotation;
+            }
+            else
+            {
+                collider.direction = capsureAxis;
+            }
+        }
+        return contactGameObject;
+    }
+
+    int CapsureAxis(Quaternion rotation)
+    {
+        if (rotation == Quaternion.identity)
+        {
+            return 1; // Y
+        }
+        if (rotation == Quaternion.Euler(90, 0, 0) || rotation == Quaternion.Euler(-90, 0, 0))
+        {
+            return 2; // Z
+        }
+        if (rotation == Quaternion.Euler(0, 0, 90) || rotation == Quaternion.Euler(0, 0, -90))
+        {
+            return 0; // X
+        }
+        return -1; // Unknown
+    }
+
+    string CollisionTagToCVRType(string collisionTag)
+    {
+        // cf. https://discord.com/channels/410126604237406209/797279576459968555/1127093496923308103
+        // https://discord.com/channels/410126604237406209/588350685255565344/1327758763242815539
+        switch (collisionTag)
+        {
+            case "Hand":
+            case "HandL":
+            case "HandR":
+            case "Finger":
+            case "FingerL":
+            case "FingerR":
+            case "FingerIndex":
+            case "FingerIndexL":
+            case "FingerIndexR":
+                return "index";
+            default:
+                return collisionTag;
+        }
     }
 }
