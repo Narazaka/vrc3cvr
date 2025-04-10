@@ -111,15 +111,20 @@ public class SaveAnimatorController
         }
         else if (state.motion is AnimationClip clip)
         {
-            if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(clip)))
-            {
-                AssetDatabase.AddObjectToAsset(clip, controller);
-            }
+            SaveAnimationClip(clip);
         }
 
         if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(state)))
         {
             AssetDatabase.AddObjectToAsset(state, controller);
+        }
+    }
+
+    private void SaveAnimationClip(AnimationClip clip)
+    {
+        if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(clip)))
+        {
+            AssetDatabase.AddObjectToAsset(clip, controller);
         }
     }
 
@@ -135,6 +140,10 @@ public class SaveAnimatorController
             if (childMotion.motion is BlendTree childBlendTree)
             {
                 SaveBlendTree(childBlendTree);
+            }
+            else if (childMotion.motion is AnimationClip childClip)
+            {
+                SaveAnimationClip(childClip);
             }
         }
     }
