@@ -1,3 +1,8 @@
+# 2.0.0-rc.17
+
+- feat: dropdown menu name
+- feat: hierarchical menu name
+
 # 2.0.0-rc.16
 
 - feat: contact anim remap fpr position/rotation/radius/height
