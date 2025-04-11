@@ -1,3 +1,7 @@
+# 2.0.0-rc.15
+
+- fix: convert contacts' localOnly
+
 # 2.0.0-rc.14
 
 - feat: convert contacts' localOnly
