@@ -2397,16 +2397,89 @@ public class VRC3CVR : EditorWindow
                 }
                 foreach (var remappedPath in remappedPaths)
                 {
-                    var newBinding = binding;
-                    newBinding.path = remappedPath;
-                    newBinding.type = newBinding.type == typeof(VRCContactReceiver) ? typeof(CVRAdvancedAvatarSettingsTrigger) : typeof(CVRPointer);
-                    AnimationUtility.SetEditorCurve(newClip, newBinding, curve);
+                    foreach (var convertedBinding in ConvertBindingOfContactComponent(binding))
+                    {
+                        newClip.SetCurve(remappedPath, convertedBinding.type, convertedBinding.propertyName, curve);
+                    }
                 }
             }
         }
         if (newClip != null) Debug.Log($"Remapped: {clip}");
         return newClip;
     }
+
+    IEnumerable<EditorCurveBinding> ConvertBindingOfContactComponent(EditorCurveBinding binding)
+    {
+        if (binding.propertyName == nameof(VRC.Dynamics.ContactBase.radius))
+        {
+            return new EditorCurveBinding[]
+            {
+                new EditorCurveBinding
+                {
+                    path = binding.path,
+                    type = typeof(SphereCollider),
+                    propertyName = "m_Radius",
+                },
+                new EditorCurveBinding
+                {
+                    path = binding.path,
+                    type = typeof(CapsuleCollider),
+                    propertyName = "m_Radius",
+                },
+            };
+        }
+        if (binding.propertyName == nameof(VRC.Dynamics.ContactBase.height))
+        {
+            return new EditorCurveBinding[]
+            {
+                new EditorCurveBinding
+                {
+                    path = binding.path,
+                    type = typeof(CapsuleCollider),
+                    propertyName = "m_Height",
+                },
+            };
+        }
+        var positionAxis = Array.IndexOf(contactPositionProperties, binding.propertyName);
+        if (positionAxis != -1)
+        {
+            return new EditorCurveBinding[]
+            {
+                new EditorCurveBinding
+                {
+                    path = binding.path,
+                    type = typeof(Transform),
+                    propertyName = "localPosition." + contactAxis[positionAxis],
+                },
+            };
+        }
+        var rotationAxis = Array.IndexOf(contactRotationProperties, binding.propertyName);
+        if (rotationAxis != -1)
+        {
+            return new EditorCurveBinding[]
+            {
+                new EditorCurveBinding
+                {
+                    path = binding.path,
+                    type = typeof(Transform),
+                    propertyName = "m_LocalRotation." + contactAxis[rotationAxis],
+                },
+            };
+        }
+        return new EditorCurveBinding[]
+        {
+            new EditorCurveBinding
+            {
+                path = binding.path,
+                type = binding.type == typeof(VRCContactReceiver) ? typeof(CVRAdvancedAvatarSettingsTrigger) : typeof(CVRPointer),
+                propertyName = binding.propertyName,
+            }
+        };
+    }
+
+    static string[] contactAxis = new string[] { "x", "y", "z", "w" };
+    static string[] contactPositionProperties = new string[] { "position.x", "position.y", "position.z" };
+    static string[] contactRotationProperties = new string[] { "rotation.x", "rotation.y", "rotation.z", "rotation.w" };
 
     void MakeProxyLayersOfConstantContactParameters()
     {
