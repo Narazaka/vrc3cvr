@@ -29,6 +29,8 @@ public class VRC3CVR : EditorWindow
     AnimatorController[] vrcAnimatorControllers;
     Dictionary<string, string[]> contactComponentPathRemap;
     HashSet<string> constantContactProxiedParameters;
+    HashSet<string> localTriggerPaths;
+    HashSet<string> localPointerPaths;
     public string outputDirName = "VRC3CVR_Output";
     public bool convertLocomotionLayer = false;
     public bool convertAdditiveLayer = false;
@@ -311,6 +313,8 @@ public class VRC3CVR : EditorWindow
             Debug.Log("Cannot convert - already in progress");
         }
 
+        _emptyClip = null;
+
         isConverting = true;
 
         Debug.Log("Starting to convert...");
@@ -344,6 +348,7 @@ public class VRC3CVR : EditorWindow
             ConvertContactsToCVRComponents();
             RemapAnimationOfContactComponent();
             MakeProxyLayersOfConstantContactParameters();
+            EnsureLocalOnlyContacts();
         }
         if (createVRCContactEquivalentPointers)
         {
@@ -2176,6 +2181,8 @@ public class VRC3CVR : EditorWindow
         var receivers = chilloutAvatarGameObject.GetComponentsInChildren<VRCContactReceiver>(true);
         contactComponentPathRemap = new Dictionary<string, string[]>();
         constantContactProxiedParameters = new HashSet<string>();
+        localPointerPaths = new HashSet<string>();
+        localTriggerPaths = new HashSet<string>();
         foreach (var sender in senders)
         {
             if (sender.collisionTags.Count == 0)
@@ -2208,6 +2215,10 @@ public class VRC3CVR : EditorWindow
                     cvrPointer.type = collisionTag;
                     remappedPaths.Add(ChilloutAvatarRelativePath(contactGameObject));
                 }
+            }
+            if (sender.IsLocalOnly)
+            {
+                localPointerPaths.UnionWith(remappedPaths);
             }
             if (!(remappedPaths.Count == 1 && remappedPaths[0] == originalPath))
             {
@@ -2283,6 +2294,10 @@ public class VRC3CVR : EditorWindow
             }
             var originalPath = ChilloutAvatarRelativePath(receiver);
             var remappedPath = ChilloutAvatarRelativePath(contactGameObject);
+            if (receiver.IsLocalOnly)
+            {
+                localTriggerPaths.Add(remappedPath);
+            }
             if (originalPath != remappedPath)
             {
                 contactComponentPathRemap[originalPath] = new[] { remappedPath };
@@ -2393,10 +2408,6 @@ public class VRC3CVR : EditorWindow
 
     void MakeProxyLayersOfConstantContactParameters()
     {
-        var emptyClip = new AnimationClip
-        {
-            name = "MakeProxyLayersOfConstantContactParameters_Empty",
-        };
         var parameters = chilloutAnimatorController.parameters;
         AnimatorDriverTask.ParameterType TypeOf(string name) => AnimatorDriverParameterType(parameters, name);
 
@@ -2522,6 +2533,148 @@ public class VRC3CVR : EditorWindow
             chilloutAnimatorController.AddLayer(layer);
         }
         chilloutAnimatorController.parameters = parameters;
+    }
+
+    void EnsureLocalOnlyContacts()
+    {
+        if (localPointerPaths.Count == 0 && localTriggerPaths.Count == 0)
+        {
+            return;
+        }
+        if (!chilloutAnimatorController.parameters.Any(p => p.name == "IsLocal"))
+        {
+            var parameters = chilloutAnimatorController.parameters;
+            ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+            {
+                name = "IsLocal",
+                type = AnimatorControllerParameterType.Bool,
+                defaultBool = false,
+            });
+            chilloutAnimatorController.parameters = parameters;
+        }
+
+        var remoteClip = new AnimationClip { name = "VRC3CVR_DisableLocalOnlyContactsOnRemote" };
+        foreach (var path in localPointerPaths)
+        {
+            var binding = new EditorCurveBinding
+            {
+                path = path,
+                type = typeof(CVRPointer),
+                propertyName = "m_Enabled",
+            };
+            AnimationUtility.SetEditorCurve(remoteClip, binding, AnimationCurve.Linear(0f, 0f, 1f / 60, 0f));
+        }
+        foreach (var path in localTriggerPaths)
+        {
+            var binding = new EditorCurveBinding
+            {
+                path = path,
+                type = typeof(CVRAdvancedAvatarSettingsTrigger),
+                propertyName = "m_Enabled",
+            };
+            AnimationUtility.SetEditorCurve(remoteClip, binding, AnimationCurve.Linear(0f, 0f, 1f / 60, 0f));
+        }
+        var remoteState = new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = "Remote",
+            writeDefaultValues = true,
+            motion = remoteClip,
+        };
+        var localState = new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = "Local",
+            writeDefaultValues = true,
+            motion = emptyClip,
+        };
+        var idleState = new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = "Idle",
+            writeDefaultValues = true,
+            motion = emptyClip,
+            transitions = new AnimatorStateTransition[]
+            {
+                new AnimatorStateTransition
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    hasExitTime = false,
+                    hasFixedDuration = true,
+                    exitTime = 0f,
+                    duration = 0f,
+                    offset = 0f,
+                    destinationState = localState,
+                    conditions = new AnimatorCondition[]
+                    {
+                        new AnimatorCondition
+                        {
+                            mode = AnimatorConditionMode.If,
+                            parameter = "IsLocal",
+                            threshold = 1f,
+                        },
+                    },
+                },
+                new AnimatorStateTransition
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    hasExitTime = false,
+                    hasFixedDuration = true,
+                    exitTime = 0f,
+                    duration = 0f,
+                    offset = 0f,
+                    destinationState = remoteState,
+                    conditions = new AnimatorCondition[]
+                    {
+                        new AnimatorCondition
+                        {
+                            mode = AnimatorConditionMode.IfNot,
+                            parameter = "IsLocal",
+                            threshold = 1f,
+                        },
+                    },
+                },
+            },
+        };
+        var layerName = chilloutAnimatorController.MakeUniqueLayerName("LocalOnlyContacts");
+        chilloutAnimatorController.AddLayer(new AnimatorControllerLayer
+        {
+            name = layerName,
+            avatarMask = emptyMask,
+            blendingMode = AnimatorLayerBlendingMode.Override,
+            defaultWeight = 1f,
+            stateMachine = new AnimatorStateMachine
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                name = layerName,
+                entryPosition = new Vector3(0, -100),
+                anyStatePosition = new Vector3(0, -300),
+                exitPosition = new Vector3(0, 200),
+                defaultState = idleState,
+                states = new ChildAnimatorState[]
+                {
+                    new ChildAnimatorState { state = idleState, position = new Vector3(0, 0) },
+                    new ChildAnimatorState { state = localState, position = new Vector3(300, 0) },
+                    new ChildAnimatorState { state = remoteState, position = new Vector3(-300, 0) },
+                },
+            },
+        });
+    }
+
+    AnimationClip _emptyClip;
+    AnimationClip emptyClip
+    {
+        get
+        {
+            if (_emptyClip == null)
+            {
+                _emptyClip = new AnimationClip
+                {
+                    name = "VRC3CVR_Empty",
+                };
+            }
+            return _emptyClip;
+        }
     }
 
     static GameObject SuitableContactObjectWithCollider(GameObject targetGameObject, VRC.Dynamics.ContactBase contact) =>
