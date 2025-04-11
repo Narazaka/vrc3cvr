@@ -77,6 +77,7 @@ Install [Export Package (Advanced)](https://github.com/Narazaka/ExportPackageAdv
   - converts VRCParameterDriver etc.
 - Convert VRC Contact Senders and Receivers to CVR Pointer and CVR Advanced Avatar Trigger
   - Unlike VRC Contact, CVR Pointer and Trigger only change values when the contact collides. This difference may cause compatibility issues.
+  - Changing Shape (includes moving) in game is not implemented.
 
 ## Mapping gestures
 

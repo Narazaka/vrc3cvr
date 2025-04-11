@@ -1,3 +1,7 @@
+# 2.0.0-rc.14
+
+- feat: convert contacts' localOnly
+
 # 2.0.0-rc.13
 
 - feat: VRC Contacts conversion
