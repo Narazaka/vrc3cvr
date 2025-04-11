@@ -2164,7 +2164,9 @@ public class VRC3CVR : EditorWindow
             gameObject.transform.localRotation = Quaternion.identity;
             gameObject.transform.localScale = Vector3.one;
             var contactGameObject = SuitableContactObjectWithCollider(
-                gameObject, config.height == 0 || forceSphere ? VRC.Dynamics.ContactBase.ShapeType.Sphere : VRC.Dynamics.ContactBase.ShapeType.Capsule,
+                gameObject,
+                true,
+                config.height == 0 || forceSphere ? VRC.Dynamics.ContactBase.ShapeType.Sphere : VRC.Dynamics.ContactBase.ShapeType.Capsule,
                 config.radius,
                 config.position,
                 config.height,
@@ -2559,8 +2561,8 @@ public class VRC3CVR : EditorWindow
             var binding = new EditorCurveBinding
             {
                 path = path,
-                type = typeof(CVRPointer),
-                propertyName = "m_Enabled",
+                type = typeof(GameObject),
+                propertyName = "m_IsActive",
             };
             AnimationUtility.SetEditorCurve(remoteClip, binding, AnimationCurve.Linear(0f, 0f, 1f / 60, 0f));
         }
@@ -2569,8 +2571,8 @@ public class VRC3CVR : EditorWindow
             var binding = new EditorCurveBinding
             {
                 path = path,
-                type = typeof(CVRAdvancedAvatarSettingsTrigger),
-                propertyName = "m_Enabled",
+                type = typeof(GameObject),
+                propertyName = "m_IsActive",
             };
             AnimationUtility.SetEditorCurve(remoteClip, binding, AnimationCurve.Linear(0f, 0f, 1f / 60, 0f));
         }
@@ -2678,29 +2680,27 @@ public class VRC3CVR : EditorWindow
     }
 
     static GameObject SuitableContactObjectWithCollider(GameObject targetGameObject, VRC.Dynamics.ContactBase contact) =>
-        SuitableContactObjectWithCollider(targetGameObject, contact.shapeType, contact.radius, contact.position, contact.height, contact.rotation);
+        SuitableContactObjectWithCollider(targetGameObject, contact is VRCContactSender, contact.shapeType, contact.radius, contact.position, contact.height, contact.rotation);
 
-    static GameObject SuitableContactObjectWithCollider(GameObject targetGameObject, VRC.Dynamics.ContactBase.ShapeType shapeType, float radius, Vector3 position, float height, Quaternion rotation)
+    static GameObject SuitableContactObjectWithCollider(GameObject targetGameObject, bool isSender, VRC.Dynamics.ContactBase.ShapeType shapeType, float radius, Vector3 position, float height, Quaternion rotation)
     {
-        var contactGameObject = targetGameObject;
+        var name = isSender ? nameof(VRCContactSender) : nameof(VRCContactReceiver);
         if (shapeType == VRC.Dynamics.ContactBase.ShapeType.Sphere)
         {
-            if (position != Vector3.zero)
-            {
-                contactGameObject = new GameObject("CVRPointer");
-                contactGameObject.transform.SetParent(targetGameObject.transform, false);
-                contactGameObject.transform.localPosition = position;
-                contactGameObject.transform.localRotation = Quaternion.identity;
-                contactGameObject.transform.localScale = Vector3.one;
-            }
+            var contactGameObject = new GameObject(name);
+            contactGameObject.transform.SetParent(targetGameObject.transform, false);
+            contactGameObject.transform.localPosition = position;
+            contactGameObject.transform.localRotation = Quaternion.identity;
+            contactGameObject.transform.localScale = Vector3.one;
             var collider = contactGameObject.AddComponent<SphereCollider>();
             collider.isTrigger = true;
             collider.radius = radius;
             collider.center = Vector3.zero;
+            return contactGameObject;
         }
         else
         {
-            contactGameObject = new GameObject("CVRPointer");
+            var contactGameObject = new GameObject(name);
             contactGameObject.transform.SetParent(targetGameObject.transform, false);
             contactGameObject.transform.localPosition = position;
             contactGameObject.transform.localRotation = rotation;
@@ -2711,8 +2711,8 @@ public class VRC3CVR : EditorWindow
             collider.height = height;
             collider.center = Vector3.zero;
             collider.direction = 1; // Y
+            return contactGameObject;
         }
-        return contactGameObject;
     }
 
     static string ConstantContactProxiedParameterName(string parameterName)
