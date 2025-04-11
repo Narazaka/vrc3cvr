@@ -46,6 +46,8 @@ public class VRC3CVR : EditorWindow
     GameObject chilloutAvatarGameObject;
     public GameObject chilloutAvatar => chilloutAvatarGameObject;
     public bool adjustToVrcMenuOrder = true;
+    public bool useHierarchicalMenuName = true;
+    public bool useHierarchicalDropdownMenuName = true;
     public bool shouldCloneAvatar = true;
     public bool shouldDeleteVRCAvatarDescriptorAndPipelineManager = true;
     public bool shouldDeletePhysBones = true;
@@ -121,6 +123,8 @@ public class VRC3CVR : EditorWindow
         public static istring CreateVRCContactEquivalentPointers => new istring("Create VRC Contact Equivalent CVR Pointers", "VRC Contact 相当の CVR Pointer を作成");
         public static istring CreateVRCContactEquivalentPointersDescription => new istring("Creates CVR Pointers for VRC default Contact Senders", "VRCデフォルトの VRC Contact Senderに相当するCVR Pointerを作成します");
         public static istring AdjustToVrcMenuOrder => new istring("Adjust to VRC menu order", "VRCメニューの順序に調整");
+        public static istring UseHierarchicalMenuName => new istring("Use hierarchical menu name", "階層メニュー名を使用");
+        public static istring UseHierarchicalDropdownMenuName => new istring("Use hierarchical dropdown menu name", "ドロップダウンメニュー名も階層化");
         public static istring CloneAvatar => new istring("Clone avatar", "アバターをクローン");
         public static istring DeleteVRCAvatarDescriptorAndPipelineManager => new istring("Delete VRC Avatar Descriptor and Pipeline Manager", "VRC Avatar DescriptorとPipeline Managerを削除");
         public static istring DeletePhysBonesAndColliders => new istring("Delete PhysBones and colliders", "PhysBonesとコライダーを削除");
@@ -219,6 +223,11 @@ public class VRC3CVR : EditorWindow
         CustomGUI.SmallLineGap();
 
         adjustToVrcMenuOrder = GUILayout.Toggle(adjustToVrcMenuOrder, T.AdjustToVrcMenuOrder);
+
+        CustomGUI.SmallLineGap();
+
+        useHierarchicalMenuName = GUILayout.Toggle(useHierarchicalMenuName, T.UseHierarchicalMenuName);
+        useHierarchicalDropdownMenuName = GUILayout.Toggle(useHierarchicalDropdownMenuName, T.UseHierarchicalDropdownMenuName);
 
         CustomGUI.SmallLineGap();
 
@@ -575,8 +584,9 @@ public class VRC3CVR : EditorWindow
         }
     }
 
-    Dictionary<string, Dictionary<float, string>> FindMenuButtonsAndToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<float, string>> toggleTable)
+    Dictionary<string, Dictionary<float, string>> FindMenuButtonsAndToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<float, string>> toggleTable, string[] subMenuStack)
     {
+        var basePath = string.Join("", subMenuStack.Select(s => s + "/"));
         if (menu != null)
         {
             void TreatChanging(VRCExpressionsMenu.Control control)
@@ -590,7 +600,7 @@ public class VRC3CVR : EditorWindow
                     }
                     if (!idTable.ContainsKey(control.value))
                     {
-                        idTable.Add(1, $"{control.name} Changing");
+                        idTable.Add(1, $"{basePath}{control.name} Changing");
                     }
                     toggleTable[control.parameter.name] = idTable;
                 }
@@ -607,7 +617,7 @@ public class VRC3CVR : EditorWindow
                     }
                     if (!idTable.ContainsKey(float.NaN))
                     {
-                        idTable.Add(float.NaN, control.labels != null && control.labels.Length > labelIndex && !string.IsNullOrWhiteSpace(control.labels[labelIndex].name) ? $"{control.name} {control.labels[labelIndex].name}" : $"{control.name} {fallbackSuffix}");
+                        idTable.Add(float.NaN, control.labels != null && control.labels.Length > labelIndex && !string.IsNullOrWhiteSpace(control.labels[labelIndex].name) ? $"{basePath}{control.name} {control.labels[labelIndex].name}" : $"{basePath}{control.name} {fallbackSuffix}");
                     }
                     toggleTable[parameterName] = idTable;
                 }
@@ -629,7 +639,7 @@ public class VRC3CVR : EditorWindow
 
                     if (!idTable.ContainsKey(control.value))
                     {
-                        idTable.Add(control.value, control.name);
+                        idTable.Add(control.value, basePath + control.name);
                     }
 
                     toggleTable[control.parameter.name] = idTable;
@@ -647,7 +657,7 @@ public class VRC3CVR : EditorWindow
                         }
                         if (!idTable.ContainsKey(float.NaN))
                         {
-                            idTable.Add(float.NaN, control.name);
+                            idTable.Add(float.NaN, basePath + control.name);
                         }
                         toggleTable[parameterName] = idTable;
                     }
@@ -668,47 +678,12 @@ public class VRC3CVR : EditorWindow
                 }
                 else if (control.type == VRCExpressionsMenu.Control.ControlType.SubMenu)
                 {
-                    toggleTable = FindMenuButtonsAndToggles(control.subMenu, toggleTable);
+                    toggleTable = FindMenuButtonsAndToggles(control.subMenu, toggleTable, subMenuStack.Concat(new string[] { control.name }).ToArray());
                 }
             }
         }
 
         return toggleTable;
-    }
-
-    List<CVRAdvancedSettingsDropDownEntry> GetAdvancedSettingsDropDownForParameter(String name, Dictionary<string, Dictionary<float, string>> toggleTable)
-    {
-        List<CVRAdvancedSettingsDropDownEntry> advancedSettingsDropDownEntries = new List<CVRAdvancedSettingsDropDownEntry>();
-
-        if (toggleTable.ContainsKey(name))
-        {
-            if (toggleTable[name].Count == 1)
-            {
-                if (toggleTable[name].First().Key == 1)
-                {
-                    CVRAdvancedSettingsDropDownEntry menuEntry = new CVRAdvancedSettingsDropDownEntry();
-                    menuEntry.name = name;
-                    advancedSettingsDropDownEntries.Add(menuEntry);
-                    return advancedSettingsDropDownEntries;
-                }
-            }
-
-            Dictionary<float, string> idTable = toggleTable[name];
-            int lastIndex = (int)idTable.Last().Key;
-            for (int i = 0; i < lastIndex + 1; i++)
-            {
-                String MenuEntryName = "---";
-                if (idTable.ContainsKey(i))
-                {
-                    MenuEntryName = idTable[i];
-                }
-                CVRAdvancedSettingsDropDownEntry menuEntry = new CVRAdvancedSettingsDropDownEntry();
-                menuEntry.name = MenuEntryName;
-                advancedSettingsDropDownEntries.Add(menuEntry);
-            }
-        }
-
-        return advancedSettingsDropDownEntries;
     }
 
     void ConvertVrcParametersToChillout()
@@ -720,7 +695,7 @@ public class VRC3CVR : EditorWindow
         List<CVRAdvancedSettingsEntry> newParams = new List<CVRAdvancedSettingsEntry>();
 
         parameterOrder = new List<string>();
-        Dictionary<string, Dictionary<float, string>> toggleTable = FindMenuButtonsAndToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<float, string>>());
+        Dictionary<string, Dictionary<float, string>> toggleTable = FindMenuButtonsAndToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<float, string>>(), new string[0]);
 
         for (int i = 0; i < vrcParams?.parameters?.Length; i++)
         {
@@ -739,46 +714,73 @@ public class VRC3CVR : EditorWindow
             switch (vrcParam.valueType)
             {
                 case VRCExpressionParameters.ValueType.Int:
-                    List<CVRAdvancedSettingsDropDownEntry> dropdownOptions = GetAdvancedSettingsDropDownForParameter(vrcParam.name, toggleTable);
-
-                    if (dropdownOptions.Count > 1)
+                    if (toggleTable.TryGetValue(vrcParam.name, out var intIdTable))
                     {
-                        newParam = new CVRAdvancedSettingsEntry()
+                        if (intIdTable.Count == 1 && intIdTable.First().Key == 1)
                         {
-                            name = vrcParam.name,
-                            machineName = vrcParam.name,
-                            unlinkNameFromMachineName = true,
-                            type = CVRAdvancedSettingsEntry.SettingsType.Dropdown,
-                            setting = new CVRAdvancesAvatarSettingGameObjectDropdown()
+                            Debug.Log("Param has only one option and value = 1 so we are making a toggle instead");
+                            newParam = new CVRAdvancedSettingsEntry()
                             {
-                                defaultValue = (int)vrcParam.defaultValue,
-                                options = dropdownOptions,
-                                usedType = CVRAdvancesAvatarSettingBase.ParameterType.Int
+                                name = MenuName(intIdTable.First().Value),
+                                machineName = vrcParam.name,
+                                unlinkNameFromMachineName = true,
+                                setting = new CVRAdvancesAvatarSettingGameObjectToggle()
+                                {
+                                    defaultValue = vrcParam.defaultValue == 1 ? true : false,
+                                    usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool
+                                },
+                            };
+                        }
+                        else
+                        {
+                            var lastIndex = (int)intIdTable.Last().Key;
+                            var menuEntryNames = new List<string>();
+                            for (var j = 0; j < lastIndex + 1; j++)
+                            {
+                                menuEntryNames.Add(intIdTable.TryGetValue(j, out var menuEntryName) ? menuEntryName : "---");
                             }
-                        };
+                            var menuName = GetMenuNameCommonParent(menuEntryNames.Where(name => name != "---"));
+                            menuEntryNames = menuEntryNames.Select(name =>
+                            {
+                                if (name == "---") return "---";
+                                if (useHierarchicalDropdownMenuName) return name.Substring(menuName.Length + 1);
+                                return MenuNameWithoutStack(name);
+                            }).ToList();
+                            newParam = new CVRAdvancedSettingsEntry()
+                            {
+                                name = menuName,
+                                machineName = vrcParam.name,
+                                unlinkNameFromMachineName = true,
+                                type = CVRAdvancedSettingsEntry.SettingsType.Dropdown,
+                                setting = new CVRAdvancesAvatarSettingGameObjectDropdown()
+                                {
+                                    defaultValue = (int)vrcParam.defaultValue,
+                                    options = menuEntryNames.Select(name => new CVRAdvancedSettingsDropDownEntry { name = name }).ToList(),
+                                    usedType = CVRAdvancesAvatarSettingBase.ParameterType.Int
+                                }
+                            };
+                        }
                     }
                     else
                     {
-                        Debug.Log("Param has less than 2 options so we are making a toggle instead");
-
                         newParam = new CVRAdvancedSettingsEntry()
                         {
                             name = vrcParam.name,
                             machineName = vrcParam.name,
                             unlinkNameFromMachineName = true,
-                            setting = new CVRAdvancesAvatarSettingGameObjectToggle()
+                            inputSingleSettings = new CVRAdvancesAvatarSettingInputSingle()
                             {
-                                defaultValue = vrcParam.defaultValue == 1 ? true : false,
-                                usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool
-                            }
+                                defaultValue = vrcParam.defaultValue,
+                                usedType = CVRAdvancesAvatarSettingBase.ParameterType.Int,
+                            },
                         };
-                    };
+                    }
                     break;
 
                 case VRCExpressionParameters.ValueType.Float:
                     newParam = new CVRAdvancedSettingsEntry()
                     {
-                        name = toggleTable.TryGetValue(vrcParam.name, out var floatIdTable) && floatIdTable.Count > 0 ? floatIdTable.First().Value ?? vrcParam.name : vrcParam.name,
+                        name = toggleTable.TryGetValue(vrcParam.name, out var floatIdTable) && floatIdTable.Count > 0 ? MenuName(floatIdTable.First().Value) ?? vrcParam.name : vrcParam.name,
                         machineName = vrcParam.name,
                         unlinkNameFromMachineName = true,
                         type = CVRAdvancedSettingsEntry.SettingsType.Slider,
@@ -793,7 +795,7 @@ public class VRC3CVR : EditorWindow
                 case VRCExpressionParameters.ValueType.Bool:
                     newParam = new CVRAdvancedSettingsEntry()
                     {
-                        name = toggleTable.TryGetValue(vrcParam.name, out var idTable) && idTable.Count > 0 ? idTable.OrderBy(p => p.Key == 1 ? float.PositiveInfinity : p.Key).Last().Value ?? vrcParam.name : vrcParam.name,
+                        name = toggleTable.TryGetValue(vrcParam.name, out var idTable) && idTable.Count > 0 ? MenuName(idTable.OrderBy(p => p.Key == 1 ? float.PositiveInfinity : p.Key).Last().Value) ?? vrcParam.name : vrcParam.name,
                         machineName = vrcParam.name,
                         unlinkNameFromMachineName = true,
                         setting = new CVRAdvancesAvatarSettingGameObjectToggle()
@@ -828,6 +830,46 @@ public class VRC3CVR : EditorWindow
         cvrAvatar.avatarSettings.settings = newParams;
 
         Debug.Log("Finished converting vrc params");
+    }
+
+    string MenuName(string menuName)
+    {
+        if (useHierarchicalMenuName)
+        {
+            return menuName;
+        }
+        return MenuNameWithoutStack(menuName);
+    }
+
+    string MenuNameWithoutStack(string menuName)
+    {
+        var slashIndex = menuName.LastIndexOf('/');
+        if (slashIndex != -1)
+        {
+            return menuName.Substring(slashIndex + 1);
+        }
+        else
+        {
+            return menuName;
+        }
+    }
+
+    string GetMenuNameCommonParent(IEnumerable<string> menuNames)
+    {
+        var commonStack = menuNames.First().Split("/").SkipLast(1).ToArray();
+        foreach (var menuName in menuNames)
+        {
+            var stack = menuName.Split("/").SkipLast(1).ToArray();
+            for (var i = 0; i < commonStack.Length; i++)
+            {
+                if (i >= stack.Length || commonStack[i] != stack[i])
+                {
+                    commonStack = commonStack.Take(i).ToArray();
+                    break;
+                }
+            }
+        }
+        return string.Join("/", commonStack);
     }
 
     void MergeVrcAnimatorsIntoChilloutAnimator()
@@ -2583,7 +2625,7 @@ public class VRC3CVR : EditorWindow
                     },
                 },
             };
-            var layerName = chilloutAnimatorController.MakeUniqueLayerName(ConstantContactProxiedParameterName(parameterName));
+            var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_" + ConstantContactProxiedParameterName(parameterName));
             var layer = new AnimatorControllerLayer
             {
                 name = layerName,
@@ -2711,7 +2753,7 @@ public class VRC3CVR : EditorWindow
                 },
             },
         };
-        var layerName = chilloutAnimatorController.MakeUniqueLayerName("LocalOnlyContacts");
+        var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_LocalOnlyContacts");
         chilloutAnimatorController.AddLayer(new AnimatorControllerLayer
         {
             name = layerName,
