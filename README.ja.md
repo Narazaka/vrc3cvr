@@ -85,7 +85,7 @@ ChilloutVRのデフォルトUIでは非ASCII文字（日本語等）が文字化
   - VRCParameterDriverなども変換
 - VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換
   - VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。
-  - プレイ中のContactのShapeの変更（移動を含む）には未対応です。
+  - プレイ中のContactのShape Typeの変更は非対応です。
 
 ## ジェスチャーマッピング
 

@@ -1,3 +1,7 @@
+# 2.0.0-rc.16
+
+- feat: contact anim remap fpr position/rotation/radius/height
+
 # 2.0.0-rc.15
 
 - fix: convert contacts' localOnly
