@@ -604,7 +604,7 @@ public class VRC3CVR : EditorWindow
         }
         public string MenuName
         {
-            get => addActionMenuModAnnotations && IsButton ? name + "<impulse>" : name;
+            get => addActionMenuModAnnotations && IsButton ? name + "<impulse=0.05>" : name;
         }
         public bool IsButton
         {
