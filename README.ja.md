@@ -58,10 +58,11 @@ VRChatはUnity 2022.3.22f1、CCKはUnity 2021.3.45f1が必要です。
 
 1. Unity 2021.3.45f1プロジェクトをセットアップ（CCK互換のバージョン）。
 2. [ChilloutVR CCK](https://docs.abinteractive.net/cck/setup/)をインポート。
-3. アバターが依存しているアセット（シェーダーなど）をインポート。
-    - VCCパッケージを使用している場合は「Add Existing Project」ボタンでこのプロジェクトをVCCに追加すれば、必要なパッケージをインストールできます。
-4. エクスポートしたアバターの`.unitypackage`をインポート。
-5. 通常どおりアップロード。
+3. 「Add Existing Project」ボタンでこのプロジェクトをVCCに追加してください。VCCから必要なパッケージをインストールできるようになります。（Unityバージョンの不一致は無視してOK）
+4. ConstraintのIsActiveが壊れてしまう問題を修正するために、[under-2022-constraint-activator](https://github.com/Narazaka/under-2022-constraint-activator/releases)をインストールして下さい。（installerと書いてあるものをインポート）
+5. アバターが依存しているアセット（シェーダーなど）をインポート。
+6. エクスポートしたアバターの`.unitypackage`をインポート。
+7. 通常どおりアップロード。
 
 ## Tips
 

@@ -56,10 +56,11 @@ Install [Export Package (Advanced)](https://github.com/Narazaka/ExportPackageAdv
 
 1. Setup the Unity 2021.3.45f1 project (CCK compatible)
 2. Import the [ChilloutVR CCK](https://docs.abinteractive.net/cck/setup/) to that VRChat avatar project.
-3. Import assets that the avatar depends (shaders etc.)
-   - If you are using VCC packages, add this project to VCC (by "Add Existing Project" button). Now you can install them by VCC. (Don't worry about unity version mismatch)
-4. Import the exported avatar unitypackage
-5. Upload it normally.
+3. Add this project to VCC (by "Add Existing Project" button). Now you can install them by VCC. (Don't worry about unity version mismatch)
+4. Install [under-2022-constraint-activator](https://openupm.com/packages/net.narazaka.unity.under-2022-constraint-activator/) for fix Constraint IsActive problem.
+5. Import assets that the avatar depends (shaders etc.)
+6. Import the exported avatar unitypackage
+7. Upload it normally.
 
 ## What does it do?
 
