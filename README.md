@@ -1,39 +1,66 @@
-**The latest version of this tool has been tested in Unity but NOT in-game as the ChilloutVR servers are currently down.**
+# VRC3CVR
+
+- **[日本語](README.ja.md)**
 
 Convert a VRChat SDK3 avatar to ChilloutVR with this Unity script.
 
+- Keep a BACKUP of your original project.
+- This is an fork of the forked project (https://github.com/SaracenOne/vrc3cvr) that is fork of the original project (https://github.com/imagitama/vrc3cvr).
+- It is not recommend you convert avatars with custom locomotion controllers, only FX and Gesture controllers.
+
 Tested with:
 
-- VRChat Avatar SDK3 2022.06.03.00.04
-- ChilloutVR CCK 3.3
-- Unity 2019.4.31f1
-
-Tested using avatar [Canis Woof by Rezillo Ryker](https://www.vrcarena.com/assets/fnADyoq3IE5b4zIZGanA) (CanineRez_UnityVRC_V011 from July 2022 with PhysBones):
-
-<img src="assets/screenshot_caniswoof_fat.png" />
-
-<img src="assets/screenshot_sliders.png" />
-
-## Video
-
-[Watch video](assets/recording_caniswoof.mp4?raw=true)
+- VRChat Avatar SDK3 3.7.x
+- ChilloutVR CCK 3.13.4-3.15.x
+- Unity 2022.3.22f1 (VRChat compatible)
 
 ## Usage
 
-Go to [Releases](https://github.com/imagitama/vrc3cvr/releases/latest) and expand "Assets" and download the `.unitypackage`.
+### 1. Convert
 
-1. Install the ChilloutVR CCK (FAQ channel in their [Discord](https://discord.gg/ABI))
-2. Download and import the vrc3cvr `.unitypackage`
-3. Click PeanutTools -> VRC3CVR
-4. Select the VRC avatar you want to convert (ensure you have the VRC SDK in the project)
-5. Click Convert
+Go to [Releases](https://github.com/Narazaka/vrc3cvr/releases/latest) and expand "Assets" and download the `.unitypackage`.
+
+1. Setup your VRChat avatars with Unity 2022.3.22f1/VRChat SDK 3.x (use VCC)
+2. (optional) convert your PhysBones to DynamicBones by https://github.com/Dreadrith/PhysBone-Converter etc.
+3. Import the [ChilloutVR CCK](https://docs.abinteractive.net/cck/setup/) to that VRChat avatar project. (Don't worry about unity version mismatch)
+4. Import the vrc3cvr `.unitypackage`
+5. Click **Tools** -> VRC3CVR
+6. Select the VRC avatar you want to convert
+   - If you are using Modular Avatar or something non-destractive avatar build tool, try to "bake" avatar first (e.g. Tools -> Modular Avatar -> Manual bake avatar)
+7. Click Convert
 
 Want to convert your PhysBones to DynamicBones? Use these tools:
 
-- https://booth.pm/ja/items/4032295
+- ~~https://booth.pm/ja/items/4032295~~
 - https://github.com/Dreadrith/PhysBone-Converter
 
-You don't need to buy DynamicBones! Use this instead: https://github.com/Markcreator/VRChat-Tools
+You don't need to buy DynamicBones! Use this instead: https://github.com/Markcreator/VRChat-Tools or https://github.com/VRLabs/Dynamic-Bones-Stub
+
+### 2. Export
+
+VRChat requires 2022.3.22f1 and CCK requires 2021.3.45f1.
+
+So you have to bring the converted avatars from 2022 to 2021.
+
+1. Drag and Drop the converted avatar to Project tab to create a prefab.
+2. Right click the prefab and click "Export Package..."
+3. Export unitypackage to where you want.
+
+But...
+
+"Export Package.." often have the problem of including script assets that should not be exported.
+So I created an extension that allows exporting without script assets, etc.
+Install [Export Package (Advanced)](https://github.com/Narazaka/ExportPackageAdvanced) and simply replace "Export Package..." to "Export Package (Advanced)..."
+
+### 3. Upload
+
+1. Setup the Unity 2021.3.45f1 project (CCK compatible)
+2. Import the [ChilloutVR CCK](https://docs.abinteractive.net/cck/setup/) to that VRChat avatar project.
+3. Add this project to VCC (by "Add Existing Project" button). Now you can install them by VCC. (Don't worry about unity version mismatch)
+4. Install [under-2022-constraint-activator](https://openupm.com/packages/net.narazaka.unity.under-2022-constraint-activator/) for fix Constraint IsActive problem.
+5. Import assets that the avatar depends (shaders etc.)
+6. Import the exported avatar unitypackage
+7. Upload it normally.
 
 ## What does it do?
 
@@ -48,6 +75,10 @@ You don't need to buy DynamicBones! Use this instead: https://github.com/Markcre
   - dropdown for all int params (toggle if only 1 int found)
 - converts each animator controller (gestures, FX, etc.) to support ChilloutVR's gesture system
   - references to `GestureLeftWeight`/`GestureRightWeight` are converted to `GestureLeft`/`GestureRight` (check your Fist animation!)
+  - converts VRCParameterDriver etc.
+- Convert VRC Contact Senders and Receivers to CVR Pointer and CVR Advanced Avatar Trigger
+  - Unlike VRC Contact, CVR Pointer and Trigger only change values when the contact collides. This difference may cause compatibility issues.
+  - Changing Shape Type in game is not supported.
 
 ## Mapping gestures
 
@@ -68,21 +99,6 @@ Mapping of VRC gestures to CVR:
 
 VRC has two parameters `GestureLeftWeight` and `GestureRightWeight`. They do not exist in CVR and instead check `GestureLeft` amount where 0.5 is 50% of the trigger for the fist animation.
 
-## Avatar compatibility
-
-These avatars have been tested and verified to work in ChilloutVR using the tool. Some have notes for manual steps.
-
-- [x] Canis Woof (Rezillo Ryker)
-- [x] Rexouium (Rezillo Ryker)
-  - manual step: add missing parameters `ToeMoveH` and `ToeMoveV`
-- [x] Awtter (Shade the Bat)
-  - manual step: add missing parameter `AFK`
-  - fix locomotion: remove the motion in state `WaitForActionOrAFK` in `Actions` controller and enable "Write Defaults"
-- [x] Shiba Inu (Alucard/Pikapetey)
-- [x] Wickerbeast (Jin A)
-
-Please message via the Discord if you have used the tool on your avatar.
-
 ## Ideas for future
 
 - support jaw flap blendshape
@@ -93,7 +109,7 @@ Please message via the Discord if you have used the tool on your avatar.
 
 ### "VRCExpressionParameters.Parameter does not contain a definition for defaultValue" or another VRChat error
 
-Update to a more recent version. Tested with at least VRChat Avatar SDK3 2021.02.23.
+Update to a more recent version. Tested with at least VRChat Avatar SDK3.
 
 ### When performing a gesture my hands do not animate
 

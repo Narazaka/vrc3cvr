@@ -1,3 +1,121 @@
+# 2.0.0-rc.17
+
+- feat: dropdown menu name
+- feat: hierarchical menu name
+
+# 2.0.0-rc.16
+
+- feat: contact anim remap fpr position/rotation/radius/height
+
+# 2.0.0-rc.15
+
+- fix: convert contacts' localOnly
+
+# 2.0.0-rc.14
+
+- feat: convert contacts' localOnly
+
+# 2.0.0-rc.13
+
+- feat: VRC Contacts conversion
+  - new: VRC3CVRCollisionTagConvertion component (Attach to the same object as VRCContacts)
+- fix: Default values for animator-only parameters were being cleared to zero.
+
+# 2.0.0-rc.12
+
+- feat: Grounded param = true by default (convenient for preview)
+
+# 2.0.0-rc.11
+
+- feat: make some methods and fields public for automation
+
+# 2.0.0-rc.10
+
+- fix: convert error with some avatars
+
+# 2.0.0-rc.9
+
+- feat: VRCParameterDriver conversion
+- feat: VRCAnimatorTrackingControl conversion (partial: except eyes, fingers, mouth)
+- feat: VRCAnimatorLocomotionControl conversion
+
+# 2.0.0-rc.8
+
+- fix: Fixed problem with transitions between state machines not being copied (This is a problem for complex animators)
+
+# 2.0.0-rc.7
+
+- feat: adjust to vrc menu order
+
+# 2.0.0-rc.6
+
+- Bool/Float Menu name detection
+- GUI rework
+- ja-JP localization
+
+# 2.0.0-rc.5
+
+- fix save
+
+# 2.0.0-rc.4
+
+- fix save state machine
+
+# 2.0.0-rc.3
+
+- Fix release
+
+# 2.0.0-rc.2
+
+- Fix animator's "name"
+
+# 2.0.0-rc.1
+
+- Fix Animator Controller generation to be able to use with MA
+- moved menu "PeanutTools/VRC3CVR" to general "Tools/VRC3CVR"
+
+# 2.0.0-rc.0
+
+- adjust to CCK 3.13.4
+
+# 1.2.6S
+
+- Fix blend tree Y parameter naming
+
+# 1.2.5S
+
+- Rebase onto main branch
+- Fix scaling of voice position
+- Fix threshold generation between hand idle and fist
+- Prevent null error with empty blend tree motions
+
+# 1.2.4S
+
+- Add toggles to choose all which of the five VRChat base animators to convert and ignore, along with explanations
+- Voice position is now placed at the base of the head bone (if found) rather than the eye position
+- Fix assignment of face mesh if the avatar is was placed in the root of scene
+
+# 1.2.3S
+
+- Fix bug with VRC3CVR_Ouput directory not being created
+
+# 1.2.2S
+
+- Improve support of animator masking on all animators
+
+# 1.2.1S
+
+- Hotfix to address error on avatars without a VRC ExpressionMenu
+
+# 1.2.0S
+
+- Match CVR restrictions on parameter names
+- Make deletion of VRC components optional
+- Fix weight of first layer of each animator
+- Add empty masking to FX layers
+- Scrape VRC menu for correct integer parameter names
+- Add support for converting gesture animator with correct masking and proxy animations
+
 # 1.1.1
 
 - fix face mesh using the old mesh

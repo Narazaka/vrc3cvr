@@ -1,0 +1,69 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -340790334, guid: 67cc4cb7839cd3741b63733d5adf0442, type: 3}
+  m_Name: VRCExpressionsMenu
+  m_EditorClassIdentifier: 
+  Parameters: {fileID: 0}
+  controls:
+  - name: New Control
+    icon: {fileID: 0}
+    type: 203
+    parameter:
+      name: d
+    value: 1
+    style: 0
+    subMenu: {fileID: 0}
+    subParameters:
+    - name: 1c
+    labels: []
+  - name: New Control
+    icon: {fileID: 0}
+    type: 201
+    parameter:
+      name: Open
+    value: 1
+    style: 0
+    subMenu: {fileID: 0}
+    subParameters:
+    - name: Hori
+    - name: Ver
+    labels:
+    - name: U
+      icon: {fileID: 0}
+    - name: R
+      icon: {fileID: 0}
+    - name: D
+      icon: {fileID: 0}
+    - name: L
+      icon: {fileID: 0}
+  - name: New Control
+    icon: {fileID: 0}
+    type: 202
+    parameter:
+      name: Open2
+    value: 1
+    style: 0
+    subMenu: {fileID: 0}
+    subParameters:
+    - name: Up
+    - name: Right
+    - name: Down
+    - name: Left
+    labels:
+    - name: "Up\t"
+      icon: {fileID: 0}
+    - name: R
+      icon: {fileID: 0}
+    - name: D
+      icon: {fileID: 0}
+    - name: L
+      icon: {fileID: 0}

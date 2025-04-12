@@ -14,10 +14,8 @@ namespace PeanutTools_VRC3CVR {
             EditorGUILayout.Space();
         }
 
-        public static void ItalicLabel(string text) {
-            GUIStyle italicStyle = new GUIStyle(GUI.skin.label);
-            italicStyle.fontStyle = FontStyle.Italic;
-            GUILayout.Label(text, italicStyle);
+        public static void HelpLabel(string text) {
+            EditorGUILayout.HelpBox(text, MessageType.None);
         }
 
         public static void LargeLabel(string text) {
