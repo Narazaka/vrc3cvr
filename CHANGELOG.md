@@ -1,3 +1,22 @@
+# 2.0.0
+
+- **adjust to CCK 3.15.x!**
+- feat: adjust to vrc menu order
+- feat: improved Menu name detection
+- feat: hierarchical menu name
+- feat: VRCParameterDriver conversion
+- feat: VRCAnimatorLocomotionControl conversion
+- feat: VRCAnimatorTrackingControl conversion (partial: except eyes, fingers, mouth)
+- feat: VRC Contacts conversion
+  - new: VRC3CVRCollisionTagConvertion component (Attach to the same object as VRCContacts)
+- feat: Grounded param = true by default (convenient for preview)
+- feat: make some methods and fields public for automation
+- ui: moved menu "PeanutTools/VRC3CVR" to general "Tools/VRC3CVR"
+- ui: GUI rework
+- ui: ja-JP localization
+- fix: Animator Controller generation to be able to use with Modular Avatar
+- fix: animator's "name"
+
 # 2.0.0-rc.17
 
 - feat: dropdown menu name
