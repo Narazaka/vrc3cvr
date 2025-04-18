@@ -1,3 +1,7 @@
+# 2.1.0
+
+- feat: Action Menu mod "hidden" annotations
+
 # 2.0.0
 
 - **adjust to CCK 3.15.x!**
