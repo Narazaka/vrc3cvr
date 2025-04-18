@@ -587,32 +587,7 @@ public class VRC3CVR : EditorWindow
         }
     }
 
-    class MenuNameAndType
-    {
-        public bool addActionMenuModAnnotations;
-        public readonly VRCExpressionsMenu.Control.ControlType type;
-        public readonly string name;
-        public MenuNameAndType(bool addActionMenuModAnnotations, VRCExpressionsMenu.Control.ControlType type, string name)
-        {
-            this.addActionMenuModAnnotations = addActionMenuModAnnotations;
-            this.type = type;
-            this.name = name;
-        }
-        public MenuNameAndType Name(string name)
-        {
-            return new MenuNameAndType(addActionMenuModAnnotations, type, name);
-        }
-        public string MenuName
-        {
-            get => addActionMenuModAnnotations && IsButton ? name + "<impulse>" : name;
-        }
-        public bool IsButton
-        {
-            get => type == VRCExpressionsMenu.Control.ControlType.Button;
-        }
-    }
-
-    Dictionary<string, Dictionary<float, MenuNameAndType>> FindMenuButtonsAndToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<float, MenuNameAndType>> toggleTable, string[] subMenuStack)
+    Dictionary<string, Dictionary<float, string>> FindMenuButtonsAndToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<float, string>> toggleTable, string[] subMenuStack)
     {
         var basePath = string.Join("", subMenuStack.Select(s => s + "/"));
         if (menu != null)
@@ -624,11 +599,11 @@ public class VRC3CVR : EditorWindow
                     AddParameterOrder(control.parameter.name);
                     if (!toggleTable.TryGetValue(control.parameter.name, out var idTable))
                     {
-                        idTable = new Dictionary<float, MenuNameAndType>();
+                        idTable = new Dictionary<float, string>();
                     }
                     if (!idTable.ContainsKey(control.value))
                     {
-                        idTable.Add(1, new MenuNameAndType(addActionMenuModAnnotations, control.type, $"{basePath}{control.name} Changing"));
+                        idTable.Add(1, $"{basePath}{control.name} Changing");
                     }
                     toggleTable[control.parameter.name] = idTable;
                 }
@@ -641,11 +616,11 @@ public class VRC3CVR : EditorWindow
                     AddParameterOrder(parameterName);
                     if (!toggleTable.TryGetValue(parameterName, out var idTable))
                     {
-                        idTable = new Dictionary<float, MenuNameAndType>();
+                        idTable = new Dictionary<float, string>();
                     }
                     if (!idTable.ContainsKey(float.NaN))
                     {
-                        idTable.Add(float.NaN, new MenuNameAndType(addActionMenuModAnnotations, control.type, control.labels != null && control.labels.Length > labelIndex && !string.IsNullOrWhiteSpace(control.labels[labelIndex].name) ? $"{basePath}{control.name} {control.labels[labelIndex].name}" : $"{basePath}{control.name} {fallbackSuffix}"));
+                        idTable.Add(float.NaN, control.labels != null && control.labels.Length > labelIndex && !string.IsNullOrWhiteSpace(control.labels[labelIndex].name) ? $"{basePath}{control.name} {control.labels[labelIndex].name}" : $"{basePath}{control.name} {fallbackSuffix}");
                     }
                     toggleTable[parameterName] = idTable;
                 }
@@ -655,19 +630,19 @@ public class VRC3CVR : EditorWindow
                 if (control.type == VRCExpressionsMenu.Control.ControlType.Toggle || control.type == VRCExpressionsMenu.Control.ControlType.Button)
                 {
                     AddParameterOrder(control.parameter.name);
-                    Dictionary<float, MenuNameAndType> idTable;
+                    Dictionary<float, string> idTable;
                     if (toggleTable.ContainsKey(control.parameter.name))
                     {
                         idTable = toggleTable[control.parameter.name];
                     }
                     else
                     {
-                        idTable = new Dictionary<float, MenuNameAndType>();
+                        idTable = new Dictionary<float, string>();
                     }
 
                     if (!idTable.ContainsKey(control.value))
                     {
-                        idTable.Add(control.value, new MenuNameAndType(addActionMenuModAnnotations, control.type, basePath + control.name));
+                        idTable.Add(control.value, basePath + control.name);
                     }
 
                     toggleTable[control.parameter.name] = idTable;
@@ -681,11 +656,11 @@ public class VRC3CVR : EditorWindow
                         AddParameterOrder(parameterName);
                         if (!toggleTable.TryGetValue(parameterName, out var idTable))
                         {
-                            idTable = new Dictionary<float, MenuNameAndType>();
+                            idTable = new Dictionary<float, string>();
                         }
                         if (!idTable.ContainsKey(float.NaN))
                         {
-                            idTable.Add(float.NaN, new MenuNameAndType(addActionMenuModAnnotations, control.type, basePath + control.name));
+                            idTable.Add(float.NaN, basePath + control.name);
                         }
                         toggleTable[parameterName] = idTable;
                     }
@@ -723,7 +698,7 @@ public class VRC3CVR : EditorWindow
         List<CVRAdvancedSettingsEntry> newParams = new List<CVRAdvancedSettingsEntry>();
 
         parameterOrder = new List<string>();
-        var toggleTable = FindMenuButtonsAndToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<float, MenuNameAndType>>(), new string[0]);
+        Dictionary<string, Dictionary<float, string>> toggleTable = FindMenuButtonsAndToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<float, string>>(), new string[0]);
 
         var hiddenMark = addActionMenuModAnnotations ? "<hidden>" : "";
 
@@ -749,10 +724,9 @@ public class VRC3CVR : EditorWindow
                         if (intIdTable.Count == 1 && intIdTable.First().Key == 1)
                         {
                             Debug.Log("Param has only one option and value = 1 so we are making a toggle instead");
-                            var menuEntry = intIdTable.First().Value;
                             newParam = new CVRAdvancedSettingsEntry()
                             {
-                                name = MenuName(menuEntry.MenuName),
+                                name = MenuName(intIdTable.First().Value),
                                 machineName = vrcParam.name,
                                 unlinkNameFromMachineName = true,
                                 setting = new CVRAdvancesAvatarSettingGameObjectToggle()
@@ -765,17 +739,17 @@ public class VRC3CVR : EditorWindow
                         else
                         {
                             var lastIndex = (int)intIdTable.Last().Key;
-                            var menuEntries = new List<MenuNameAndType>();
+                            var menuEntryNames = new List<string>();
                             for (var j = 0; j < lastIndex + 1; j++)
                             {
-                                menuEntries.Add(intIdTable.TryGetValue(j, out var menuEntry) ? menuEntry : new MenuNameAndType(addActionMenuModAnnotations, VRCExpressionsMenu.Control.ControlType.Toggle,"---"));
+                                menuEntryNames.Add(intIdTable.TryGetValue(j, out var menuEntryName) ? menuEntryName : "---");
                             }
-                            var menuName = GetMenuNameCommonParent(menuEntries.Where(e => e.name != "---").Select(e => e.name));
-                            menuEntries = menuEntries.Select(e =>
+                            var menuName = GetMenuNameCommonParent(menuEntryNames.Where(name => name != "---"));
+                            menuEntryNames = menuEntryNames.Select(name =>
                             {
-                                if (e.name == "---") return e;
-                                if (useHierarchicalDropdownMenuName) return e.Name(e.name.Substring(menuName.Length + 1));
-                                return e.Name(MenuNameWithoutStack(e.name));
+                                if (name == "---") return "---";
+                                if (useHierarchicalDropdownMenuName) return name.Substring(menuName.Length + 1);
+                                return MenuNameWithoutStack(name);
                             }).ToList();
                             newParam = new CVRAdvancedSettingsEntry()
                             {
@@ -786,7 +760,7 @@ public class VRC3CVR : EditorWindow
                                 setting = new CVRAdvancesAvatarSettingGameObjectDropdown()
                                 {
                                     defaultValue = (int)vrcParam.defaultValue,
-                                    options = menuEntries.Select(e => new CVRAdvancedSettingsDropDownEntry { name = e.MenuName }).ToList(),
+                                    options = menuEntryNames.Select(name => new CVRAdvancedSettingsDropDownEntry { name = name }).ToList(),
                                     usedType = CVRAdvancesAvatarSettingBase.ParameterType.Int
                                 }
                             };
@@ -811,7 +785,7 @@ public class VRC3CVR : EditorWindow
                 case VRCExpressionParameters.ValueType.Float:
                     newParam = new CVRAdvancedSettingsEntry()
                     {
-                        name = toggleTable.TryGetValue(vrcParam.name, out var floatIdTable) && floatIdTable.Count > 0 ? MenuName(floatIdTable.First().Value.MenuName) ?? vrcParam.name : vrcParam.name + hiddenMark,
+                        name = toggleTable.TryGetValue(vrcParam.name, out var floatIdTable) && floatIdTable.Count > 0 ? MenuName(floatIdTable.First().Value) ?? vrcParam.name : vrcParam.name + hiddenMark,
                         machineName = vrcParam.name,
                         unlinkNameFromMachineName = true,
                         type = CVRAdvancedSettingsEntry.SettingsType.Slider,
@@ -826,7 +800,7 @@ public class VRC3CVR : EditorWindow
                 case VRCExpressionParameters.ValueType.Bool:
                     newParam = new CVRAdvancedSettingsEntry()
                     {
-                        name = toggleTable.TryGetValue(vrcParam.name, out var idTable) && idTable.Count > 0 ? MenuName(idTable.OrderBy(p => p.Key == 1 ? float.PositiveInfinity : p.Key).Last().Value.MenuName) ?? vrcParam.name : vrcParam.name + hiddenMark,
+                        name = toggleTable.TryGetValue(vrcParam.name, out var idTable) && idTable.Count > 0 ? MenuName(idTable.OrderBy(p => p.Key == 1 ? float.PositiveInfinity : p.Key).Last().Value) ?? vrcParam.name : vrcParam.name + hiddenMark,
                         machineName = vrcParam.name,
                         unlinkNameFromMachineName = true,
                         setting = new CVRAdvancesAvatarSettingGameObjectToggle()
