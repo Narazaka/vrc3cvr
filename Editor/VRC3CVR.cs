@@ -48,6 +48,7 @@ public class VRC3CVR : EditorWindow
     public bool adjustToVrcMenuOrder = true;
     public bool useHierarchicalMenuName = true;
     public bool useHierarchicalDropdownMenuName = true;
+    public bool addActionMenuModAnnotations = false;
     public bool shouldCloneAvatar = true;
     public bool shouldDeleteVRCAvatarDescriptorAndPipelineManager = true;
     public bool shouldDeletePhysBones = true;
@@ -125,6 +126,7 @@ public class VRC3CVR : EditorWindow
         public static istring AdjustToVrcMenuOrder => new istring("Adjust to VRC menu order", "VRCメニューの順序に調整");
         public static istring UseHierarchicalMenuName => new istring("Use hierarchical menu name", "階層メニュー名を使用");
         public static istring UseHierarchicalDropdownMenuName => new istring("Use hierarchical dropdown menu name", "ドロップダウンメニュー名も階層化");
+        public static istring AddActionMenuModAnnotations => new istring("Add Action Menu Mod annotations", "Action Menu Mod用の種別タグを付与");
         public static istring CloneAvatar => new istring("Clone avatar", "アバターをクローン");
         public static istring DeleteVRCAvatarDescriptorAndPipelineManager => new istring("Delete VRC Avatar Descriptor and Pipeline Manager", "VRC Avatar DescriptorとPipeline Managerを削除");
         public static istring DeletePhysBonesAndColliders => new istring("Delete PhysBones and colliders", "PhysBonesとコライダーを削除");
@@ -228,6 +230,7 @@ public class VRC3CVR : EditorWindow
 
         useHierarchicalMenuName = GUILayout.Toggle(useHierarchicalMenuName, T.UseHierarchicalMenuName);
         useHierarchicalDropdownMenuName = GUILayout.Toggle(useHierarchicalDropdownMenuName, T.UseHierarchicalDropdownMenuName);
+        addActionMenuModAnnotations = GUILayout.Toggle(addActionMenuModAnnotations, T.AddActionMenuModAnnotations);
 
         CustomGUI.SmallLineGap();
 
@@ -697,6 +700,8 @@ public class VRC3CVR : EditorWindow
         parameterOrder = new List<string>();
         Dictionary<string, Dictionary<float, string>> toggleTable = FindMenuButtonsAndToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<float, string>>(), new string[0]);
 
+        var hiddenMark = addActionMenuModAnnotations ? "<hidden>" : "";
+
         for (int i = 0; i < vrcParams?.parameters?.Length; i++)
         {
             VRCExpressionParameter vrcParam = vrcParams.parameters[i];
@@ -765,7 +770,7 @@ public class VRC3CVR : EditorWindow
                     {
                         newParam = new CVRAdvancedSettingsEntry()
                         {
-                            name = vrcParam.name,
+                            name = vrcParam.name + hiddenMark,
                             machineName = vrcParam.name,
                             unlinkNameFromMachineName = true,
                             inputSingleSettings = new CVRAdvancesAvatarSettingInputSingle()
@@ -780,7 +785,7 @@ public class VRC3CVR : EditorWindow
                 case VRCExpressionParameters.ValueType.Float:
                     newParam = new CVRAdvancedSettingsEntry()
                     {
-                        name = toggleTable.TryGetValue(vrcParam.name, out var floatIdTable) && floatIdTable.Count > 0 ? MenuName(floatIdTable.First().Value) ?? vrcParam.name : vrcParam.name,
+                        name = toggleTable.TryGetValue(vrcParam.name, out var floatIdTable) && floatIdTable.Count > 0 ? MenuName(floatIdTable.First().Value) ?? vrcParam.name : vrcParam.name + hiddenMark,
                         machineName = vrcParam.name,
                         unlinkNameFromMachineName = true,
                         type = CVRAdvancedSettingsEntry.SettingsType.Slider,
@@ -795,7 +800,7 @@ public class VRC3CVR : EditorWindow
                 case VRCExpressionParameters.ValueType.Bool:
                     newParam = new CVRAdvancedSettingsEntry()
                     {
-                        name = toggleTable.TryGetValue(vrcParam.name, out var idTable) && idTable.Count > 0 ? MenuName(idTable.OrderBy(p => p.Key == 1 ? float.PositiveInfinity : p.Key).Last().Value) ?? vrcParam.name : vrcParam.name,
+                        name = toggleTable.TryGetValue(vrcParam.name, out var idTable) && idTable.Count > 0 ? MenuName(idTable.OrderBy(p => p.Key == 1 ? float.PositiveInfinity : p.Key).Last().Value) ?? vrcParam.name : vrcParam.name + hiddenMark,
                         machineName = vrcParam.name,
                         unlinkNameFromMachineName = true,
                         setting = new CVRAdvancesAvatarSettingGameObjectToggle()
