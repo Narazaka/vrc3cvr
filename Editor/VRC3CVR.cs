@@ -376,9 +376,9 @@ public class VRC3CVR : EditorWindow
         }
         SetAnimator();
         ConvertVrcParametersToChillout();
-        if (preserveParameterSyncState)
+        if (preserveParameterSyncState || addActionMenuModAnnotations)
         {
-            AdjustNonSyncParameters();
+            AdjustParameterNames();
         }
         SaveChilloutAnimator();
         InsertChilloutOverride();
@@ -598,8 +598,29 @@ public class VRC3CVR : EditorWindow
             parameterOrder.Add(name);
         }
     }
+    HashSet<string> impulseParameters;
 
-    Dictionary<string, Dictionary<float, string>> FindMenuButtonsAndToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<float, string>> toggleTable, string[] subMenuStack)
+    class MenuNameAndType
+    {
+        public readonly VRCExpressionsMenu.Control.ControlType type;
+        public readonly string name;
+        public MenuNameAndType(VRCExpressionsMenu.Control.ControlType type, string name)
+        {
+            this.type = type;
+            this.name = name;
+        }
+        public MenuNameAndType Name(string name)
+        {
+            return new MenuNameAndType(type, name);
+        }
+        public bool IsButton
+        {
+            get => type == VRCExpressionsMenu.Control.ControlType.Button;
+        }
+    }
+
+
+    Dictionary<string, Dictionary<float, MenuNameAndType>> FindMenuButtonsAndToggles(VRCExpressionsMenu menu, Dictionary<string, Dictionary<float, MenuNameAndType>> toggleTable, string[] subMenuStack)
     {
         var basePath = string.Join("", subMenuStack.Select(s => s + "/"));
         if (menu != null)
@@ -611,11 +632,11 @@ public class VRC3CVR : EditorWindow
                     AddParameterOrder(control.parameter.name);
                     if (!toggleTable.TryGetValue(control.parameter.name, out var idTable))
                     {
-                        idTable = new Dictionary<float, string>();
+                        idTable = new Dictionary<float, MenuNameAndType>();
                     }
                     if (!idTable.ContainsKey(control.value))
                     {
-                        idTable.Add(1, $"{basePath}{control.name} Changing");
+                        idTable.Add(1, new MenuNameAndType(control.type, $"{basePath}{control.name} Changing"));
                     }
                     toggleTable[control.parameter.name] = idTable;
                 }
@@ -628,11 +649,11 @@ public class VRC3CVR : EditorWindow
                     AddParameterOrder(parameterName);
                     if (!toggleTable.TryGetValue(parameterName, out var idTable))
                     {
-                        idTable = new Dictionary<float, string>();
+                        idTable = new Dictionary<float, MenuNameAndType>();
                     }
                     if (!idTable.ContainsKey(float.NaN))
                     {
-                        idTable.Add(float.NaN, control.labels != null && control.labels.Length > labelIndex && !string.IsNullOrWhiteSpace(control.labels[labelIndex].name) ? $"{basePath}{control.name} {control.labels[labelIndex].name}" : $"{basePath}{control.name} {fallbackSuffix}");
+                        idTable.Add(float.NaN, new MenuNameAndType(control.type, control.labels != null && control.labels.Length > labelIndex && !string.IsNullOrWhiteSpace(control.labels[labelIndex].name) ? $"{basePath}{control.name} {control.labels[labelIndex].name}" : $"{basePath}{control.name} {fallbackSuffix}"));
                     }
                     toggleTable[parameterName] = idTable;
                 }
@@ -642,19 +663,19 @@ public class VRC3CVR : EditorWindow
                 if (control.type == VRCExpressionsMenu.Control.ControlType.Toggle || control.type == VRCExpressionsMenu.Control.ControlType.Button)
                 {
                     AddParameterOrder(control.parameter.name);
-                    Dictionary<float, string> idTable;
+                    Dictionary<float, MenuNameAndType> idTable;
                     if (toggleTable.ContainsKey(control.parameter.name))
                     {
                         idTable = toggleTable[control.parameter.name];
                     }
                     else
                     {
-                        idTable = new Dictionary<float, string>();
+                        idTable = new Dictionary<float, MenuNameAndType>();
                     }
 
                     if (!idTable.ContainsKey(control.value))
                     {
-                        idTable.Add(control.value, basePath + control.name);
+                        idTable.Add(control.value, new MenuNameAndType(control.type, basePath + control.name));
                     }
 
                     toggleTable[control.parameter.name] = idTable;
@@ -668,11 +689,11 @@ public class VRC3CVR : EditorWindow
                         AddParameterOrder(parameterName);
                         if (!toggleTable.TryGetValue(parameterName, out var idTable))
                         {
-                            idTable = new Dictionary<float, string>();
+                            idTable = new Dictionary<float, MenuNameAndType>();
                         }
                         if (!idTable.ContainsKey(float.NaN))
                         {
-                            idTable.Add(float.NaN, basePath + control.name);
+                            idTable.Add(float.NaN, new MenuNameAndType(control.type, basePath + control.name));
                         }
                         toggleTable[parameterName] = idTable;
                     }
@@ -710,7 +731,8 @@ public class VRC3CVR : EditorWindow
         List<CVRAdvancedSettingsEntry> newParams = new List<CVRAdvancedSettingsEntry>();
 
         parameterOrder = new List<string>();
-        Dictionary<string, Dictionary<float, string>> toggleTable = FindMenuButtonsAndToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<float, string>>(), new string[0]);
+        impulseParameters = new HashSet<string>();
+        Dictionary<string, Dictionary<float, MenuNameAndType>> toggleTable = FindMenuButtonsAndToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<float, MenuNameAndType>>(), new string[0]);
 
         for (int i = 0; i < vrcParams?.parameters?.Length; i++)
         {
@@ -733,10 +755,11 @@ public class VRC3CVR : EditorWindow
                     {
                         if (intIdTable.Count == 1 && intIdTable.First().Key == 1)
                         {
+                            var menuNameAndType = intIdTable.First().Value;
                             Debug.Log("Param has only one option and value = 1 so we are making a toggle instead");
                             newParam = new CVRAdvancedSettingsEntry()
                             {
-                                name = MenuName(intIdTable.First().Value),
+                                name = MenuName(menuNameAndType.name),
                                 machineName = vrcParam.name,
                                 unlinkNameFromMachineName = true,
                                 setting = new CVRAdvancesAvatarSettingGameObjectToggle()
@@ -745,6 +768,10 @@ public class VRC3CVR : EditorWindow
                                     usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool
                                 },
                             };
+                            if (menuNameAndType.type == VRCExpressionsMenu.Control.ControlType.Button)
+                            {
+                                impulseParameters.Add(vrcParam.name);
+                            }
                         }
                         else
                         {
@@ -752,7 +779,7 @@ public class VRC3CVR : EditorWindow
                             var menuEntryNames = new List<string>();
                             for (var j = 0; j < lastIndex + 1; j++)
                             {
-                                menuEntryNames.Add(intIdTable.TryGetValue(j, out var menuEntryName) ? menuEntryName : "---");
+                                menuEntryNames.Add(intIdTable.TryGetValue(j, out var menuEntry) ? menuEntry.name : "---");
                             }
                             var menuName = GetMenuNameCommonParent(menuEntryNames.Where(name => name != "---"));
                             menuEntryNames = menuEntryNames.Select(name =>
@@ -774,6 +801,10 @@ public class VRC3CVR : EditorWindow
                                     usedType = CVRAdvancesAvatarSettingBase.ParameterType.Int
                                 }
                             };
+                            if (intIdTable.Values.All(v => v.type == VRCExpressionsMenu.Control.ControlType.Button))
+                            {
+                                impulseParameters.Add(vrcParam.name);
+                            }
                         }
                     }
                     break;
@@ -781,9 +812,10 @@ public class VRC3CVR : EditorWindow
                 case VRCExpressionParameters.ValueType.Float:
                     if (toggleTable.TryGetValue(vrcParam.name, out var floatIdTable) && floatIdTable.Count > 0)
                     {
+                        var menuNameAndType = floatIdTable.First().Value;
                         newParam = new CVRAdvancedSettingsEntry()
                         {
-                            name = MenuName(floatIdTable.First().Value) ?? vrcParam.name,
+                            name = MenuName(menuNameAndType.name) ?? vrcParam.name,
                             machineName = vrcParam.name,
                             unlinkNameFromMachineName = true,
                             type = CVRAdvancedSettingsEntry.SettingsType.Slider,
@@ -793,15 +825,20 @@ public class VRC3CVR : EditorWindow
                                 usedType = CVRAdvancesAvatarSettingBase.ParameterType.Float
                             }
                         };
+                        if (menuNameAndType.type == VRCExpressionsMenu.Control.ControlType.Button)
+                        {
+                            impulseParameters.Add(vrcParam.name);
+                        }
                     }
                     break;
 
                 case VRCExpressionParameters.ValueType.Bool:
                     if (toggleTable.TryGetValue(vrcParam.name, out var idTable) && idTable.Count > 0)
                     {
+                        var menuNameAndType = idTable.OrderBy(p => p.Key == 1 ? float.PositiveInfinity : p.Key).Last().Value;
                         newParam = new CVRAdvancedSettingsEntry()
                         {
-                            name = MenuName(idTable.OrderBy(p => p.Key == 1 ? float.PositiveInfinity : p.Key).Last().Value) ?? vrcParam.name,
+                            name = MenuName(menuNameAndType.name) ?? vrcParam.name,
                             machineName = vrcParam.name,
                             unlinkNameFromMachineName = true,
                             setting = new CVRAdvancesAvatarSettingGameObjectToggle()
@@ -810,6 +847,10 @@ public class VRC3CVR : EditorWindow
                                 usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool
                             }
                         };
+                        if (menuNameAndType.type == VRCExpressionsMenu.Control.ControlType.Button)
+                        {
+                            impulseParameters.Add(vrcParam.name);
+                        }
                     }
                     break;
 
@@ -850,6 +891,7 @@ public class VRC3CVR : EditorWindow
 
     string MenuNameWithoutStack(string menuName)
     {
+        if (string.IsNullOrEmpty(menuName)) return menuName;
         var slashIndex = menuName.LastIndexOf('/');
         if (slashIndex != -1)
         {
@@ -898,25 +940,39 @@ public class VRC3CVR : EditorWindow
 
     HashSet<string> preserveParameters;
 
-    void AdjustNonSyncParameters()
+    void AdjustParameterNames()
     {
-        preserveParameters = vrcAvatarDescriptor.expressionParameters.parameters?.Where(p => p.networkSynced).Select(p => p.name).ToHashSet() ?? new HashSet<string>();
-        preserveParameters.UnionWith(PreDefinedParameterNames);
+        if (preserveParameterSyncState)
+        {
+            preserveParameters = vrcAvatarDescriptor.expressionParameters.parameters?.Where(p => p.networkSynced).Select(p => p.name).ToHashSet() ?? new HashSet<string>();
+            preserveParameters.UnionWith(PreDefinedParameterNames);
+        }
+        else
+        {
+            // all
+            preserveParameters = vrcAvatarDescriptor.expressionParameters.parameters?.Select(p => p.name).ToHashSet() ?? new HashSet<string>();
+            preserveParameters.UnionWith(chilloutAnimatorController.parameters.Select(p => p.name));
+        }
+        if (!addActionMenuModAnnotations)
+        {
+            impulseParameters = new HashSet<string>();
+        }
 
-        AdjustNonSyncParametersOnAnimator();
-        AdjustNonSyncParametersOnAdvancedSettings();
-        AdjustNonSyncParametersOnCVRAdvancedAvatarSettingsTrigger();
+        AdjustParameterNamesOnAnimator();
+        AdjustParameterNamesOnAdvancedSettings();
+        AdjustParameterNamesOnCVRAdvancedAvatarSettingsTrigger();
     }
 
-    void AdjustNonSyncParametersOnAnimator()
+    void AdjustParameterNamesOnAnimator()
     {
         var parameters = chilloutAnimatorController.parameters;
         for (var i = 0; i < parameters.Length; ++i)
         {
-            if (IsNonSyncParameter(parameters[i].name))
+            var t = GetRenameParameterType(parameters[i].name);
+            if (t != RenameParameterType.None)
             {
                 var param = parameters[i];
-                param.name = NonSyncParameterName(param.name);
+                param.name = RenameParameterName(param.name, t);
                 parameters[i] = param;
             }
         }
@@ -924,26 +980,26 @@ public class VRC3CVR : EditorWindow
 
         foreach (var layer in chilloutAnimatorController.layers)
         {
-            AdjustNonSyncParametersOnStateMachine(layer.stateMachine);
+            AdjustParameterNamesOnStateMachine(layer.stateMachine);
         }
     }
 
-    void AdjustNonSyncParametersOnStateMachine(AnimatorStateMachine stateMachine)
+    void AdjustParameterNamesOnStateMachine(AnimatorStateMachine stateMachine)
     {
         var anyStateTransitions = stateMachine.anyStateTransitions;
-        if (AdjustNonSyncParametersOnTransitions(anyStateTransitions))
+        if (AdjustParameterNamesOnTransitions(anyStateTransitions))
         {
             stateMachine.anyStateTransitions = anyStateTransitions;
         }
         var entryTransitions = stateMachine.entryTransitions;
-        if (AdjustNonSyncParametersOnTransitions(entryTransitions))
+        if (AdjustParameterNamesOnTransitions(entryTransitions))
         {
             stateMachine.entryTransitions = entryTransitions;
         }
         foreach (var childState in stateMachine.states)
         {
             var transitions = childState.state.transitions;
-            if (AdjustNonSyncParametersOnTransitions(transitions))
+            if (AdjustParameterNamesOnTransitions(transitions))
             {
                 childState.state.transitions = transitions;
             }
@@ -954,38 +1010,38 @@ public class VRC3CVR : EditorWindow
                 {
                     foreach (var task in driver.EnterTasks)
                     {
-                        AdjustNonSyncParametersOnAnimatorDriverTask(task);
+                        AdjustParameterNamesOnAnimatorDriverTask(task);
                     }
                     foreach (var task in driver.ExitTasks)
                     {
-                        AdjustNonSyncParametersOnAnimatorDriverTask(task);
+                        AdjustParameterNamesOnAnimatorDriverTask(task);
                     }
                 }
             }
             if (childState.state.motion is BlendTree blendTree)
             {
-                childState.state.motion = AdjustNonSyncParametersOnBlendTree(blendTree);
+                childState.state.motion = AdjustParameterNamesOnBlendTree(blendTree);
             }
             else if (childState.state.motion is AnimationClip clip)
             {
-                childState.state.motion = AdjustNonSyncParametersOnAnimationClip(clip);
+                childState.state.motion = AdjustParameterNamesOnAnimationClip(clip);
             }
         }
         foreach (var subMachine in stateMachine.stateMachines)
         {
             var transitions = stateMachine.GetStateMachineTransitions(subMachine.stateMachine);
-            if (AdjustNonSyncParametersOnTransitions(transitions))
+            if (AdjustParameterNamesOnTransitions(transitions))
             {
                 stateMachine.SetStateMachineTransitions(subMachine.stateMachine, transitions);
             }
         }
         foreach (var childStateMachine in stateMachine.stateMachines)
         {
-            AdjustNonSyncParametersOnStateMachine(childStateMachine.stateMachine);
+            AdjustParameterNamesOnStateMachine(childStateMachine.stateMachine);
         }
     }
 
-    bool AdjustNonSyncParametersOnTransitions(AnimatorTransitionBase[] transitions)
+    bool AdjustParameterNamesOnTransitions(AnimatorTransitionBase[] transitions)
     {
         var changedAll = false;
         foreach (var transition in transitions)
@@ -994,10 +1050,11 @@ public class VRC3CVR : EditorWindow
             var changed = false;
             for (var i = 0; i < conditions.Length; ++i)
             {
-                if (IsNonSyncParameter(conditions[i].parameter))
+                var t = GetRenameParameterType(conditions[i].parameter);
+                if (t != RenameParameterType.None)
                 {
                     var condition = conditions[i];
-                    condition.parameter = NonSyncParameterName(condition.parameter);
+                    condition.parameter = RenameParameterName(condition.parameter, t);
                     conditions[i] = condition;
                     changed = true;
                 }
@@ -1011,7 +1068,7 @@ public class VRC3CVR : EditorWindow
         return changedAll;
     }
 
-    BlendTree AdjustNonSyncParametersOnBlendTree(BlendTree blendTree)
+    BlendTree AdjustParameterNamesOnBlendTree(BlendTree blendTree)
     {
         BlendTree newBlendTree = null;
         BlendTree EnsureNewBlendTree()
@@ -1027,29 +1084,36 @@ public class VRC3CVR : EditorWindow
             children[i] = convert(children[i]);
             b.children = children;
         }
-        if (IsNonSyncParameter(blendTree.blendParameter))
         {
-            EnsureNewBlendTree().blendParameter = NonSyncParameterName(blendTree.blendParameter);
+            var t = GetRenameParameterType(blendTree.blendParameter);
+            if (t != RenameParameterType.None)
+            {
+                EnsureNewBlendTree().blendParameter = RenameParameterName(blendTree.blendParameter, t);
+            }
         }
-        if (IsNonSyncParameter(blendTree.blendParameterY))
         {
-            EnsureNewBlendTree().blendParameterY = NonSyncParameterName(blendTree.blendParameterY);
+            var t = GetRenameParameterType(blendTree.blendParameterY);
+            if (t != RenameParameterType.None)
+            {
+                EnsureNewBlendTree().blendParameterY = RenameParameterName(blendTree.blendParameterY, t);
+            }
         }
         var children = blendTree.children;
         for (var i = 0; i < children.Length; ++i)
         {
             var child = children[i];
-            if (IsNonSyncParameter(child.directBlendParameter))
+            var t = GetRenameParameterType(child.directBlendParameter);
+            if (t != RenameParameterType.None)
             {
                 ChangeChild(EnsureNewBlendTree(), i, cm =>
                 {
-                    cm.directBlendParameter = NonSyncParameterName(cm.directBlendParameter);
+                    cm.directBlendParameter = RenameParameterName(cm.directBlendParameter, t);
                     return cm;
                 });
             }
             if (child.motion is BlendTree childBlendTree)
             {
-                var newChildBlendTree = AdjustNonSyncParametersOnBlendTree(childBlendTree);
+                var newChildBlendTree = AdjustParameterNamesOnBlendTree(childBlendTree);
                 if (newChildBlendTree != childBlendTree)
                 {
                     ChangeChild(EnsureNewBlendTree(), i, cm =>
@@ -1061,7 +1125,7 @@ public class VRC3CVR : EditorWindow
             }
             else if (child.motion is AnimationClip clip)
             {
-                var newClip = AdjustNonSyncParametersOnAnimationClip(clip);
+                var newClip = AdjustParameterNamesOnAnimationClip(clip);
                 if (newClip != clip)
                 {
                     ChangeChild(EnsureNewBlendTree(), i, cm =>
@@ -1075,74 +1139,128 @@ public class VRC3CVR : EditorWindow
         return newBlendTree ?? blendTree;
     }
 
-    AnimationClip AdjustNonSyncParametersOnAnimationClip(AnimationClip clip)
+    AnimationClip AdjustParameterNamesOnAnimationClip(AnimationClip clip)
     {
         var bindings = AnimationUtility.GetCurveBindings(clip);
-        var targetBindings = new EditorCurveBinding[bindings.Length];
+        var targets = new (EditorCurveBinding binding, RenameParameterType type)[bindings.Length];
         var j = 0;
         foreach (var binding in bindings)
         {
-            if (binding.type == typeof(Animator) && IsNonSyncParameter(binding.propertyName))
+            if (binding.type == typeof(Animator))
             {
-                targetBindings[j++] = binding;
+                var t = GetRenameParameterType(binding.propertyName);
+                if (t != RenameParameterType.None)
+                {
+                    targets[j++] = (binding, t);
+                }
             }
         }
         if (j == 0)
         {
             return clip;
         }
-        Array.Resize(ref targetBindings, j);
+        Array.Resize(ref targets, j);
         var newClip = CopyAnimatorController.CopyAnimationClip(clip);
         newClip.name = clip.name + "_Remapped";
-        foreach (var binding in targetBindings)
+        foreach (var target in targets)
         {
+            var binding = target.binding;
             var newBinding = binding;
-            newBinding.propertyName = NonSyncParameterName(binding.propertyName);
+            newBinding.propertyName = RenameParameterName(binding.propertyName, target.type);
             AnimationUtility.SetEditorCurve(newClip, binding, null);
             AnimationUtility.SetEditorCurve(newClip, newBinding, AnimationUtility.GetEditorCurve(clip, binding));
         }
         return newClip;
     }
 
-    void AdjustNonSyncParametersOnAnimatorDriverTask(AnimatorDriverTask task)
+    void AdjustParameterNamesOnAnimatorDriverTask(AnimatorDriverTask task)
     {
-        if (IsNonSyncParameter(task.targetName)) task.targetName = NonSyncParameterName(task.targetName);
-        if (IsNonSyncParameter(task.aName)) task.aName = NonSyncParameterName(task.aName);
-        if (IsNonSyncParameter(task.bName)) task.bName = NonSyncParameterName(task.bName);
+        RenameParameterNameIfNeeded(ref task.targetName);
+        RenameParameterNameIfNeeded(ref task.aName);
+        RenameParameterNameIfNeeded(ref task.bName);
     }
 
-    void AdjustNonSyncParametersOnAdvancedSettings()
+    void AdjustParameterNamesOnAdvancedSettings()
     {
         foreach (var setting in cvrAvatar.avatarSettings.settings)
         {
-            if (IsNonSyncParameter(setting.machineName)) setting.machineName = NonSyncParameterName(setting.machineName);
+            RenameParameterNameIfNeeded(ref setting.machineName);
         }
     }
 
-    void AdjustNonSyncParametersOnCVRAdvancedAvatarSettingsTrigger()
+    void AdjustParameterNamesOnCVRAdvancedAvatarSettingsTrigger()
     {
         var triggers = cvrAvatar.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>();
         foreach (var trigger in triggers)
         {
-            if (IsNonSyncParameter(trigger.settingName)) trigger.settingName = NonSyncParameterName(trigger.settingName);
+            RenameParameterNameIfNeeded(ref trigger.settingName);
             foreach (var setting in trigger.enterTasks)
             {
-                if (IsNonSyncParameter(setting.settingName)) setting.settingName = NonSyncParameterName(setting.settingName);
+                RenameParameterNameIfNeeded(ref setting.settingName);
             }
             foreach (var setting in trigger.exitTasks)
             {
-                if (IsNonSyncParameter(setting.settingName)) setting.settingName = NonSyncParameterName(setting.settingName);
+                RenameParameterNameIfNeeded(ref setting.settingName);
             }
             foreach (var setting in trigger.stayTasks)
             {
-                if (IsNonSyncParameter(setting.settingName)) setting.settingName = NonSyncParameterName(setting.settingName);
+                RenameParameterNameIfNeeded(ref setting.settingName);
             }
         }
     }
 
+    [System.Flags]
+    enum RenameParameterType
+    {
+        None = 0,
+        NonSync = 1 << 0,
+        Impulse = 1 << 1,
+    }
+
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    bool IsNonSyncParameter(string name) => !string.IsNullOrEmpty(name) && !preserveParameters.Contains(name);
+    RenameParameterType GetRenameParameterType(string name)
+    {
+        var type = RenameParameterType.None;
+        if (!string.IsNullOrEmpty(name))
+        {
+            if (!preserveParameters.Contains(name))
+            {
+                type |= RenameParameterType.NonSync;
+            }
+            if (impulseParameters.Contains(name))
+            {
+                type |= RenameParameterType.Impulse;
+            }
+        }
+        return type;
+    }
+
+    string RenameParameterName(string name, RenameParameterType type)
+    {
+        if (type.HasFlag(RenameParameterType.NonSync))
+        {
+            name = NonSyncParameterName(name);
+        }
+        if (type.HasFlag(RenameParameterType.Impulse))
+        {
+            name = ImpulseParameterName(name);
+        }
+        return name;
+    }
+
+    void RenameParameterNameIfNeeded(ref string name)
+    {
+        var type = GetRenameParameterType(name);
+        if (type != RenameParameterType.None)
+        {
+            name = RenameParameterName(name, type);
+        }
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     string NonSyncParameterName(string name) => "#" + name;
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    string ImpulseParameterName(string name) => name + "<impulse=0.1>";
 
     void MergeVrcAnimatorsIntoChilloutAnimator()
     {
