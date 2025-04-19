@@ -128,7 +128,7 @@ public class CopyAnimatorController
         return newStateMachine;
     }
 
-    private void CopyStateMachineBehaviourValues(StateMachineBehaviour sourceBehaviour, StateMachineBehaviour targetBehaviour)
+    public static void CopyStateMachineBehaviourValues(StateMachineBehaviour sourceBehaviour, StateMachineBehaviour targetBehaviour)
     {
         targetBehaviour.hideFlags = sourceBehaviour.hideFlags;
 
@@ -204,7 +204,7 @@ public class CopyAnimatorController
         }
     }
 
-    private void CopyTransitions(
+    public static void CopyTransitions(
         AnimatorStateMachine sourceStateMachine,
         AnimatorStateMachine newStateMachine,
         Dictionary<AnimatorState, AnimatorState> stateMapping,
@@ -264,7 +264,7 @@ public class CopyAnimatorController
         }
     }
 
-    private void CopyBehaviours(
+    public static void CopyBehaviours(
         AnimatorStateMachine sourceStateMachine,
         AnimatorStateMachine newStateMachine,
         Dictionary<AnimatorState, AnimatorState> stateMapping,
@@ -316,10 +316,13 @@ public class CopyAnimatorController
             writeDefaultValues = sourceState.writeDefaultValues,
         };
 
-        // Copy motion if it's a BlendTree and it's persisted in the controller
-        if (sourceState.motion is BlendTree sourceBlendTree && IsBlendTreePersisted(sourceBlendTree))
+        if (sourceState.motion is BlendTree sourceBlendTree && !IsBlendTreePersisted(sourceBlendTree))
         {
             newState.motion = CopyBlendTree(sourceBlendTree);
+        }
+        else if (sourceState.motion is AnimationClip sourceClip && !IsAnimationClipPersisted(sourceClip))
+        {
+            newState.motion = CopyAnimationClip(sourceClip);
         }
         else
         {
@@ -329,21 +332,23 @@ public class CopyAnimatorController
         return newState;
     }
 
-    private bool IsBlendTreePersisted(BlendTree blendTree)
+    private bool IsBlendTreePersisted(BlendTree blendTree) => IsBlendTreePersisted(controllerPath, blendTree);
+
+    public static bool IsBlendTreePersisted(string controllerPath, BlendTree blendTree)
     {
-        if (string.IsNullOrEmpty(controllerPath))
-            return false;
+        var blendTreePath = AssetDatabase.GetAssetPath(blendTree);
+        if (string.IsNullOrEmpty(blendTreePath)) return false;
 
-        // BlendTreeのパスを取得
-        string blendTreePath = AssetDatabase.GetAssetPath(blendTree);
-        if (string.IsNullOrEmpty(blendTreePath))
-            return false;
-
-        // 同じファイル内に永続化されているかどうかを判定
-        return blendTreePath == controllerPath;
+        // Not persisted in the same file
+        return blendTreePath != controllerPath;
     }
 
     private BlendTree CopyBlendTree(BlendTree sourceBlendTree)
+    {
+        return CopyBlendTree(controllerPath, sourceBlendTree, true);
+    }
+
+    public static BlendTree CopyBlendTree(string controllerPath, BlendTree sourceBlendTree, bool copyDeep)
     {
         var newBlendTree = new BlendTree
         {
@@ -357,7 +362,6 @@ public class CopyAnimatorController
             useAutomaticThresholds = sourceBlendTree.useAutomaticThresholds,
         };
 
-        // Copy all child motions recursively
         foreach (var childMotion in sourceBlendTree.children)
         {
             var newChildMotion = new ChildMotion
@@ -370,10 +374,13 @@ public class CopyAnimatorController
                 position = childMotion.position,
             };
 
-            // Recursively copy child BlendTree if it exists and is persisted
-            if (childMotion.motion is BlendTree childBlendTree && IsBlendTreePersisted(childBlendTree))
+            if (copyDeep && childMotion.motion is BlendTree childBlendTree && !IsBlendTreePersisted(controllerPath, childBlendTree))
             {
-                newChildMotion.motion = CopyBlendTree(childBlendTree);
+                newChildMotion.motion = CopyBlendTree(controllerPath, childBlendTree, copyDeep);
+            }
+            else if (copyDeep && childMotion.motion is AnimationClip childClip && !IsAnimationClipPersisted(controllerPath, childClip))
+            {
+                newChildMotion.motion = CopyAnimationClip(childClip);
             }
             else
             {
@@ -388,7 +395,54 @@ public class CopyAnimatorController
         return newBlendTree;
     }
 
-    private AnimatorStateTransition CopyTransition(
+    private bool IsAnimationClipPersisted(AnimationClip clip) => IsAnimationClipPersisted(controllerPath, clip);
+
+    public static bool IsAnimationClipPersisted(string controllerPath, AnimationClip clip)
+    {
+        var clipPath = AssetDatabase.GetAssetPath(clip);
+        if (string.IsNullOrEmpty(clipPath)) return false;
+        // Not persisted in the same file
+        return clipPath != controllerPath;
+    }
+
+    public static AnimationClip CopyAnimationClip(AnimationClip sourceClip)
+    {
+        var newClip = new AnimationClip
+        {
+            name = sourceClip.name,
+            hideFlags = sourceClip.hideFlags,
+            frameRate = sourceClip.frameRate,
+            legacy = sourceClip.legacy,
+            wrapMode = sourceClip.wrapMode,
+            localBounds = sourceClip.localBounds,
+        };
+        AnimationUtility.SetAnimationClipSettings(newClip, AnimationUtility.GetAnimationClipSettings(sourceClip));
+        foreach (var binding in AnimationUtility.GetCurveBindings(sourceClip))
+        {
+            var curve = AnimationUtility.GetEditorCurve(sourceClip, binding);
+            newClip.SetCurve(binding.path, binding.type, binding.propertyName, curve);
+        }
+        foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(sourceClip))
+        {
+            var objectReferenceCurve = AnimationUtility.GetObjectReferenceCurve(sourceClip, binding);
+            AnimationUtility.SetObjectReferenceCurve(newClip, binding, objectReferenceCurve);
+        }
+        AnimationUtility.SetAnimationEvents(newClip, AnimationUtility.GetAnimationEvents(sourceClip).Select(ev =>
+        new AnimationEvent
+        {
+            time = ev.time,
+            functionName = ev.functionName,
+            stringParameter = ev.stringParameter,
+            objectReferenceParameter = ev.objectReferenceParameter,
+            floatParameter = ev.floatParameter,
+            intParameter = ev.intParameter,
+            messageOptions = ev.messageOptions,
+        }).ToArray());
+
+        return newClip;
+    }
+
+    public static AnimatorStateTransition CopyTransition(
         AnimatorStateTransition sourceTransition,
         Dictionary<AnimatorState, AnimatorState> stateMapping,
         Dictionary<AnimatorStateMachine, AnimatorStateMachine> subStateMachineMapping)
@@ -437,7 +491,7 @@ public class CopyAnimatorController
         return newTransition;
     }
 
-    private AnimatorTransition CopyTransition(
+    public static AnimatorTransition CopyTransition(
         AnimatorTransition sourceTransition,
         Dictionary<AnimatorState, AnimatorState> stateMapping,
         Dictionary<AnimatorStateMachine, AnimatorStateMachine> subStateMachineMapping)
