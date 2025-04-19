@@ -49,7 +49,7 @@ public class VRC3CVR : EditorWindow
     public bool adjustToVrcMenuOrder = true;
     public bool useHierarchicalMenuName = true;
     public bool useHierarchicalDropdownMenuName = true;
-    public bool addActionMenuModAnnotations = false;
+    public bool addActionMenuModAnnotations = true;
     public bool shouldCloneAvatar = true;
     public bool shouldDeleteVRCAvatarDescriptorAndPipelineManager = true;
     public bool shouldDeletePhysBones = true;
