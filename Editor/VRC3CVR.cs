@@ -37,6 +37,7 @@ public class VRC3CVR : EditorWindow
     public bool convertGestureLayer = true;
     public bool convertActionLayer = false;
     public bool convertFXLayer = true;
+    public bool preserveParameterSyncState = true;
     public bool convertVRCAnimatorLocomotionControl = true;
     public bool convertVRCAnimatorTrackingControl = true;
     public bool convertVRCContactSendersAndReceivers = true;
@@ -113,6 +114,8 @@ public class VRC3CVR : EditorWindow
         public static istring ConvertActionAnimatorDescription => new istring("Actions (mostly used for emotes) will very likely not convert over correctly and this option is better left unticked for now", "アクション (主にエモートに使用される) は正しく変換されない可能性が高く、このオプションは今のところチェックを外しておくことをお勧めします");
         public static istring ConvertFXAnimator => new istring("Convert FX Animator (blendshapes, particles, ect.)", "FXレイヤーを変換 (ブレンドシェイプ、パーティクルなど)");
         public static istring ConvertFXAnimatorDescription => new istring("FX state machine is commonly used all effects which don't affect the underlying rig, such as blendshapes and particle effects.", "FXステートマシンは、ブレンドシェイプやパーティクルエフェクトなど、基礎的なリグに影響を与えないすべてのエフェクトに一般的に使用されます。");
+        public static istring PreserveParameterSyncState => new istring("Preserve parameter sync state", "パラメータの同期状態を保持");
+        public static istring PreserveParameterSyncStateDescription => new istring("In ChilloutVR, all Animation parameters that do not have a # prefix in their name will be synchronized. Turning this option on will add a # prefix to parameters that will not be synchronized.", "ChilloutVRでは名前の最初に#が付かないAnimationパラメーターは全て同期されます。このオプションをONにすると同期されないパラメーターに#プレフィクスを付けます。");
         public static istring ConvertVRCAnimatorLocomotionControl => new istring("Convert VRC Animator Locomotion Control", "VRC Animator Locomotion Controlを変換");
         public static istring ConvertVRCAnimatorLocomotionControlDescription => new istring("Converts the VRC Animator Locomotion Control to BodyControl", "VRC Animator Locomotion ControlをBodyControlに変換");
         public static istring ConvertVRCAnimatorTrackingControl => new istring("Convert VRC Animator Tracking Control", "VRC Animator Tracking Controlを変換");
@@ -194,6 +197,11 @@ public class VRC3CVR : EditorWindow
 
         convertFXLayer = GUILayout.Toggle(convertFXLayer, T.ConvertFXAnimator);
         CustomGUI.HelpLabel(T.ConvertFXAnimatorDescription);
+
+        CustomGUI.SmallLineGap();
+
+        preserveParameterSyncState = GUILayout.Toggle(preserveParameterSyncState, T.PreserveParameterSyncState);
+        CustomGUI.HelpLabel(T.PreserveParameterSyncStateDescription);
 
         CustomGUI.SmallLineGap();
 
@@ -366,9 +374,13 @@ public class VRC3CVR : EditorWindow
         {
             CreateVRCContactEquivalentPointers();
         }
-        SaveChilloutAnimator();
         SetAnimator();
         ConvertVrcParametersToChillout();
+        if (preserveParameterSyncState)
+        {
+            AdjustNonSyncParameters();
+        }
+        SaveChilloutAnimator();
         InsertChilloutOverride();
 
         if (shouldDeleteVRCAvatarDescriptorAndPipelineManager)
@@ -700,8 +712,6 @@ public class VRC3CVR : EditorWindow
         parameterOrder = new List<string>();
         Dictionary<string, Dictionary<float, string>> toggleTable = FindMenuButtonsAndToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<float, string>>(), new string[0]);
 
-        var hiddenMark = addActionMenuModAnnotations ? "<hidden>" : "";
-
         for (int i = 0; i < vrcParams?.parameters?.Length; i++)
         {
             VRCExpressionParameter vrcParam = vrcParams.parameters[i];
@@ -766,49 +776,41 @@ public class VRC3CVR : EditorWindow
                             };
                         }
                     }
-                    else
+                    break;
+
+                case VRCExpressionParameters.ValueType.Float:
+                    if (toggleTable.TryGetValue(vrcParam.name, out var floatIdTable) && floatIdTable.Count > 0)
                     {
                         newParam = new CVRAdvancedSettingsEntry()
                         {
-                            name = vrcParam.name + hiddenMark,
+                            name = MenuName(floatIdTable.First().Value) ?? vrcParam.name,
                             machineName = vrcParam.name,
                             unlinkNameFromMachineName = true,
-                            inputSingleSettings = new CVRAdvancesAvatarSettingInputSingle()
+                            type = CVRAdvancedSettingsEntry.SettingsType.Slider,
+                            setting = new CVRAdvancesAvatarSettingSlider()
                             {
                                 defaultValue = vrcParam.defaultValue,
-                                usedType = CVRAdvancesAvatarSettingBase.ParameterType.Int,
-                            },
+                                usedType = CVRAdvancesAvatarSettingBase.ParameterType.Float
+                            }
                         };
                     }
                     break;
 
-                case VRCExpressionParameters.ValueType.Float:
-                    newParam = new CVRAdvancedSettingsEntry()
-                    {
-                        name = toggleTable.TryGetValue(vrcParam.name, out var floatIdTable) && floatIdTable.Count > 0 ? MenuName(floatIdTable.First().Value) ?? vrcParam.name : vrcParam.name + hiddenMark,
-                        machineName = vrcParam.name,
-                        unlinkNameFromMachineName = true,
-                        type = CVRAdvancedSettingsEntry.SettingsType.Slider,
-                        setting = new CVRAdvancesAvatarSettingSlider()
-                        {
-                            defaultValue = vrcParam.defaultValue,
-                            usedType = CVRAdvancesAvatarSettingBase.ParameterType.Float
-                        }
-                    };
-                    break;
-
                 case VRCExpressionParameters.ValueType.Bool:
-                    newParam = new CVRAdvancedSettingsEntry()
+                    if (toggleTable.TryGetValue(vrcParam.name, out var idTable) && idTable.Count > 0)
                     {
-                        name = toggleTable.TryGetValue(vrcParam.name, out var idTable) && idTable.Count > 0 ? MenuName(idTable.OrderBy(p => p.Key == 1 ? float.PositiveInfinity : p.Key).Last().Value) ?? vrcParam.name : vrcParam.name + hiddenMark,
-                        machineName = vrcParam.name,
-                        unlinkNameFromMachineName = true,
-                        setting = new CVRAdvancesAvatarSettingGameObjectToggle()
+                        newParam = new CVRAdvancedSettingsEntry()
                         {
-                            defaultValue = vrcParam.defaultValue != 0 ? true : false,
-                            usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool
-                        }
-                    };
+                            name = MenuName(idTable.OrderBy(p => p.Key == 1 ? float.PositiveInfinity : p.Key).Last().Value) ?? vrcParam.name,
+                            machineName = vrcParam.name,
+                            unlinkNameFromMachineName = true,
+                            setting = new CVRAdvancesAvatarSettingGameObjectToggle()
+                            {
+                                defaultValue = vrcParam.defaultValue != 0 ? true : false,
+                                usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool
+                            }
+                        };
+                    }
                     break;
 
                 default:
@@ -876,6 +878,271 @@ public class VRC3CVR : EditorWindow
         }
         return string.Join("/", commonStack);
     }
+
+    static HashSet<string> PreDefinedParameterNames = new HashSet<string>
+    {
+        "MovementX",
+        "MovementY",
+        "Grounded",
+        "Emote",
+        "CancelEmote",
+        "GestureLeft",
+        "GestureRight",
+        "Toggle",
+        "Sitting",
+        "Crouching",
+        "Prone",
+        "Flying",
+        "IsLocal",
+    };
+
+    HashSet<string> preserveParameters;
+
+    void AdjustNonSyncParameters()
+    {
+        preserveParameters = vrcAvatarDescriptor.expressionParameters.parameters?.Where(p => p.networkSynced).Select(p => p.name).ToHashSet() ?? new HashSet<string>();
+        preserveParameters.UnionWith(PreDefinedParameterNames);
+
+        AdjustNonSyncParametersOnAnimator();
+        AdjustNonSyncParametersOnAdvancedSettings();
+        AdjustNonSyncParametersOnCVRAdvancedAvatarSettingsTrigger();
+    }
+
+    void AdjustNonSyncParametersOnAnimator()
+    {
+        var parameters = chilloutAnimatorController.parameters;
+        for (var i = 0; i < parameters.Length; ++i)
+        {
+            if (IsNonSyncParameter(parameters[i].name))
+            {
+                var param = parameters[i];
+                param.name = NonSyncParameterName(param.name);
+                parameters[i] = param;
+            }
+        }
+        chilloutAnimatorController.parameters = parameters;
+
+        foreach (var layer in chilloutAnimatorController.layers)
+        {
+            AdjustNonSyncParametersOnStateMachine(layer.stateMachine);
+        }
+    }
+
+    void AdjustNonSyncParametersOnStateMachine(AnimatorStateMachine stateMachine)
+    {
+        var anyStateTransitions = stateMachine.anyStateTransitions;
+        if (AdjustNonSyncParametersOnTransitions(anyStateTransitions))
+        {
+            stateMachine.anyStateTransitions = anyStateTransitions;
+        }
+        var entryTransitions = stateMachine.entryTransitions;
+        if (AdjustNonSyncParametersOnTransitions(entryTransitions))
+        {
+            stateMachine.entryTransitions = entryTransitions;
+        }
+        foreach (var childState in stateMachine.states)
+        {
+            var transitions = childState.state.transitions;
+            if (AdjustNonSyncParametersOnTransitions(transitions))
+            {
+                childState.state.transitions = transitions;
+            }
+            var behaviours = childState.state.behaviours;
+            foreach (var behaviour in behaviours)
+            {
+                if (behaviour is AnimatorDriver driver)
+                {
+                    foreach (var task in driver.EnterTasks)
+                    {
+                        AdjustNonSyncParametersOnAnimatorDriverTask(task);
+                    }
+                    foreach (var task in driver.ExitTasks)
+                    {
+                        AdjustNonSyncParametersOnAnimatorDriverTask(task);
+                    }
+                }
+            }
+            if (childState.state.motion is BlendTree blendTree)
+            {
+                childState.state.motion = AdjustNonSyncParametersOnBlendTree(blendTree);
+            }
+            else if (childState.state.motion is AnimationClip clip)
+            {
+                childState.state.motion = AdjustNonSyncParametersOnAnimationClip(clip);
+            }
+        }
+        foreach (var subMachine in stateMachine.stateMachines)
+        {
+            var transitions = stateMachine.GetStateMachineTransitions(subMachine.stateMachine);
+            if (AdjustNonSyncParametersOnTransitions(transitions))
+            {
+                stateMachine.SetStateMachineTransitions(subMachine.stateMachine, transitions);
+            }
+        }
+        foreach (var childStateMachine in stateMachine.stateMachines)
+        {
+            AdjustNonSyncParametersOnStateMachine(childStateMachine.stateMachine);
+        }
+    }
+
+    bool AdjustNonSyncParametersOnTransitions(AnimatorTransitionBase[] transitions)
+    {
+        var changedAll = false;
+        foreach (var transition in transitions)
+        {
+            var conditions = transition.conditions;
+            var changed = false;
+            for (var i = 0; i < conditions.Length; ++i)
+            {
+                if (IsNonSyncParameter(conditions[i].parameter))
+                {
+                    var condition = conditions[i];
+                    condition.parameter = NonSyncParameterName(condition.parameter);
+                    conditions[i] = condition;
+                    changed = true;
+                }
+            }
+            if (changed)
+            {
+                transition.conditions = conditions;
+                changedAll = true;
+            }
+        }
+        return changedAll;
+    }
+
+    BlendTree AdjustNonSyncParametersOnBlendTree(BlendTree blendTree)
+    {
+        BlendTree newBlendTree = null;
+        BlendTree EnsureNewBlendTree()
+        {
+            if (newBlendTree != null) return newBlendTree;
+            newBlendTree = CopyAnimatorController.CopyBlendTree(null, blendTree, false);
+            newBlendTree.name = blendTree.name + "_Remapped";
+            return newBlendTree;
+        }
+        void ChangeChild(BlendTree b, int i, Func<ChildMotion, ChildMotion> convert)
+        {
+            var children = b.children;
+            children[i] = convert(children[i]);
+            b.children = children;
+        }
+        if (IsNonSyncParameter(blendTree.blendParameter))
+        {
+            EnsureNewBlendTree().blendParameter = NonSyncParameterName(blendTree.blendParameter);
+        }
+        if (IsNonSyncParameter(blendTree.blendParameterY))
+        {
+            EnsureNewBlendTree().blendParameterY = NonSyncParameterName(blendTree.blendParameterY);
+        }
+        var children = blendTree.children;
+        for (var i = 0; i < children.Length; ++i)
+        {
+            var child = children[i];
+            if (IsNonSyncParameter(child.directBlendParameter))
+            {
+                ChangeChild(EnsureNewBlendTree(), i, cm =>
+                {
+                    cm.directBlendParameter = NonSyncParameterName(cm.directBlendParameter);
+                    return cm;
+                });
+            }
+            if (child.motion is BlendTree childBlendTree)
+            {
+                var newChildBlendTree = AdjustNonSyncParametersOnBlendTree(childBlendTree);
+                if (newChildBlendTree != childBlendTree)
+                {
+                    ChangeChild(EnsureNewBlendTree(), i, cm =>
+                    {
+                        cm.motion = newChildBlendTree;
+                        return cm;
+                    });
+                }
+            }
+            else if (child.motion is AnimationClip clip)
+            {
+                var newClip = AdjustNonSyncParametersOnAnimationClip(clip);
+                if (newClip != clip)
+                {
+                    ChangeChild(EnsureNewBlendTree(), i, cm =>
+                    {
+                        cm.motion = newClip;
+                        return cm;
+                    });
+                }
+            }
+        }
+        return newBlendTree ?? blendTree;
+    }
+
+    AnimationClip AdjustNonSyncParametersOnAnimationClip(AnimationClip clip)
+    {
+        var bindings = AnimationUtility.GetCurveBindings(clip);
+        var targetBindings = new EditorCurveBinding[bindings.Length];
+        var j = 0;
+        foreach (var binding in bindings)
+        {
+            if (binding.type == typeof(Animator) && IsNonSyncParameter(binding.propertyName))
+            {
+                targetBindings[j++] = binding;
+            }
+        }
+        if (j == 0)
+        {
+            return clip;
+        }
+        Array.Resize(ref targetBindings, j);
+        var newClip = CopyAnimatorController.CopyAnimationClip(clip);
+        newClip.name = clip.name + "_Remapped";
+        foreach (var binding in targetBindings)
+        {
+            var newBinding = binding;
+            newBinding.propertyName = NonSyncParameterName(binding.propertyName);
+            AnimationUtility.SetEditorCurve(newClip, binding, null);
+            AnimationUtility.SetEditorCurve(newClip, newBinding, AnimationUtility.GetEditorCurve(clip, binding));
+        }
+        return newClip;
+    }
+
+    void AdjustNonSyncParametersOnAnimatorDriverTask(AnimatorDriverTask task)
+    {
+        if (IsNonSyncParameter(task.targetName)) task.targetName = NonSyncParameterName(task.targetName);
+        if (IsNonSyncParameter(task.aName)) task.aName = NonSyncParameterName(task.aName);
+        if (IsNonSyncParameter(task.bName)) task.bName = NonSyncParameterName(task.bName);
+    }
+
+    void AdjustNonSyncParametersOnAdvancedSettings()
+    {
+        foreach (var setting in cvrAvatar.avatarSettings.settings)
+        {
+            if (IsNonSyncParameter(setting.machineName)) setting.machineName = NonSyncParameterName(setting.machineName);
+        }
+    }
+
+    void AdjustNonSyncParametersOnCVRAdvancedAvatarSettingsTrigger()
+    {
+        var triggers = cvrAvatar.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>();
+        foreach (var trigger in triggers)
+        {
+            if (IsNonSyncParameter(trigger.settingName)) trigger.settingName = NonSyncParameterName(trigger.settingName);
+            foreach (var setting in trigger.enterTasks)
+            {
+                if (IsNonSyncParameter(setting.settingName)) setting.settingName = NonSyncParameterName(setting.settingName);
+            }
+            foreach (var setting in trigger.exitTasks)
+            {
+                if (IsNonSyncParameter(setting.settingName)) setting.settingName = NonSyncParameterName(setting.settingName);
+            }
+            foreach (var setting in trigger.stayTasks)
+            {
+                if (IsNonSyncParameter(setting.settingName)) setting.settingName = NonSyncParameterName(setting.settingName);
+            }
+        }
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    bool IsNonSyncParameter(string name) => !string.IsNullOrEmpty(name) && !preserveParameters.Contains(name);
+    string NonSyncParameterName(string name) => "#" + name;
 
     void MergeVrcAnimatorsIntoChilloutAnimator()
     {
