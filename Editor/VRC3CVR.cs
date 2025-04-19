@@ -940,18 +940,55 @@ public class VRC3CVR : EditorWindow
 
     HashSet<string> preserveParameters;
 
+    static HashSet<string> _muscleNames;
+    static HashSet<string> muscleNames
+    {
+        get
+        {
+            if (_muscleNames == null)
+            {
+                _muscleNames = new HashSet<string>(HumanTrait.MuscleName.Select(name =>
+                {
+                    var match = handRe.Match(name);
+                    if (match.Success)
+                    {
+                        return $"{match.Groups[1].Value}Hand.{match.Groups[2].Value}.{match.Groups[3].Value}";
+                    }
+                    return name;
+                }));
+                _muscleNames.UnionWith(
+                    new string[]
+                    {
+                        "Motion",
+                        "Root",
+                        "LeftHand",
+                        "RightHand",
+                        "LeftFoot",
+                        "RightFoot",
+                    }
+                    .SelectMany(basename => new string[] { $"{basename}Q", $"{basename}T" })
+                    .SelectMany(basename => new string[] { "x", "y", "z", "w" }.Select(a => $"{basename}.{a}"))
+                    );
+            }
+            return _muscleNames;
+        }
+    }
+    static System.Text.RegularExpressions.Regex handRe = new System.Text.RegularExpressions.Regex(@"^(Left|Right) (Thumb|Index|Middle|Ring|Little) (.*)$");
+
     void AdjustParameterNames()
     {
         if (preserveParameterSyncState)
         {
             preserveParameters = vrcAvatarDescriptor.expressionParameters.parameters?.Where(p => p.networkSynced).Select(p => p.name).ToHashSet() ?? new HashSet<string>();
             preserveParameters.UnionWith(PreDefinedParameterNames);
+            preserveParameters.UnionWith(muscleNames);
         }
         else
         {
             // all
             preserveParameters = vrcAvatarDescriptor.expressionParameters.parameters?.Select(p => p.name).ToHashSet() ?? new HashSet<string>();
             preserveParameters.UnionWith(chilloutAnimatorController.parameters.Select(p => p.name));
+            preserveParameters.UnionWith(muscleNames);
         }
         if (!addActionMenuModAnnotations)
         {
