@@ -1,3 +1,10 @@
+# 2.2.0-beta.1
+
+- feat: Action Menu mod "impulse" annotations
+- feat: preserve parameter sync state
+- fix: do not add extra parameters to menu
+- fix: BlendTree / AnimationClip copying
+
 # 2.1.0
 
 - feat: Action Menu mod "hidden" annotations
