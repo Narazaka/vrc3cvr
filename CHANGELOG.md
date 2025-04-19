@@ -1,3 +1,7 @@
+# 2.2.0-beta.2
+
+- fix: humanoid animation conversion
+
 # 2.2.0-beta.1
 
 - feat: Action Menu mod "impulse" annotations
