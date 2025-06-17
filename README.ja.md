@@ -37,7 +37,13 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
 変換するだけならばDynamicBonesを買う必要はありません。代替ツールがあります。
 
 - https://github.com/VRLabs/Dynamic-Bones-Stub
-- https://github.com/Markcreator/VRChat-Tools  
+- https://github.com/Markcreator/VRChat-Tools
+
+**揺らさない子ボーンがある場合は？**
+
+CVRのDynamicBoneは古いバージョンであるため、子ボーンは全て揺らすボーンである必要があるのか、PBのignore指定相当がききません。
+
+これを解決するために [ExcludeChildBones](https://github.com/Narazaka/ExcludeChildBones) というツールを作ったので、場合によって使って下さい。（Modular Avatar(NDMF)によって動作するので、このコンポーネントを付けて設定してから改めてベイクする）
 
 ### 2. エクスポート
 
