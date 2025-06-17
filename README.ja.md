@@ -54,6 +54,19 @@ VRChatはUnity 2022.3.22f1、CCKはUnity 2021.3.45f1が必要です。
 「Export Package...」は不要なスクリプトアセットを含んでしまう問題があります。 そのため、スクリプトなどを除外してエクスポートできる拡張を作成しました。
 [Export Package (Advanced)](https://github.com/Narazaka/ExportPackageAdvanced)をインストールし、「Export Package...」の代わりに「Export Package (Advanced)...」を使うと便利です。
 
+**2022のままでもアップロード可能？**
+
+実はUnity 2022からでも一応CCKでアバターアップロードは可能です。
+
+が、
+
+- だいたいのシェーダーでVRだと片目しか映らない
+- たまにCVRがクラッシュするアバターが出来る（起動不可になった場合は [Webのアバター一覧](https://hub.abinteractive.net/myavatars) から何か他のアバターを選んで`Set Active`ボタンを押して切り替えると良い）
+
+等の問題があります。
+
+配信カメラ等には正常に描画されるので、デスクトップでしかプレイしない・VR片目描画でも大丈夫と言う場合はもしかしたら2022そのままアップロードで良いかも……。
+
 ### 3. アップロード
 
 1. Unity 2021.3.45f1プロジェクトをセットアップ（CCK互換のバージョン）。
