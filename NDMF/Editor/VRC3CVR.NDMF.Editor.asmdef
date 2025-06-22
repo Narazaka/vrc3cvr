@@ -1,0 +1,28 @@
+{
+    "name": "VRC3CVR.NDMF.Editor",
+    "rootNamespace": "",
+    "references": [
+        "nadena.dev.ndmf",
+        "VRC3CVR.NDMF.Runtime",
+        "VRC3CVR.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "HAS_NDMF"
+    ],
+    "versionDefines": [
+        {
+            "name": "nadena.dev.ndmf",
+            "expression": "1",
+            "define": "HAS_NDMF"
+        }
+    ],
+    "noEngineReferences": false
+}

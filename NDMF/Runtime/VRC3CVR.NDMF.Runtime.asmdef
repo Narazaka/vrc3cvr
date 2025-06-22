@@ -1,0 +1,24 @@
+{
+    "name": "VRC3CVR.NDMF.Runtime",
+    "rootNamespace": "",
+    "references": [
+        "VRC3CVR.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "HAS_NDMF"
+    ],
+    "versionDefines": [
+        {
+            "name": "nadena.dev.ndmf",
+            "expression": "1",
+            "define": "HAS_NDMF"
+        }
+    ],
+    "noEngineReferences": false
+}
