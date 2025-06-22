@@ -380,7 +380,7 @@ public class VRC3CVR : EditorWindow
         {
             AdjustParameterNames();
         }
-        SaveChilloutAnimator();
+        FixChilloutAnimatorForPreview();
         InsertChilloutOverride();
 
         if (shouldDeleteVRCAvatarDescriptorAndPipelineManager)
@@ -392,6 +392,9 @@ public class VRC3CVR : EditorWindow
         {
             HideOriginalAvatar();
         }
+
+        SaveChilloutAnimator();
+        SaveChilloutOverride();
 
         // Clear the cache
         avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
@@ -420,14 +423,17 @@ public class VRC3CVR : EditorWindow
 
         AnimatorOverrideController overrideController = new AnimatorOverrideController(chilloutAnimatorController);
 
-        AssetDatabase.CreateAsset(overrideController, "Assets/" + outputDirName + "/" + cvrAvatar.gameObject.name + "_ChilloutVR Overrides.overrideController");
-
         cvrAvatar.overrides = overrideController;
 
         EditorUtility.SetDirty(cvrAvatar);
         Repaint();
 
         Debug.Log("Inserted!");
+    }
+
+    void SaveChilloutOverride()
+    {
+        AssetDatabase.CreateAsset(cvrAvatar.overrides, "Assets/" + outputDirName + "/" + cvrAvatar.gameObject.name + "_ChilloutVR Overrides.overrideController");
     }
 
     void BuildChilloutAnimatorWithParams()
@@ -2269,9 +2275,8 @@ public class VRC3CVR : EditorWindow
         Debug.Log("Merged");
     }
 
-    void SaveChilloutAnimator()
+    void FixChilloutAnimatorForPreview()
     {
-        // convenient for preview
         if (chilloutAnimatorController.parameters.Any(p => p.name == "Grounded" && p.defaultBool == false))
         {
             var parameters = chilloutAnimatorController.parameters;
@@ -2290,8 +2295,10 @@ public class VRC3CVR : EditorWindow
             }
             chilloutAnimatorController.parameters = parameters;
         }
+    }
 
-        // Save all elements to chilloutAnimatorController
+    void SaveChilloutAnimator()
+    {
         new SaveAnimatorController(chilloutAnimatorController).Save();
     }
 
