@@ -6,6 +6,9 @@ public class VRC3CVRConvertConfig
 {
     public VRCAvatarDescriptor vrcAvatarDescriptor;
     public string outputDirName = "VRC3CVR_Output";
+    public bool shouldCloneAvatar = true;
+    public bool saveAssets = true;
+
     public bool convertLocomotionLayer = false;
     public bool convertAdditiveLayer = false;
     public bool convertGestureLayer = true;
@@ -21,15 +24,16 @@ public class VRC3CVRConvertConfig
     public bool useHierarchicalMenuName = true;
     public bool useHierarchicalDropdownMenuName = true;
     public bool addActionMenuModAnnotations = true;
-    public bool shouldCloneAvatar = true;
     public bool shouldDeleteVRCAvatarDescriptorAndPipelineManager = true;
     public bool shouldDeletePhysBones = true;
-    public bool saveAssets = true;
 
     public void CopyFrom(VRC3CVRConvertConfig other)
     {
         vrcAvatarDescriptor = other.vrcAvatarDescriptor;
         outputDirName = other.outputDirName;
+        shouldCloneAvatar = other.shouldCloneAvatar;
+        saveAssets = other.saveAssets;
+
         convertLocomotionLayer = other.convertLocomotionLayer;
         convertAdditiveLayer = other.convertAdditiveLayer;
         convertGestureLayer = other.convertGestureLayer;
@@ -45,9 +49,7 @@ public class VRC3CVRConvertConfig
         useHierarchicalMenuName = other.useHierarchicalMenuName;
         useHierarchicalDropdownMenuName = other.useHierarchicalDropdownMenuName;
         addActionMenuModAnnotations = other.addActionMenuModAnnotations;
-        shouldCloneAvatar = other.shouldCloneAvatar;
         shouldDeleteVRCAvatarDescriptorAndPipelineManager = other.shouldDeleteVRCAvatarDescriptorAndPipelineManager;
         shouldDeletePhysBones = other.shouldDeletePhysBones;
-        saveAssets = other.saveAssets;
     }
 }
