@@ -24,6 +24,11 @@
             "name": "nadena.dev.ndmf",
             "expression": "1",
             "define": "HAS_NDMF"
+        },
+        {
+            "name": "nadena.dev.ndmf",
+            "expression": "1.8-b",
+            "define": "HAS_NDMF_1_8_b"
         }
     ],
     "noEngineReferences": false

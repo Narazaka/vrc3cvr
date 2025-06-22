@@ -13,7 +13,11 @@ namespace PeanutTools_VRC3CVR.NDMF
 
         protected override void Configure()
         {
+#if HAS_NDMF_1_8_b
+            InPhase(typeof(BuildPhase).GetField("PlatformFinish", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null) as BuildPhase)
+#else
             InPhase(BuildPhase.Optimizing)
+#endif
                 .AfterPlugin("nadena.dev.modular-avatar")
                 .AfterPlugin("com.anatawa12.avatar-optimizer")
                 .AfterPlugin("com.hhotatea.avatar_pose_library.editor.AutoThumbnailPlugin")
