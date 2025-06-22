@@ -1998,7 +1998,7 @@ public class VRC3CVRCore
             avatarMaskCombineCache[(baseMask, layerMask)] = combinedAvatarMask;
             if (baseMask.name != "" && layerMask.name != "")
             {
-                AssetDatabase.CreateAsset(combinedAvatarMask, "Assets/" + outputDirName + "/" + baseMask.name + "_" + layerMask.name + ".mask");
+                combinedAvatarMask.name = baseMask.name + "_" + layerMask.name;
             }
             return combinedAvatarMask;
         }

@@ -32,11 +32,20 @@ public class SaveAnimatorController
 
         foreach (var layer in controller.layers)
         {
+            SaveLayerMask(layer);
             SaveStateMachine(layer.stateMachine);
         }
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
+    }
+
+    private void SaveLayerMask(AnimatorControllerLayer layer)
+    {
+        if (layer.avatarMask != null && string.IsNullOrEmpty(AssetDatabase.GetAssetPath(layer.avatarMask)))
+        {
+            AssetDatabase.AddObjectToAsset(layer.avatarMask, controller);
+        }
     }
 
     private void SaveStateMachine(AnimatorStateMachine stateMachine)
