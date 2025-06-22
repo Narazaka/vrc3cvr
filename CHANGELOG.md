@@ -1,3 +1,10 @@
+# 3.0.0-beta.0
+
+- feat: NDMF Plugin
+- feat: Tag conversion now takes the parent’s components into account.
+- feat: Tag conversion settings by path
+- feat: UI improvement
+
 # 2.2.0
 
 - feat: Action Menu mod "impulse" annotations
