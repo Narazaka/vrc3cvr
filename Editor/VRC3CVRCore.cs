@@ -218,6 +218,7 @@ public class VRC3CVRCore
         Debug.Log("Inserting chillout override controller...");
 
         AnimatorOverrideController overrideController = new AnimatorOverrideController(chilloutAnimatorController);
+        overrideController.name = chilloutAvatarGameObject.name + "_ChilloutVR Overrides";
 
         cvrAvatar.overrides = overrideController;
 
@@ -228,7 +229,7 @@ public class VRC3CVRCore
 
     void SaveChilloutOverride()
     {
-        AssetDatabase.CreateAsset(cvrAvatar.overrides, "Assets/" + outputDirName + "/" + cvrAvatar.gameObject.name + "_ChilloutVR Overrides.overrideController");
+        AssetDatabase.CreateAsset(cvrAvatar.overrides, "Assets/" + outputDirName + "/" + cvrAvatar.overrides.name + ".overrideController");
     }
 
     void BuildChilloutAnimatorWithParams()
@@ -2092,7 +2093,7 @@ public class VRC3CVRCore
     void SaveChilloutAnimator()
     {
         Directory.CreateDirectory(Application.dataPath + "/" + outputDirName);
-        string pathInsideAssets = outputDirName + "/" + cvrAvatar.gameObject.name + "_ChilloutVR_Gestures.controller";
+        string pathInsideAssets = outputDirName + "/" + chilloutAnimatorController.name + ".controller";
         string pathToCreatedAnimator = "Assets/" + pathInsideAssets;
         // ReplaceFile() doesn't actually replace for some reason so make sure there is none already there
         FileUtil.DeleteFileOrDirectory(pathToCreatedAnimator);
@@ -2105,6 +2106,7 @@ public class VRC3CVRCore
     {
         var sourceAnimator = AssetDatabase.LoadAssetAtPath<AnimatorController>("Assets/ABI.CCK/Animations/AvatarAnimator.controller");
         chilloutAnimatorController = new CopyAnimatorController(sourceAnimator).CopyController();
+        chilloutAnimatorController.name = cvrAvatar.gameObject.name + "_ChilloutVR_Gestures";
 
         Debug.Log("Loading animator...");
 
