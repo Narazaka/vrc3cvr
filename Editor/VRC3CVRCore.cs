@@ -52,6 +52,8 @@ public class VRC3CVRCore
     public bool shouldDeleteVRCAvatarDescriptorAndPipelineManager = true;
     public bool shouldDeletePhysBones = true;
 
+    public bool saveAssets = true;
+
     [Serializable]
     public enum VRCBaseAnimatorID
     {
@@ -184,8 +186,11 @@ public class VRC3CVRCore
             HideOriginalAvatar();
         }
 
-        SaveChilloutAnimator();
-        SaveChilloutOverride();
+        if (saveAssets)
+        {
+            SaveChilloutAnimator();
+            SaveChilloutOverride();
+        }
 
         // Clear the cache
         avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
