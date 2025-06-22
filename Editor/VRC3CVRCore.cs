@@ -14,11 +14,10 @@ using ABI.CCK.Scripts;
 using VRC.SDK3.Dynamics.Contact.Components;
 
 [Serializable]
-public class VRC3CVRCore
+public class VRC3CVRCore : VRC3CVRConvertConfig
 {
     public Animator animator { get; private set; }
     bool isConverting = false;
-    public VRCAvatarDescriptor vrcAvatarDescriptor;
     CVRAvatar cvrAvatar;
     SkinnedMeshRenderer bodySkinnedMeshRenderer;
     Vector3 vrcViewPosition;
@@ -30,29 +29,15 @@ public class VRC3CVRCore
     HashSet<string> constantContactProxiedParameters;
     HashSet<string> localTriggerPaths;
     HashSet<string> localPointerPaths;
-    public string outputDirName = "VRC3CVR_Output";
-    public bool convertLocomotionLayer = false;
-    public bool convertAdditiveLayer = false;
-    public bool convertGestureLayer = true;
-    public bool convertActionLayer = false;
-    public bool convertFXLayer = true;
-    public bool preserveParameterSyncState = true;
-    public bool convertVRCAnimatorLocomotionControl = true;
-    public bool convertVRCAnimatorTrackingControl = true;
-    public bool convertVRCContactSendersAndReceivers = true;
-    public VRC3CVRCollisionTagConvertionConfig collisionTagConvertionConfig = VRC3CVRCollisionTagConvertionConfig.DefaultConfig;
-    public bool createVRCContactEquivalentPointers = true;
     GameObject chilloutAvatarGameObject;
     public GameObject chilloutAvatar => chilloutAvatarGameObject;
-    public bool adjustToVrcMenuOrder = true;
-    public bool useHierarchicalMenuName = true;
-    public bool useHierarchicalDropdownMenuName = true;
-    public bool addActionMenuModAnnotations = true;
-    public bool shouldCloneAvatar = true;
-    public bool shouldDeleteVRCAvatarDescriptorAndPipelineManager = true;
-    public bool shouldDeletePhysBones = true;
 
-    public bool saveAssets = true;
+    public static VRC3CVRCore FromConfig(VRC3CVRConvertConfig config)
+    {
+        var core = new VRC3CVRCore();
+        core.CopyFrom(config);
+        return core;
+    }
 
     [Serializable]
     public enum VRCBaseAnimatorID
