@@ -4,7 +4,7 @@ using PeanutTools_VRC3CVR.Localization;
 using PeanutTools_VRC3CVR;
 using VRC.SDK3.Avatars.Components;
 
-public class VRC3CVRGUI : EditorWindow
+public class VRC3CVR : EditorWindow
 {
     class T
     {
@@ -52,7 +52,7 @@ public class VRC3CVRGUI : EditorWindow
     [MenuItem("Tools/VRC3CVR")]
     public static void ShowWindow()
     {
-        var window = GetWindow<VRC3CVRGUI>();
+        var window = GetWindow<VRC3CVR>();
         window.titleContent = new GUIContent("VRC3CVR");
         window.minSize = new Vector2(250, 50);
     }
