@@ -14,7 +14,7 @@ using ABI.CCK.Scripts;
 using VRC.SDK3.Dynamics.Contact.Components;
 
 [Serializable]
-public class VRC3CVR
+public class VRC3CVRCore
 {
     public Animator animator { get; private set; }
     bool isConverting = false;

@@ -57,14 +57,14 @@ public class VRC3CVRGUI : EditorWindow
         window.minSize = new Vector2(250, 50);
     }
 
-    [SerializeField] VRC3CVR _vrc3cvr;
-    VRC3CVR vrc3cvr
+    [SerializeField] VRC3CVRCore _vrc3cvr;
+    VRC3CVRCore vrc3cvr
     {
         get
         {
             if (_vrc3cvr == null)
             {
-                _vrc3cvr = new VRC3CVR();
+                _vrc3cvr = new VRC3CVRCore();
             }
             return _vrc3cvr;
         }
@@ -77,7 +77,7 @@ public class VRC3CVRGUI : EditorWindow
     void OnEnable()
     {
         serializedObject = new SerializedObject(this);
-        _vrc3cvr = new VRC3CVR();
+        _vrc3cvr = new VRC3CVRCore();
         collisionTagConvertionConfigProperty = serializedObject.FindProperty("_vrc3cvr").FindPropertyRelative("collisionTagConvertionConfig");
     }
 
