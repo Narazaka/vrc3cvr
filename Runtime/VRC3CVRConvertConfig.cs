@@ -19,6 +19,17 @@ public class VRC3CVRConvertConfig
     public bool convertVRCAnimatorTrackingControl = true;
     public bool convertVRCContactSendersAndReceivers = true;
     public VRC3CVRCollisionTagConvertionConfig collisionTagConvertionConfig = VRC3CVRCollisionTagConvertionConfig.DefaultConfig;
+    public VRC3CVRCollisionTagConvertionConfigWithPath[] collisionTagConvertionConfigWithPaths = new VRC3CVRCollisionTagConvertionConfigWithPath[]
+    {
+        new VRC3CVRCollisionTagConvertionConfigWithPath
+        {
+            path = "Armature/Hips/motchiri_shader",
+            config = new VRC3CVRCollisionTagConvertionConfig
+            {
+                All = VRC3CVRCollisionTagConvertionConfig.Operation.Keep,
+            },
+        }
+    };
     public bool createVRCContactEquivalentPointers = true;
     public bool adjustToVrcMenuOrder = true;
     public bool useHierarchicalMenuName = true;

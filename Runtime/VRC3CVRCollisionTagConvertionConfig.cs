@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 [Serializable]
@@ -128,8 +129,35 @@ public class VRC3CVRCollisionTagConvertionConfig
         }
     }
 
-    public Func<string, string[]> CollisionTagToCVRType(VRC3CVRCollisionTagConvertionConfig baseConfig) => (string collisionTag) => CollisionTagToCVRType(baseConfig, collisionTag);
-    public string[] CollisionTagToCVRType(VRC3CVRCollisionTagConvertionConfig baseConfig, string collisionTag)
+    public static VRC3CVRCollisionTagConvertionConfig WithInherits(IEnumerable<VRC3CVRCollisionTagConvertionConfig> parentsToChild)
+    {
+        var config = new VRC3CVRCollisionTagConvertionConfig();
+        foreach (var c in parentsToChild)
+        {
+            config.Head = Is(config.Head, c.Head);
+            config.Hand = Is(config.Hand, c.Hand);
+            config.HandL = Is(config.HandL, c.HandL);
+            config.HandR = Is(config.HandR, c.HandR);
+            config.Finger = Is(config.Finger, c.Finger);
+            config.FingerL = Is(config.FingerL, c.FingerL);
+            config.FingerR = Is(config.FingerR, c.FingerR);
+            config.FingerIndex = Is(config.FingerIndex, c.FingerIndex);
+            config.FingerIndexL = Is(config.FingerIndexL, c.FingerIndexL);
+            config.FingerIndexR = Is(config.FingerIndexR, c.FingerIndexR);
+            config.FingerMiddle = Is(config.FingerMiddle, c.FingerMiddle);
+            config.FingerMiddleL = Is(config.FingerMiddleL, c.FingerMiddleL);
+            config.FingerMiddleR = Is(config.FingerMiddleR, c.FingerMiddleR);
+            config.FingerRing = Is(config.FingerRing, c.FingerRing);
+            config.FingerRingL = Is(config.FingerRingL, c.FingerRingL);
+            config.FingerRingR = Is(config.FingerRingR, c.FingerRingR);
+            config.FingerLittle = Is(config.FingerLittle, c.FingerLittle);
+            config.FingerLittleL = Is(config.FingerLittleL, c.FingerLittleL);
+            config.FingerLittleR = Is(config.FingerLittleR, c.FingerLittleR);
+        }
+        return config;
+    }
+
+    public string[] CollisionTagToCVRType(string collisionTag)
     {
         string cvrType = null;
         Operation op;
@@ -138,79 +166,79 @@ public class VRC3CVRCollisionTagConvertionConfig
         switch (collisionTag)
         {
             case "Head":
-                op = Is(baseConfig.Head, Head);
+                op = Head;
                 cvrType = "mouth";
                 break;
             case "Hand":
-                op = Is(baseConfig.Hand, Hand);
+                op = Hand;
                 cvrType = "index";
                 break;
             case "HandL":
-                op = Is(baseConfig.HandL, HandL);
+                op = HandL;
                 cvrType = "index";
                 break;
             case "HandR":
-                op = Is(baseConfig.HandR, HandR);
+                op = HandR;
                 cvrType = "index";
                 break;
             case "Finger":
-                op = Is(baseConfig.Finger, Finger);
+                op = Finger;
                 cvrType = "index";
                 break;
             case "FingerL":
-                op = Is(baseConfig.FingerL, FingerL);
+                op = FingerL;
                 cvrType = "index";
                 break;
             case "FingerR":
-                op = Is(baseConfig.FingerR, FingerR);
+                op = FingerR;
                 cvrType = "index";
                 break;
             case "FingerIndex":
-                op = Is(baseConfig.FingerIndex, FingerIndex);
+                op = FingerIndex;
                 cvrType = "index";
                 break;
             case "FingerIndexL":
-                op = Is(baseConfig.FingerIndexL, FingerIndexL);
+                op = FingerIndexL;
                 cvrType = "index";
                 break;
             case "FingerIndexR":
-                op = Is(baseConfig.FingerIndexR, FingerIndexR);
+                op = FingerIndexR;
                 cvrType = "index";
                 break;
             case "FingerMiddle":
-                op = Is(baseConfig.FingerMiddle, FingerMiddle);
+                op = FingerMiddle;
                 cvrType = "index";
                 break;
             case "FingerMiddleL":
-                op = Is(baseConfig.FingerMiddleL, FingerMiddleL);
+                op = FingerMiddleL;
                 cvrType = "index";
                 break;
             case "FingerMiddleR":
-                op = Is(baseConfig.FingerMiddleR, FingerMiddleR);
+                op = FingerMiddleR;
                 cvrType = "index";
                 break;
             case "FingerRing":
-                op = Is(baseConfig.FingerRing, FingerRing);
+                op = FingerRing;
                 cvrType = "index";
                 break;
             case "FingerRingL":
-                op = Is(baseConfig.FingerRingL, FingerRingL);
+                op = FingerRingL;
                 cvrType = "index";
                 break;
             case "FingerRingR":
-                op = Is(baseConfig.FingerRingR, FingerRingR);
+                op = FingerRingR;
                 cvrType = "index";
                 break;
             case "FingerLittle":
-                op = Is(baseConfig.FingerLittle, FingerLittle);
+                op = FingerLittle;
                 cvrType = "index";
                 break;
             case "FingerLittleL":
-                op = Is(baseConfig.FingerLittleL, FingerLittleL);
+                op = FingerLittleL;
                 cvrType = "index";
                 break;
             case "FingerLittleR":
-                op = Is(baseConfig.FingerLittleR, FingerLittleR);
+                op = FingerLittleR;
                 cvrType = "index";
                 break;
             default:

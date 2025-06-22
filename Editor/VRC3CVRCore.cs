@@ -2426,7 +2426,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             {
                 continue;
             }
-            var collisionTagToCVRType = MakeCollisionTagToCVRType(sender.GetComponent<VRC3CVRCollisionTagConvertion>());
+            var collisionTagToCVRType = MakeCollisionTagToCVRType(sender.gameObject);
             var originalPath = ChilloutAvatarRelativePath(sender);
             var remappedPaths = new List<string>();
             var collisionTags = sender.collisionTags.SelectMany(collisionTagToCVRType).Distinct().ToArray(); ;
@@ -2469,7 +2469,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             {
                 continue;
             }
-            var collisionTagToCVRType = MakeCollisionTagToCVRType(receiver.GetComponent<VRC3CVRCollisionTagConvertion>());
+            var collisionTagToCVRType = MakeCollisionTagToCVRType(receiver.gameObject);
             var contactGameObject = SuitableContactObjectWithCollider(receiver.gameObject, receiver);
             var cvrTrigger = contactGameObject.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
             cvrTrigger.useAdvancedTrigger = true;
@@ -2543,10 +2543,33 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
     }
 
-    Func<string, string[]> MakeCollisionTagToCVRType(VRC3CVRCollisionTagConvertion conversion)
+    Func<string, string[]> MakeCollisionTagToCVRType(GameObject gameObject)
     {
-        var config = conversion == null ? new VRC3CVRCollisionTagConvertionConfig() : conversion.config;
-        return config.CollisionTagToCVRType(collisionTagConvertionConfig);
+        var configs = FindConfigsInParent(gameObject.transform);
+        var config = VRC3CVRCollisionTagConvertionConfig.WithInherits(configs.Reverse());
+        return config.CollisionTagToCVRType;
+    }
+
+    IEnumerable<VRC3CVRCollisionTagConvertionConfig> FindConfigsInParent(Transform transform)
+    {
+        while (transform != null && transform != chilloutAvatarGameObject.transform)
+        {
+            var conversion = transform.GetComponent<VRC3CVRCollisionTagConvertion>();
+            if (conversion != null)
+            {
+                yield return conversion.config;
+            }
+            if (collisionTagConvertionConfigWithPaths != null)
+            {
+                var path = ChilloutAvatarRelativePath(transform);
+                var config = collisionTagConvertionConfigWithPaths.FirstOrDefault(p => p.path == path);
+                if (config != null)
+                {
+                    yield return config.config;
+                }
+            }
+            transform = transform.parent;
+        }
     }
 
     void RemapAnimationOfContactComponent()
