@@ -67,13 +67,13 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             this.draw = draw;
         }
 
-        void ToggleRaw(string propertyName, string labelText)
+        void ToggleRaw(string propertyName, string labelText, string tooltip = "")
         {
             Height1();
             if (draw)
             {
                 var property = vrc3cvr.FindPropertyRelative(propertyName);
-                var label = new GUIContent(labelText);
+                var label = new GUIContent(labelText, tooltip);
                 var pos = Indented();
                 var indentLevel = EditorGUI.indentLevel;
                 EditorGUI.indentLevel = 0;
@@ -93,7 +93,7 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
 
         void Toggle(string propertyName, string labelText, string description)
         {
-            ToggleRaw(propertyName, labelText);
+            ToggleRaw(propertyName, labelText, description);
             HelpBoxRaw(description);
             SmallLineGap();
         }
