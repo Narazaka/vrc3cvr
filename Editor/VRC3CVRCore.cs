@@ -136,10 +136,6 @@ public class VRC3CVRCore
 
         AssetDatabase.Refresh();
 
-        Directory.CreateDirectory(Application.dataPath + "/" + outputDirName);
-
-        AssetDatabase.Refresh();
-
         // Generate Combined hand animations
         CreateCombinedHandAnimations();
 
@@ -1860,7 +1856,7 @@ public class VRC3CVRCore
         if (handLeftGunAnimationClip && handRightGunAnimationClip)
         {
             handCombinedGunAnimationClip = CombineAnimationClips(handLeftGunAnimationClip, handRightGunAnimationClip);
-            AssetDatabase.CreateAsset(handCombinedGunAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedGun.anim");
+            handCombinedGunAnimationClip.name = "HandCombinedGun";
         }
 
         AnimationClip handLeftOpenAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftOpen.anim", typeof(AnimationClip));
@@ -1868,7 +1864,7 @@ public class VRC3CVRCore
         if (handLeftOpenAnimationClip && handRightOpenAnimationClip)
         {
             handCombinedOpenAnimationClip = CombineAnimationClips(handLeftOpenAnimationClip, handRightOpenAnimationClip);
-            AssetDatabase.CreateAsset(handCombinedOpenAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedOpen.anim");
+            handCombinedOpenAnimationClip.name = "HandCombinedOpen";
         }
 
         AnimationClip handLeftPeaceAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftPeace.anim", typeof(AnimationClip));
@@ -1876,7 +1872,7 @@ public class VRC3CVRCore
         if (handLeftPeaceAnimationClip && handRightPeaceAnimationClip)
         {
             handCombinedPeaceAnimationClip = CombineAnimationClips(handLeftPeaceAnimationClip, handRightPeaceAnimationClip);
-            AssetDatabase.CreateAsset(handCombinedPeaceAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedPeace.anim");
+            handCombinedPeaceAnimationClip.name = "HandCombinedPeace";
         }
 
         AnimationClip handLeftPointAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftPoint.anim", typeof(AnimationClip));
@@ -1884,7 +1880,7 @@ public class VRC3CVRCore
         if (handLeftPointAnimationClip && handRightPointAnimationClip)
         {
             handCombinedPointAnimationClip = CombineAnimationClips(handLeftPointAnimationClip, handRightPointAnimationClip);
-            AssetDatabase.CreateAsset(handCombinedPointAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedPoint.anim");
+            handCombinedPointAnimationClip.name = "HandCombinedPoint";
         }
 
         AnimationClip handLeftRockNRollAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftRockNRoll.anim", typeof(AnimationClip));
@@ -1892,7 +1888,7 @@ public class VRC3CVRCore
         if (handLeftRockNRollAnimationClip && handRightRockNRollAnimationClip)
         {
             handCombinedRockNRollAnimationClip = CombineAnimationClips(handLeftRockNRollAnimationClip, handRightRockNRollAnimationClip);
-            AssetDatabase.CreateAsset(handCombinedRockNRollAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedRockNRoll.anim");
+            handCombinedRockNRollAnimationClip.name = "HandCombinedRockNRoll";
         }
 
         AnimationClip handLeftThumbsUpAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftThumbsUp.anim", typeof(AnimationClip));
@@ -1900,7 +1896,7 @@ public class VRC3CVRCore
         if (handLeftThumbsUpAnimationClip && handRightThumbsUpAnimationClip)
         {
             handCombinedThumbsUpAnimationClip = CombineAnimationClips(handLeftThumbsUpAnimationClip, handRightThumbsUpAnimationClip);
-            AssetDatabase.CreateAsset(handCombinedThumbsUpAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedThumbsUp.anim");
+            handCombinedThumbsUpAnimationClip.name = "HandCombinedThumbsUp";
         }
 
         //
@@ -1909,7 +1905,7 @@ public class VRC3CVRCore
         if (handLeftRelaxedAnimationClip && handRightRelaxedAnimationClip)
         {
             handCombinedRelaxedAnimationClip = CombineAnimationClips(handLeftRelaxedAnimationClip, handRightRelaxedAnimationClip);
-            AssetDatabase.CreateAsset(handCombinedRelaxedAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedRelaxed.anim");
+            handCombinedRelaxedAnimationClip.name = "HandCombinedRelaxed";
         }
 
         AnimationClip handLeftFistAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftFist.anim", typeof(AnimationClip));
@@ -1917,7 +1913,7 @@ public class VRC3CVRCore
         if (handLeftFistAnimationClip && handRightFistAnimationClip)
         {
             handCombinedFistAnimationClip = CombineAnimationClips(handLeftFistAnimationClip, handRightFistAnimationClip);
-            // Don't create the asset yet...
+            handCombinedFistAnimationClip.name = "HandCombinedFist";
         }
 
         if (handCombinedRelaxedAnimationClip && handCombinedFistAnimationClip)
@@ -1967,9 +1963,6 @@ public class VRC3CVRCore
 
                 handCombinedFistAnimationClip.SetCurve(editorCurveBindingsFist[i].path, editorCurveBindingsFist[i].type, editorCurveBindingsFist[i].propertyName, newCurve);
             }
-
-
-            AssetDatabase.CreateAsset(handCombinedFistAnimationClip, "Assets/" + outputDirName + "/" + "HandCombinedFist.anim");
         }
     }
 
@@ -2093,36 +2086,20 @@ public class VRC3CVRCore
 
     void SaveChilloutAnimator()
     {
-        new SaveAnimatorController(chilloutAnimatorController).Save();
+        Directory.CreateDirectory(Application.dataPath + "/" + outputDirName);
+        string pathInsideAssets = outputDirName + "/" + cvrAvatar.gameObject.name + "_ChilloutVR_Gestures.controller";
+        string pathToCreatedAnimator = "Assets/" + pathInsideAssets;
+        // ReplaceFile() doesn't actually replace for some reason so make sure there is none already there
+        FileUtil.DeleteFileOrDirectory(pathToCreatedAnimator);
+        AssetDatabase.Refresh();
+
+        new SaveAnimatorController(chilloutAnimatorController).Save(pathToCreatedAnimator);
     }
 
     void CreateEmptyChilloutAnimator()
     {
-        Debug.Log("Creating Chillout animator...");
-
-        Debug.Log("Creating output directory...");
-
-        AssetDatabase.Refresh();
-
-        string pathInsideAssets = outputDirName + "/" + cvrAvatar.gameObject.name + "_ChilloutVR_Gestures.controller";
-        Directory.CreateDirectory(Application.dataPath + "/" + outputDirName);
-
-        AssetDatabase.Refresh();
-
-        Debug.Log("Copying base animator...");
-
-        string pathToCreatedAnimator = "Assets/" + pathInsideAssets;
-
-        // ReplaceFile() doesn't actually replace for some reason so make sure there is none already there
-        FileUtil.DeleteFileOrDirectory(pathToCreatedAnimator);
-
-        AssetDatabase.Refresh();
-
         var sourceAnimator = AssetDatabase.LoadAssetAtPath<AnimatorController>("Assets/ABI.CCK/Animations/AvatarAnimator.controller");
         chilloutAnimatorController = new CopyAnimatorController(sourceAnimator).CopyController();
-        AssetDatabase.CreateAsset(chilloutAnimatorController, pathToCreatedAnimator);
-
-        AssetDatabase.Refresh();
 
         Debug.Log("Loading animator...");
 
