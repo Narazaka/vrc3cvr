@@ -1,6 +1,5 @@
 using UnityEditor;
 using UnityEngine;
-using VRC.SDK3.Avatars.ScriptableObjects;
 
 namespace PeanutTools_VRC3CVR {
     class CustomGUI {

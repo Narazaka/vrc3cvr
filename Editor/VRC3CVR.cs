@@ -1,3 +1,4 @@
+#if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using UnityEditor;
 using UnityEngine;
 using PeanutTools_VRC3CVR.Localization;
@@ -114,3 +115,4 @@ public class VRC3CVR : EditorWindow
         serializedObject.ApplyModifiedProperties();
     }
 }
+#endif

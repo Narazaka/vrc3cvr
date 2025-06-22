@@ -1,3 +1,4 @@
+#if VRC_SDK_VRCSDK3
 using UnityEngine;
 using PeanutTools_VRC3CVR.Localization;
 using UnityEditor;
@@ -271,3 +272,4 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         }
     }
 }
+#endif

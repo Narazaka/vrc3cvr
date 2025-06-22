@@ -1,3 +1,4 @@
+#if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System;
 using System.IO;
 using System.Reflection;
@@ -3066,3 +3067,4 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return path;
     }
 }
+#endif

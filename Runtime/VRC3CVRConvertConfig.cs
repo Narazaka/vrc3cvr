@@ -1,3 +1,4 @@
+#if VRC_SDK_VRCSDK3
 using System;
 using VRC.SDK3.Avatars.Components;
 
@@ -64,3 +65,4 @@ public class VRC3CVRConvertConfig
         shouldDeletePhysBones = other.shouldDeletePhysBones;
     }
 }
+#endif

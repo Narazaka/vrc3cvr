@@ -15,7 +15,9 @@
     "precompiledReferences": [],
     "autoReferenced": false,
     "defineConstraints": [
-        "HAS_NDMF"
+        "HAS_NDMF",
+        "VRC_SDK_VRCSDK3",
+        "CVR_CCK_EXISTS"
     ],
     "versionDefines": [
         {
