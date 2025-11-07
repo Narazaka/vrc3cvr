@@ -21,7 +21,7 @@ Tested with:
 Go to [Releases](https://github.com/Narazaka/vrc3cvr/releases/latest) and expand "Assets" and download the `.unitypackage`.
 
 1. Setup your VRChat avatars with Unity 2022.3.22f1/VRChat SDK 3.x (use VCC)
-2. (optional) convert your PhysBones to DynamicBones by https://github.com/Dreadrith/PhysBone-Converter etc.
+2. (optional) convert your PhysBones to DynamicBones by [PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone) etc.
 3. Import the [ChilloutVR CCK](https://docs.abinteractive.net/cck/setup/) to that VRChat avatar project. (Don't worry about unity version mismatch)
 4. Import the vrc3cvr `.unitypackage`
 5. Click **Tools** -> VRC3CVR
@@ -31,8 +31,7 @@ Go to [Releases](https://github.com/Narazaka/vrc3cvr/releases/latest) and expand
 
 Want to convert your PhysBones to DynamicBones? Use these tools:
 
-- ~~https://booth.pm/ja/items/4032295~~
-- https://github.com/Dreadrith/PhysBone-Converter
+- https://github.com/FACS01-01/PhysBone-to-DynamicBone
 
 You don't need to buy DynamicBones! Use this instead: https://github.com/Markcreator/VRChat-Tools or https://github.com/VRLabs/Dynamic-Bones-Stub
 
