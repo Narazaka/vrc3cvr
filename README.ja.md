@@ -19,7 +19,7 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
 [Releases](https://github.com/Narazaka/vrc3cvr/releases/latest)にアクセスし、「Assets」を展開して`.unitypackage`をダウンロードします。
 
 1. Unity 2022.3.22f1 / VRChat SDK 3.x（VCCを使用）でVRChatアバターをセットアップします。
-2. （任意）[PhysBone-Converter](https://github.com/Dreadrith/PhysBone-Converter)などを使用してPhysBonesをDynamicBonesに変換しておきます。
+2. （任意）[PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone)などを使用してPhysBonesをDynamicBonesに変換しておきます。
 3. [ChilloutVR CCK](https://docs.abinteractive.net/cck/setup/)をVRChatアバタープロジェクトにインポートします（Unityバージョンの不一致は無視してOK）。
 4. VRC3CVRの`.unitypackage`をインポートします。
 5. Tools -> VRC3CVR メニューでツールウインドウを出します。
@@ -31,8 +31,7 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
 
 以下のツールを使ってください：
 
-- ~~https://booth.pm/ja/items/4032295~~
-- https://github.com/Dreadrith/PhysBone-Converter
+- https://github.com/FACS01-01/PhysBone-to-DynamicBone
 
 変換するだけならばDynamicBonesを買う必要はありません。代替ツールがあります。
 

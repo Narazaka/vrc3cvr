@@ -250,7 +250,7 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
 
             EditorGUI.indentLevel--;
 
-            RenderLink("Physbone -> DynamicBone Tool?", "https://github.com/Dreadrith/PhysBone-Converter");
+            RenderLink("Physbone -> DynamicBone Tool?", "https://github.com/FACS01-01/PhysBone-to-DynamicBone");
 
             HeaderLabel(T.Menu);
 
@@ -273,3 +273,4 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
     }
 }
 #endif
+
