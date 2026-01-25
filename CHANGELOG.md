@@ -1,3 +1,8 @@
+# 3.0.0-beta.1
+
+- fix: PB converter URL
+- chore(breaking): NDMF>=1.8
+
 # 3.0.0-beta.0
 
 - feat: NDMF Plugin
