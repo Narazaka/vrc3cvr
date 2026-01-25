@@ -1,3 +1,7 @@
+# 3.0.0-beta.2
+
+- feat: CCK_4.0.0_Preview.19 compatible!
+
 # 3.0.0-beta.1
 
 - fix: PB converter URL
