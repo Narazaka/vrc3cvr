@@ -4,7 +4,8 @@
     "references": [
         "nadena.dev.ndmf",
         "VRC3CVR.NDMF.Runtime",
-        "VRC3CVR.Runtime"
+        "VRC3CVR.Runtime",
+        "nadena.dev.ndmf.vrchat"
     ],
     "includePlatforms": [
         "Editor"
@@ -22,13 +23,8 @@
     "versionDefines": [
         {
             "name": "nadena.dev.ndmf",
-            "expression": "1",
+            "expression": "1.8",
             "define": "HAS_NDMF"
-        },
-        {
-            "name": "nadena.dev.ndmf",
-            "expression": "1.8-b",
-            "define": "HAS_NDMF_1_8_b"
         }
     ],
     "noEngineReferences": false

@@ -1,5 +1,6 @@
 using UnityEngine;
 using nadena.dev.ndmf;
+using nadena.dev.ndmf.vrchat;
 using System.Reflection;
 
 [assembly: ExportsPlugin(typeof(PeanutTools_VRC3CVR.NDMF.VRC3CVRNDMFPlugin))]
@@ -13,11 +14,7 @@ namespace PeanutTools_VRC3CVR.NDMF
 
         protected override void Configure()
         {
-#if HAS_NDMF_1_8_b
-            InPhase(typeof(BuildPhase).GetField("PlatformFinish", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null) as BuildPhase)
-#else
-            InPhase(BuildPhase.Optimizing)
-#endif
+            InPhase(BuildPhase.PlatformFinish)
                 .AfterPlugin("nadena.dev.modular-avatar")
                 .AfterPlugin("com.anatawa12.avatar-optimizer")
                 .AfterPlugin("com.hhotatea.avatar_pose_library.editor.AutoThumbnailPlugin")
@@ -35,7 +32,7 @@ namespace PeanutTools_VRC3CVR.NDMF
             var config = new VRC3CVRConvertConfig();
             config.CopyFrom(vrc3cvrNdmf.convertConfig);
             Object.DestroyImmediate(vrc3cvrNdmf);
-            config.vrcAvatarDescriptor = ctx.AvatarDescriptor;
+            config.vrcAvatarDescriptor = ctx.VRChatAvatarDescriptor();
             config.shouldCloneAvatar = false;
             config.saveAssets = false;
 
