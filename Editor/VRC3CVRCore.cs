@@ -1421,6 +1421,12 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         transition.conditions = conditionsToAdd.ToArray();
     }
 
+#if CVR_CCK_4_OR_NEWER
+    static readonly string LocomotionAnimationPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Locomotion";
+#else
+    static readonly string LocomotionAnimationPath = "Assets/ABI.CCK/Animations";
+#endif
+
     Motion ReplaceProxyAnimationClip(Motion clip)
     {
         if (clip)
@@ -1509,17 +1515,17 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         return clip;
                     }
                 case "proxy_stand_still":
-                    return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
+                    return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/LocIdle.anim", typeof(AnimationClip));
                 case "proxy_idle":
-                    return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
+                    return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/LocIdle.anim", typeof(AnimationClip));
                 case "proxy_idle_2":
-                    return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
+                    return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/LocIdle.anim", typeof(AnimationClip));
                 case "proxy_idle_3":
-                    return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocIdle.anim", typeof(AnimationClip));
+                    return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/LocIdle.anim", typeof(AnimationClip));
                 case "proxy_run_forward":
-                    return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocRunningForward.anim", typeof(AnimationClip));
+                    return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/LocRunningForward.anim", typeof(AnimationClip));
                 case "proxy_run_backward":
-                    return (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/LocRunningBackward.anim", typeof(AnimationClip));
+                    return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/LocRunningBackward.anim", typeof(AnimationClip));
                 default:
                     return clip;
             }
@@ -1841,50 +1847,56 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return animationClipCombined;
     }
 
+#if CVR_CCK_4_OR_NEWER
+    static readonly string HandAnimationPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Hands";
+#else
+    static readonly string HandAnimationPath = "Assets/ABI.CCK/Animations";
+#endif
+
     void CreateCombinedHandAnimations()
     {
-        AnimationClip handLeftGunAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftGun.anim", typeof(AnimationClip));
-        AnimationClip handRightGunAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightGun.anim", typeof(AnimationClip));
+        AnimationClip handLeftGunAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftGun.anim", typeof(AnimationClip));
+        AnimationClip handRightGunAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightGun.anim", typeof(AnimationClip));
         if (handLeftGunAnimationClip && handRightGunAnimationClip)
         {
             handCombinedGunAnimationClip = CombineAnimationClips(handLeftGunAnimationClip, handRightGunAnimationClip);
             handCombinedGunAnimationClip.name = "HandCombinedGun";
         }
 
-        AnimationClip handLeftOpenAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftOpen.anim", typeof(AnimationClip));
-        AnimationClip handRightOpenAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightOpen.anim", typeof(AnimationClip));
+        AnimationClip handLeftOpenAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftOpen.anim", typeof(AnimationClip));
+        AnimationClip handRightOpenAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightOpen.anim", typeof(AnimationClip));
         if (handLeftOpenAnimationClip && handRightOpenAnimationClip)
         {
             handCombinedOpenAnimationClip = CombineAnimationClips(handLeftOpenAnimationClip, handRightOpenAnimationClip);
             handCombinedOpenAnimationClip.name = "HandCombinedOpen";
         }
 
-        AnimationClip handLeftPeaceAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftPeace.anim", typeof(AnimationClip));
-        AnimationClip handRightPeaceAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightPeace.anim", typeof(AnimationClip));
+        AnimationClip handLeftPeaceAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftPeace.anim", typeof(AnimationClip));
+        AnimationClip handRightPeaceAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightPeace.anim", typeof(AnimationClip));
         if (handLeftPeaceAnimationClip && handRightPeaceAnimationClip)
         {
             handCombinedPeaceAnimationClip = CombineAnimationClips(handLeftPeaceAnimationClip, handRightPeaceAnimationClip);
             handCombinedPeaceAnimationClip.name = "HandCombinedPeace";
         }
 
-        AnimationClip handLeftPointAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftPoint.anim", typeof(AnimationClip));
-        AnimationClip handRightPointAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightPoint.anim", typeof(AnimationClip));
+        AnimationClip handLeftPointAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftPoint.anim", typeof(AnimationClip));
+        AnimationClip handRightPointAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightPoint.anim", typeof(AnimationClip));
         if (handLeftPointAnimationClip && handRightPointAnimationClip)
         {
             handCombinedPointAnimationClip = CombineAnimationClips(handLeftPointAnimationClip, handRightPointAnimationClip);
             handCombinedPointAnimationClip.name = "HandCombinedPoint";
         }
 
-        AnimationClip handLeftRockNRollAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftRockNRoll.anim", typeof(AnimationClip));
-        AnimationClip handRightRockNRollAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightRockNRoll.anim", typeof(AnimationClip));
+        AnimationClip handLeftRockNRollAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftRockNRoll.anim", typeof(AnimationClip));
+        AnimationClip handRightRockNRollAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightRockNRoll.anim", typeof(AnimationClip));
         if (handLeftRockNRollAnimationClip && handRightRockNRollAnimationClip)
         {
             handCombinedRockNRollAnimationClip = CombineAnimationClips(handLeftRockNRollAnimationClip, handRightRockNRollAnimationClip);
             handCombinedRockNRollAnimationClip.name = "HandCombinedRockNRoll";
         }
 
-        AnimationClip handLeftThumbsUpAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftThumbsUp.anim", typeof(AnimationClip));
-        AnimationClip handRightThumbsUpAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightThumbsUp.anim", typeof(AnimationClip));
+        AnimationClip handLeftThumbsUpAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftThumbsUp.anim", typeof(AnimationClip));
+        AnimationClip handRightThumbsUpAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightThumbsUp.anim", typeof(AnimationClip));
         if (handLeftThumbsUpAnimationClip && handRightThumbsUpAnimationClip)
         {
             handCombinedThumbsUpAnimationClip = CombineAnimationClips(handLeftThumbsUpAnimationClip, handRightThumbsUpAnimationClip);
@@ -1892,16 +1904,16 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
 
         //
-        AnimationClip handLeftRelaxedAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftRelaxed.anim", typeof(AnimationClip));
-        AnimationClip handRightRelaxedAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightRelaxed.anim", typeof(AnimationClip));
+        AnimationClip handLeftRelaxedAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftRelaxed.anim", typeof(AnimationClip));
+        AnimationClip handRightRelaxedAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightRelaxed.anim", typeof(AnimationClip));
         if (handLeftRelaxedAnimationClip && handRightRelaxedAnimationClip)
         {
             handCombinedRelaxedAnimationClip = CombineAnimationClips(handLeftRelaxedAnimationClip, handRightRelaxedAnimationClip);
             handCombinedRelaxedAnimationClip.name = "HandCombinedRelaxed";
         }
 
-        AnimationClip handLeftFistAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandLeftFist.anim", typeof(AnimationClip));
-        AnimationClip handRightFistAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath("Assets/ABI.CCK/Animations/HandRightFist.anim", typeof(AnimationClip));
+        AnimationClip handLeftFistAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftFist.anim", typeof(AnimationClip));
+        AnimationClip handRightFistAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightFist.anim", typeof(AnimationClip));
         if (handLeftFistAnimationClip && handRightFistAnimationClip)
         {
             handCombinedFistAnimationClip = CombineAnimationClips(handLeftFistAnimationClip, handRightFistAnimationClip);
@@ -2088,9 +2100,15 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         new SaveAnimatorController(chilloutAnimatorController).Save(pathToCreatedAnimator);
     }
 
+#if CVR_CCK_4_OR_NEWER
+    static readonly string AnimatorPath = "Assets/CVR.CCK/Assets/Avatar/Animations";
+#else
+    static readonly string AnimatorPath = "Assets/ABI.CCK/Animations";
+#endif
+
     void CreateEmptyChilloutAnimator()
     {
-        var sourceAnimator = AssetDatabase.LoadAssetAtPath<AnimatorController>("Assets/ABI.CCK/Animations/AvatarAnimator.controller");
+        var sourceAnimator = AssetDatabase.LoadAssetAtPath<AnimatorController>($"{AnimatorPath}/AvatarAnimator.controller");
         chilloutAnimatorController = new CopyAnimatorController(sourceAnimator).CopyController();
         chilloutAnimatorController.name = cvrAvatar.gameObject.name + "_ChilloutVR_Gestures";
 
