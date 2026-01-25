@@ -10,8 +10,8 @@ Convert a VRChat SDK3 avatar to ChilloutVR with this Unity script.
 
 Tested with:
 
-- VRChat Avatar SDK3 3.7.x
-- ChilloutVR CCK 3.13.4-3.15.x
+- VRChat Avatar SDK3 3.7.x, 3.10.1
+- ChilloutVR CCK 3.13.4-3.15.x, CCK_4.0.0_Preview.19
 - Unity 2022.3.22f1 (VRChat compatible)
 
 ## Usage
@@ -36,6 +36,8 @@ Want to convert your PhysBones to DynamicBones? Use these tools:
 You don't need to buy DynamicBones! Use this instead: https://github.com/Markcreator/VRChat-Tools or https://github.com/VRLabs/Dynamic-Bones-Stub
 
 ### 2. Export
+
+**With CCK4 Preview, you can complete uploads in Unity 2022. The following steps are no longer necessary. (As of 2026-01-25, CCK4 Preview is available via the `#-nightly-news` channel on [Chillout VR Discord](https://discord.com/invite/ChilloutVR).)**
 
 VRChat requires 2022.3.22f1 and CCK requires 2021.3.45f1.
 

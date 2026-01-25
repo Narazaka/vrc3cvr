@@ -8,8 +8,8 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
 
 ## 動作確認済み環境
 
-- VRChat Avatar SDK3 3.7.x  
-- ChilloutVR CCK 3.13.4～3.15.x  
+- VRChat Avatar SDK3 3.7.x, 3.10.1
+- ChilloutVR CCK 3.13.4～3.15.x, CCK_4.0.0_Preview.19
 - Unity 2022.3.22f1（VRChat SDK互換のバージョン）
 
 ## 使い方
@@ -45,6 +45,8 @@ CVRのDynamicBoneは古いバージョンであるため、子ボーンは全て
 これを解決するために [ExcludeChildBones](https://github.com/Narazaka/ExcludeChildBones) というツールを作ったので、場合によって使って下さい。（Modular Avatar(NDMF)によって動作するので、このコンポーネントを付けて設定してから改めてベイクする）
 
 ### 2. エクスポート
+
+**CCK4 Previewを使うとUnity 2022でアップロードが完結できます。以下の手順は不要です。（CCK4 Preview は2026-01-25現在 [Chillout VR Discord](https://discord.com/invite/ChilloutVR) の `#-nightly-news` で入手可能です。）**
 
 VRChatはUnity 2022.3.22f1、CCKはUnity 2021.3.45f1が必要です。
 
