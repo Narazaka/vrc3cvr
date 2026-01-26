@@ -1,3 +1,18 @@
+# 3.0.0-beta.3
+
+- feat: Improved parameter compatibility
+  - The following parameters can now be replaced with their CVR equivalents:
+    - VRCEmote => Emote
+    - Viseme => VisemeIdx
+    - Voice => VisemeLoudness
+    - Seated => Sitting
+    - InStation => Sitting
+    - IsOnFriendsList => IsFriend
+  - The default values for the following parameters have been set to 1:
+    - ScaleFactor
+    - ScaleFactorInverse
+    - EyeHeightAsPercent
+
 # 3.0.0-beta.2
 
 - feat: CCK_4.0.0_Preview.19 compatible!
