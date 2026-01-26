@@ -736,7 +736,6 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     static Dictionary<string, string> parameterRenameMap = new Dictionary<string, string>
     {
-        { "VRCEmote", "Emote" },
         { "Viseme", "VisemeIdx" },
         { "Voice", "VisemeLoudness" },
         { "Seated", "Sitting" },
