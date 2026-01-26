@@ -155,11 +155,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
         SetAnimator();
         ConvertVrcParametersToChillout();
-        if (preserveParameterSyncState || addActionMenuModAnnotations)
-        {
-            AdjustParameterNames();
-        }
-        FixChilloutAnimatorForPreview();
+        SetNonZeroDefaultValueParameters();
+        AdjustParameterNames();
         InsertChilloutOverride();
 
         if (shouldDeleteVRCAvatarDescriptorAndPipelineManager)
@@ -718,12 +715,41 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         "CancelEmote",
         "GestureLeft",
         "GestureRight",
+        "GestureLeftIdx",
+        "GestureRightIdx",
         "Toggle",
         "Sitting",
         "Crouching",
         "Prone",
         "Flying",
+        "Swimming",
         "IsLocal",
+        "DistanceTo",
+        "VisemeIdx",
+        "VisemeLoudness",
+        "IsFriend",
+        "VelocityX",
+        "VelocityY",
+        "VelocityZ",
+        "AFK",
+    };
+
+    static Dictionary<string, string> parameterRenameMap = new Dictionary<string, string>
+    {
+        { "VRCEmote", "Emote" },
+        { "Viseme", "VisemeIdx" },
+        { "Voice", "VisemeLoudness" },
+        { "Seated", "Sitting" },
+        { "InStation", "Sitting" },
+        { "IsOnFriendsList", "IsFriend" },
+    };
+
+    static Dictionary<string, float> nonZeroDefaultValueMap = new Dictionary<string, float>
+    {
+        { "Grounded", 1f },
+        { "ScaleFactor", 1f },
+        { "ScaleFactorInverse", 1f },
+        { "EyeHeightAsPercent", 1f },
     };
 
     HashSet<string> preserveParameters;
@@ -801,7 +827,17 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 parameters[i] = param;
             }
         }
-        chilloutAnimatorController.parameters = parameters;
+        // duplicate(by rename) removal
+        var parameterSet = new HashSet<string>();
+        var newParameters = new List<AnimatorControllerParameter>();
+        for (var i = 0; i < parameters.Length; ++i)
+        {
+            if (parameterSet.Add(parameters[i].name))
+            {
+                newParameters.Add(parameters[i]);
+            }
+        }
+        chilloutAnimatorController.parameters = newParameters.ToArray();
 
         foreach (var layer in chilloutAnimatorController.layers)
         {
@@ -1040,6 +1076,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         None = 0,
         NonSync = 1 << 0,
         Impulse = 1 << 1,
+        Rename = 1 << 2,
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
@@ -1048,7 +1085,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var type = RenameParameterType.None;
         if (!string.IsNullOrEmpty(name))
         {
-            if (!preserveParameters.Contains(name))
+            var renamedName = name;
+            if (parameterRenameMap.ContainsKey(name))
+            {
+                type |= RenameParameterType.Rename;
+                renamedName = parameterRenameMap[name];
+            }
+            if (!preserveParameters.Contains(name) && !preserveParameters.Contains(renamedName))
             {
                 type |= RenameParameterType.NonSync;
             }
@@ -1062,6 +1105,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     string RenameParameterName(string name, RenameParameterType type)
     {
+        if (type.HasFlag(RenameParameterType.Rename))
+        {
+            name = parameterRenameMap[name];
+        }
         if (type.HasFlag(RenameParameterType.NonSync))
         {
             name = NonSyncParameterName(name);
@@ -2066,26 +2113,24 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         Debug.Log("Merged");
     }
 
-    void FixChilloutAnimatorForPreview()
+    void SetNonZeroDefaultValueParameters()
     {
-        if (chilloutAnimatorController.parameters.Any(p => p.name == "Grounded" && p.defaultBool == false))
+        var parameters = chilloutAnimatorController.parameters;
+        for (var i = 0; i < parameters.Length; i++)
         {
-            var parameters = chilloutAnimatorController.parameters;
-            for (var i = 0; i < parameters.Length; i++)
+            if (nonZeroDefaultValueMap.TryGetValue(parameters[i].name, out var value))
             {
-                if (parameters[i].name == "Grounded")
+                parameters[i] = new AnimatorControllerParameter
                 {
-                    parameters[i] = new AnimatorControllerParameter
-                    {
-                        name = "Grounded",
-                        type = AnimatorControllerParameterType.Bool,
-                        defaultBool = true,
-                    };
-                    break;
-                }
+                    name = parameters[i].name,
+                    type = parameters[i].type,
+                    defaultFloat = value,
+                    defaultInt = Mathf.RoundToInt(value),
+                    defaultBool = value > 0f,
+                };
             }
-            chilloutAnimatorController.parameters = parameters;
         }
+        chilloutAnimatorController.parameters = parameters;
     }
 
     void SaveChilloutAnimator()
