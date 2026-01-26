@@ -1,3 +1,7 @@
+# 3.0.0-beta.4
+
+- fix: no VRCEmote => Emote (revert)
+
 # 3.0.0-beta.3
 
 - feat: Improved parameter compatibility
