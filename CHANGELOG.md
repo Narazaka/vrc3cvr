@@ -1,3 +1,7 @@
+# 3.0.0-beta.5
+
+- fix: conversion of state params
+
 # 3.0.0-beta.4
 
 - fix: no VRCEmote => Emote (revert)
