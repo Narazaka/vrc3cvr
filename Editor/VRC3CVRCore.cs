@@ -858,6 +858,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
         foreach (var childState in stateMachine.states)
         {
+            AdjustParameterNamesOnState(childState.state);
             var transitions = childState.state.transitions;
             if (AdjustParameterNamesOnTransitions(transitions))
             {
@@ -898,6 +899,34 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         foreach (var childStateMachine in stateMachine.stateMachines)
         {
             AdjustParameterNamesOnStateMachine(childStateMachine.stateMachine);
+        }
+    }
+
+    void AdjustParameterNamesOnState(AnimatorState state)
+    {
+        var timeParameter = state.timeParameter;
+        if (!string.IsNullOrEmpty(timeParameter))
+        {
+            RenameParameterNameIfNeeded(ref timeParameter);
+            state.timeParameter = timeParameter;
+        }
+        var speedParameter = state.speedParameter;
+        if (!string.IsNullOrEmpty(speedParameter))
+        {
+            RenameParameterNameIfNeeded(ref speedParameter);
+            state.speedParameter = speedParameter;
+        }
+        var cycleOffsetParameter = state.cycleOffsetParameter;
+        if (!string.IsNullOrEmpty(cycleOffsetParameter))
+        {
+            RenameParameterNameIfNeeded(ref cycleOffsetParameter);
+            state.cycleOffsetParameter = cycleOffsetParameter;
+        }
+        var mirrorParameter = state.mirrorParameter;
+        if (!string.IsNullOrEmpty(mirrorParameter))
+        {
+            RenameParameterNameIfNeeded(ref mirrorParameter);
+            state.mirrorParameter = mirrorParameter;
         }
     }
 
