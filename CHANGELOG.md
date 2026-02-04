@@ -1,3 +1,7 @@
+# 3.0.0-beta.6
+
+- feat: Converted Contacts now work remotely
+
 # 3.0.0-beta.5
 
 - fix: conversion of state params
