@@ -34,6 +34,8 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring CollisionTagConvertionConfigWithPaths => new istring("Collision Tag Convertion Config per path", "パスごとのCollision Tag 変換設定");
         public static istring CreateVRCContactEquivalentPointers => new istring("Create VRC Contact Equivalent CVR Pointers", "VRC Contact 相当の CVR Pointer を作成");
         public static istring CreateVRCContactEquivalentPointersDescription => new istring("Creates CVR Pointers for VRC default Contact Senders", "VRCデフォルトの VRC Contact Senderに相当するCVR Pointerを作成します");
+        public static istring AdjustContactParameterSync => new istring("Adjust Contact Parameter Sync", "Contact Receiverに使用されるパラメーターを同期させる");
+        public static istring AdjustContactParameterSyncDescription => new istring("Unlike the Contact Receiver, the CVR Advanced Avatar Trigger doesn't operate remotely, so it synchronizes parameters to replicate its functionality.", "CVR Advanced Avatar TriggerはContact Receiverと違ってリモートで動作しないため、パラメーター側で同期させて動作を再現します。");
         public static istring Menu => new istring("Menu", "メニュー");
         public static istring AdjustToVrcMenuOrder => new istring("Adjust to VRC menu order", "VRCメニューの順序に調整");
         public static istring UseHierarchicalMenuName => new istring("Use hierarchical menu name", "階層メニュー名を使用");
@@ -234,6 +236,8 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             Toggle(nameof(VRC3CVRConvertConfig.convertVRCContactSendersAndReceivers), T.ConvertVRCContactSendersAndReceivers, T.ConvertVRCContactSendersAndReceiversDescription);
 
             Toggle(nameof(VRC3CVRConvertConfig.createVRCContactEquivalentPointers), T.CreateVRCContactEquivalentPointers, T.CreateVRCContactEquivalentPointersDescription);
+
+            Toggle(nameof(VRC3CVRConvertConfig.adjustContactParameterSync), T.AdjustContactParameterSync, T.AdjustContactParameterSyncDescription);
 
             var collisionTagConvertionConfigProperty = vrc3cvr.FindPropertyRelative(nameof(VRC3CVRConvertConfig.collisionTagConvertionConfig));
             var collisionTagConvertionConfigLabel = T.CollisionTagConvertionConfig.GUIContent;

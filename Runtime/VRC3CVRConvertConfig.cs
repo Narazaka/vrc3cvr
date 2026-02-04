@@ -32,6 +32,7 @@ public class VRC3CVRConvertConfig
         }
     };
     public bool createVRCContactEquivalentPointers = true;
+    public bool adjustContactParameterSync = true;
     public bool adjustToVrcMenuOrder = true;
     public bool useHierarchicalMenuName = true;
     public bool useHierarchicalDropdownMenuName = true;
@@ -57,6 +58,7 @@ public class VRC3CVRConvertConfig
         convertVRCContactSendersAndReceivers = other.convertVRCContactSendersAndReceivers;
         collisionTagConvertionConfig = other.collisionTagConvertionConfig;
         createVRCContactEquivalentPointers = other.createVRCContactEquivalentPointers;
+        adjustContactParameterSync = other.adjustContactParameterSync;
         adjustToVrcMenuOrder = other.adjustToVrcMenuOrder;
         useHierarchicalMenuName = other.useHierarchicalMenuName;
         useHierarchicalDropdownMenuName = other.useHierarchicalDropdownMenuName;

@@ -28,6 +28,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     AnimatorController[] vrcAnimatorControllers;
     Dictionary<string, string[]> contactComponentPathRemap;
     HashSet<string> constantContactProxiedParameters;
+    HashSet<string> contactReceiverParameters;
     HashSet<string> localTriggerPaths;
     HashSet<string> localPointerPaths;
     GameObject chilloutAvatarGameObject;
@@ -142,6 +143,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         PopulateChilloutComponent();
         CreateEmptyChilloutAnimator();
         MergeVrcAnimatorsIntoChilloutAnimator();
+        contactReceiverParameters = new HashSet<string>();
         if (convertVRCContactSendersAndReceivers)
         {
             ConvertContactsToCVRComponents();
@@ -803,6 +805,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             preserveParameters.UnionWith(chilloutAnimatorController.parameters.Select(p => p.name));
             preserveParameters.UnionWith(muscleNames);
         }
+        if (adjustContactParameterSync) preserveParameters.UnionWith(contactReceiverParameters);
         if (!addActionMenuModAnnotations)
         {
             impulseParameters = new HashSet<string>();
@@ -2504,12 +2507,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
     }
 
+
     void ConvertContactsToCVRComponents()
     {
         var senders = chilloutAvatarGameObject.GetComponentsInChildren<VRCContactSender>(true);
         var receivers = chilloutAvatarGameObject.GetComponentsInChildren<VRCContactReceiver>(true);
         contactComponentPathRemap = new Dictionary<string, string[]>();
         constantContactProxiedParameters = new HashSet<string>();
+        contactReceiverParameters = new HashSet<string>();
         localPointerPaths = new HashSet<string>();
         localTriggerPaths = new HashSet<string>();
         foreach (var sender in senders)
@@ -2626,6 +2631,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             if (receiver.IsLocalOnly)
             {
                 localTriggerPaths.Add(remappedPath);
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(receiver.parameter)) contactReceiverParameters.Add(receiver.parameter);
             }
             if (originalPath != remappedPath)
             {
