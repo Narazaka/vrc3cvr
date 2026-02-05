@@ -161,6 +161,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         AdjustParameterNames();
         InsertChilloutOverride();
 
+        ConvertVrcComponents();
         if (shouldDeleteVRCAvatarDescriptorAndPipelineManager)
         {
             DeleteVrcComponents();
@@ -241,6 +242,82 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         cvrAvatar.overrides = cvrAvatar.avatarSettings.overrides;
 
         Debug.Log("Chillout animator with params built");
+    }
+
+    void ConvertVrcComponents()
+    {
+        if (convertVrcHeadChops) ConvertVrcHeadChops();
+        if (convertVrcSpatialAudioSources) ConvertVrcAudio();
+    }
+
+    void ConvertVrcHeadChops()
+    {
+        var headchops = chilloutAvatarGameObject.GetComponentsInChildren<VRCHeadChop>(true);
+        foreach (var headchop in headchops)
+        {
+            foreach (var setting in headchop.targetBones)
+            {
+                // TODO: Apply Condition (anim emulation required)
+                if (setting.transform == null)
+                {
+                    continue;
+                }
+                var scaleFactor = setting.scaleFactor * headchop.globalScaleFactor;
+                var isShown = Mathf.Approximately(scaleFactor, 1f);
+                var isHidden = Mathf.Approximately(scaleFactor, 0f);
+                // ignore other scale factors (cannot convert)
+                if (isShown || isHidden)
+                {
+                    Debug.Log($"Converting VRCHeadChop on {setting.transform.gameObject.name} to FPRExclusion (isShown={isShown})");
+                    var go = new GameObject(GameObjectUtility.GetUniqueNameForSibling(chilloutAvatarGameObject.transform, "VRCHeadChop"));
+                    var fprExclusion = go.AddComponent<FPRExclusion>();
+                    fprExclusion.isShown = isShown;
+                    fprExclusion.shrinkToZero = true;
+                    fprExclusion.target = setting.transform;
+                    go.transform.SetParent(chilloutAvatarGameObject.transform, false);
+                }
+                else
+                {
+                    Debug.LogWarning($"Cannot convert VRCHeadChop on {setting.transform.gameObject.name} with scaleFactor={scaleFactor}");
+                }
+            }
+            UnityEngine.Object.DestroyImmediate(headchop);
+        }
+    }
+
+    void ConvertVrcAudio()
+    {
+        var vrcSpatialAudioSources = chilloutAvatarGameObject.GetComponentsInChildren<VRCSpatialAudioSource>(true);
+        var onspAudioSources = chilloutAvatarGameObject.GetComponentsInChildren<ONSPAudioSource>(true);
+        Debug.Log($"Converting {vrcSpatialAudioSources.Length} VRCSpatialAudioSource and {onspAudioSources.Length} ONSPAudioSource components...");
+
+        foreach (var spatial in vrcSpatialAudioSources)
+        {
+            Debug.Log($"Converting VRCSpatialAudioSource on {spatial.gameObject.name}");
+            var audioSource = spatial.GetComponent<AudioSource>();
+            audioSource.spatialBlend = spatial.EnableSpatialization ? 1f : 0f;
+            if (!spatial.UseAudioSourceVolumeCurve)
+            {
+                audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
+                audioSource.minDistance = spatial.Near;
+                audioSource.maxDistance = spatial.Far;
+                audioSource.volume = spatial.Gain / 10f; // Gain ???
+            }
+            EditorUtility.SetDirty(audioSource);
+            UnityEngine.Object.DestroyImmediate(spatial);
+        }
+        foreach (var onsp in onspAudioSources)
+        {
+            Debug.Log($"Converting AudioSource on {onsp.gameObject.name}");
+            var audioSource = onsp.GetComponent<AudioSource>();
+            audioSource.spatialBlend = onsp.EnableSpatialization ? 1f : 0f;
+            audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
+            audioSource.minDistance = onsp.Near;
+            audioSource.maxDistance = onsp.Far;
+            audioSource.volume = onsp.Gain / 10f; // Gain ???
+            EditorUtility.SetDirty(audioSource);
+            UnityEngine.Object.DestroyImmediate(onsp);
+        }
     }
 
     void DeleteVrcComponents()

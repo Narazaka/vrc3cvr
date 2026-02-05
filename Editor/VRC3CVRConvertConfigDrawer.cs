@@ -41,6 +41,10 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring UseHierarchicalMenuName => new istring("Use hierarchical menu name", "階層メニュー名を使用");
         public static istring UseHierarchicalDropdownMenuName => new istring("Use hierarchical dropdown menu name", "ドロップダウンメニュー名も階層化");
         public static istring AddActionMenuModAnnotations => new istring("Add Action Menu Mod annotations", "Action Menu Mod用の種別タグを付与");
+        public static istring ConvertVrcHeadChops => new istring("Convert VRC Head Chops", "VRC Head Chopを変換");
+        public static istring ConvertVrcHeadChopsDescription => new istring("Only commonly used scales of 0 or 1 are converted.", "よく使われるスケールが0か1のもののみ変換します。");
+        public static istring ConvertVrcSpatialAudioSources => new istring("Convert VRC Spatial Audio Sources", "VRC Spatial Audio Sourceを変換");
+        public static istring ConvertVrcSpatialAudioSourcesDescription => new istring("The Audio Source 3D Sound Settings that are ignored in VRChat are adjusted heuristically (experimental).", "VRChatで無視されているAudio Sourceの3D Sound Settingsを雰囲気で補正します（試験的）。");
         public static istring DeleteVRCAvatarDescriptorAndPipelineManager => new istring("Delete VRC Avatar Descriptor and Pipeline Manager", "VRC Avatar DescriptorとPipeline Managerを削除");
         public static istring DeletePhysBonesAndColliders => new istring("Delete PhysBones and colliders", "PhysBonesとコライダーを削除");
         public static istring DeleteContactsDescription => new istring("Always deletes contact receivers and senders", "VRC Contact ReceiverとSenderは常に削除されます");
@@ -267,6 +271,10 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             Toggle(nameof(VRC3CVRConvertConfig.addActionMenuModAnnotations), T.AddActionMenuModAnnotations);
 
             EditorGUI.indentLevel--;
+
+            Toggle(nameof(VRC3CVRConvertConfig.convertVrcHeadChops), T.ConvertVrcHeadChops, T.ConvertVrcHeadChopsDescription);
+
+            Toggle(nameof(VRC3CVRConvertConfig.convertVrcSpatialAudioSources), T.ConvertVrcSpatialAudioSources, T.ConvertVrcSpatialAudioSourcesDescription);
 
             Toggle(nameof(VRC3CVRConvertConfig.shouldDeleteVRCAvatarDescriptorAndPipelineManager), T.DeleteVRCAvatarDescriptorAndPipelineManager);
 
