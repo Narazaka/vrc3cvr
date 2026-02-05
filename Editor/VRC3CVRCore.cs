@@ -2462,29 +2462,45 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     void CreateVRCContactEquivalentPointers()
     {
-        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_head, "Head");
-        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_torso, "Torso");
-        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_handL, "Hand", "HandL");
-        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_handR, "Hand", "HandR");
-        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_footL, "Foot", "FootL");
-        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_footR, "Foot", "FootR");
-        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerIndexL, "Finger", "FingerL", "FingerIndex", "FingerIndexL");
-        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerIndexR, "Finger", "FingerR", "FingerIndex", "FingerIndexR");
-        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerMiddleL, "Finger", "FingerL", "FingerMiddle", "FingerMiddleL");
-        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerMiddleR, "Finger", "FingerR", "FingerMiddle", "FingerMiddleR");
-        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerRingL, "Finger", "FingerL", "FingerRing", "FingerRingL");
-        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerRingR, "Finger", "FingerR", "FingerRing", "FingerRingR");
-        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerLittleL, "Finger", "FingerL", "FingerLittle", "FingerLittleL");
-        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerLittleR, "Finger", "FingerR", "FingerLittle", "FingerLittleR");
+        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_head, HumanBodyBones.Head, "Head");
+        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_torso, HumanBodyBones.Chest, "Torso");
+        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_handL, HumanBodyBones.LeftHand, "Hand", "HandL");
+        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_handR, HumanBodyBones.RightHand, "Hand", "HandR");
+        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_footL, HumanBodyBones.LeftFoot, "Foot", "FootL");
+        AddContactEquivalentPointer(false, vrcAvatarDescriptor.collider_footR, HumanBodyBones.RightFoot, "Foot", "FootR");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerIndexL, HumanBodyBones.LeftIndexDistal, "Finger", "FingerL", "FingerIndex", "FingerIndexL");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerIndexR, HumanBodyBones.RightIndexDistal, "Finger", "FingerR", "FingerIndex", "FingerIndexR");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerMiddleL, HumanBodyBones.LeftMiddleDistal, "Finger", "FingerL", "FingerMiddle", "FingerMiddleL");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerMiddleR, HumanBodyBones.RightMiddleDistal, "Finger", "FingerR", "FingerMiddle", "FingerMiddleR");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerRingL, HumanBodyBones.LeftRingDistal, "Finger", "FingerL", "FingerRing", "FingerRingL");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerRingR, HumanBodyBones.RightRingDistal, "Finger", "FingerR", "FingerRing", "FingerRingR");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerLittleL, HumanBodyBones.LeftLittleDistal, "Finger", "FingerL", "FingerLittle", "FingerLittleL");
+        AddContactEquivalentPointer(true, vrcAvatarDescriptor.collider_fingerLittleR, HumanBodyBones.RightLittleDistal, "Finger", "FingerR", "FingerLittle", "FingerLittleR");
     }
 
-    void AddContactEquivalentPointer(bool forceSphere, VRCAvatarDescriptor.ColliderConfig config,  params string[] collisionTags)
+    void AddContactEquivalentPointer(bool forceSphere, VRCAvatarDescriptor.ColliderConfig config, HumanBodyBones bone, params string[] collisionTags)
     {
         if (config.state == VRCAvatarDescriptor.ColliderConfig.State.Disabled)
         {
             return;
         }
-        var transform = cvrAvatar.transform.Find(RelativePath(vrcAvatarDescriptor.transform, config.transform));
+        var colliderParentTransform = config.transform;
+        if (colliderParentTransform == null)
+        {
+            var animator = vrcAvatarDescriptor.GetComponent<Animator>();
+            if (animator == null)
+            {
+                Debug.LogWarning($"Cannot add VRChat default contact equivalent: {bone}");
+                return;
+            }
+            colliderParentTransform = animator.GetBoneTransform(bone);
+            if (colliderParentTransform == null)
+            {
+                Debug.LogWarning($"Cannot add VRChat default contact equivalent: {bone}");
+                return;
+            }
+        }
+        var transform = cvrAvatar.transform.Find(RelativePath(vrcAvatarDescriptor.transform, colliderParentTransform));
         foreach (var collisionTag in collisionTags)
         {
             var name = GameObjectUtility.GetUniqueNameForSibling(transform, $"{transform.name}_{collisionTag}");
