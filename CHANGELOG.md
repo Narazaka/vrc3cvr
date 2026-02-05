@@ -1,3 +1,7 @@
+# 3.0.0-beta.7
+
+- fix: Probably fixed an issue where conversion failed when the VRC Avatar Descriptor collider settings contained internally invalid data.
+
 # 3.0.0-beta.6
 
 - feat: Converted Contacts now work remotely
