@@ -1,3 +1,8 @@
+# 3.0.0-beta.8
+
+- feat: Convert VRC Head Chop (only when the Scale is 0 or 1).
+- feat: Convert VRC Spatial Audio Source (experimental: there is no guarantee that gain or distance values are converted correctly).
+
 # 3.0.0-beta.7
 
 - fix: Probably fixed an issue where conversion failed when the VRC Avatar Descriptor collider settings contained internally invalid data.
