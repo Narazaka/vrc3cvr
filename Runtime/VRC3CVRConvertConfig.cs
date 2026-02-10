@@ -59,6 +59,7 @@ public class VRC3CVRConvertConfig
         convertVRCAnimatorTrackingControl = other.convertVRCAnimatorTrackingControl;
         convertVRCContactSendersAndReceivers = other.convertVRCContactSendersAndReceivers;
         collisionTagConvertionConfig = other.collisionTagConvertionConfig;
+        collisionTagConvertionConfigWithPaths = other.collisionTagConvertionConfigWithPaths;
         createVRCContactEquivalentPointers = other.createVRCContactEquivalentPointers;
         adjustContactParameterSync = other.adjustContactParameterSync;
         adjustToVrcMenuOrder = other.adjustToVrcMenuOrder;
