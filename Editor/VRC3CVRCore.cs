@@ -1715,8 +1715,6 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 state.timeParameter = "GestureRight";
             }
 
-            state.timeParameter = state.timeParameter;
-
             if (state.motion is BlendTree)
             {
                 BlendTree blendTree = (BlendTree)state.motion;
