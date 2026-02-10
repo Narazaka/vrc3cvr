@@ -2,7 +2,6 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.Animations;
 using System.Collections.Generic;
-using UnityEngine.EventSystems;
 
 public class SaveAnimatorController
 {
