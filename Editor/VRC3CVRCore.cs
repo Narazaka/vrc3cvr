@@ -219,32 +219,6 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         AssetDatabase.CreateAsset(cvrAvatar.overrides, "Assets/" + outputDirName + "/" + cvrAvatar.overrides.name + ".overrideController");
     }
 
-    void BuildChilloutAnimatorWithParams()
-    {
-        Debug.Log("Building chillout animator with params...");
-
-
-        Debug.Log("Settings" + cvrAvatar.avatarSettings);
-
-        foreach (UnityEditor.Editor go in Resources.FindObjectsOfTypeAll(typeof(UnityEditor.Editor)))
-        {
-            // This method is private in CCK
-            MethodInfo privateMethod = go.GetType().GetMethod("CreateAnimator", BindingFlags.NonPublic | BindingFlags.Instance);
-
-            if (privateMethod != null)
-            {
-                MethodInfo onInspectorGUIMethod = go.GetType().GetMethod("OnInspectorGUI");
-                onInspectorGUIMethod.Invoke(go, new object[] { });
-
-                privateMethod.Invoke(go, new object[] { });
-            }
-        }
-
-        cvrAvatar.overrides = cvrAvatar.avatarSettings.overrides;
-
-        Debug.Log("Chillout animator with params built");
-    }
-
     void ConvertVrcComponents()
     {
         if (convertVrcHeadChops) ConvertVrcHeadChops();
