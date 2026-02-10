@@ -122,70 +122,75 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         isConverting = true;
 
-        Debug.Log("Starting to convert...");
-
-        AssetDatabase.Refresh();
-
-        // Generate Combined hand animations
-        CreateCombinedHandAnimations();
-
-        // Clear the cache
-        avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
-        gestureMask = null;
-
-        // Load masks
-        emptyMask = LoadMask("vrc3cvrEmptyMask.mask");
-        fullMask = LoadMask("vrc3cvrFullMask.mask");
-        musclesOnlyMask = LoadMask("vrc3cvrMusclesOnly.mask");
-
-        CreateChilloutAvatar();
-        GetValuesFromVrcAvatar();
-        CreateChilloutComponentIfNeeded();
-        PopulateChilloutComponent();
-        CreateEmptyChilloutAnimator();
-        MergeVrcAnimatorsIntoChilloutAnimator();
-        contactReceiverParameters = new HashSet<string>();
-        if (convertVRCContactSendersAndReceivers)
+        try
         {
-            ConvertContactsToCVRComponents();
-            RemapAnimationOfContactComponent();
-            MakeProxyLayersOfConstantContactParameters();
-            EnsureLocalOnlyContacts();
+            Debug.Log("Starting to convert...");
+
+            AssetDatabase.Refresh();
+
+            // Generate Combined hand animations
+            CreateCombinedHandAnimations();
+
+            // Clear the cache
+            avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
+            gestureMask = null;
+
+            // Load masks
+            emptyMask = LoadMask("vrc3cvrEmptyMask.mask");
+            fullMask = LoadMask("vrc3cvrFullMask.mask");
+            musclesOnlyMask = LoadMask("vrc3cvrMusclesOnly.mask");
+
+            CreateChilloutAvatar();
+            GetValuesFromVrcAvatar();
+            CreateChilloutComponentIfNeeded();
+            PopulateChilloutComponent();
+            CreateEmptyChilloutAnimator();
+            MergeVrcAnimatorsIntoChilloutAnimator();
+            contactReceiverParameters = new HashSet<string>();
+            if (convertVRCContactSendersAndReceivers)
+            {
+                ConvertContactsToCVRComponents();
+                RemapAnimationOfContactComponent();
+                MakeProxyLayersOfConstantContactParameters();
+                EnsureLocalOnlyContacts();
+            }
+            if (createVRCContactEquivalentPointers)
+            {
+                CreateVRCContactEquivalentPointers();
+            }
+            SetAnimator();
+            ConvertVrcParametersToChillout();
+            SetNonZeroDefaultValueParameters();
+            AdjustParameterNames();
+            InsertChilloutOverride();
+
+            ConvertVrcComponents();
+            if (shouldDeleteVRCAvatarDescriptorAndPipelineManager)
+            {
+                DeleteVrcComponents();
+            }
+
+            if (shouldCloneAvatar)
+            {
+                HideOriginalAvatar();
+            }
+
+            if (saveAssets)
+            {
+                SaveChilloutAnimator();
+                SaveChilloutOverride();
+            }
+
+            // Clear the cache
+            avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
+            gestureMask = null;
+
+            Debug.Log("Conversion complete!");
         }
-        if (createVRCContactEquivalentPointers)
+        finally
         {
-            CreateVRCContactEquivalentPointers();
+            isConverting = false;
         }
-        SetAnimator();
-        ConvertVrcParametersToChillout();
-        SetNonZeroDefaultValueParameters();
-        AdjustParameterNames();
-        InsertChilloutOverride();
-
-        ConvertVrcComponents();
-        if (shouldDeleteVRCAvatarDescriptorAndPipelineManager)
-        {
-            DeleteVrcComponents();
-        }
-
-        if (shouldCloneAvatar)
-        {
-            HideOriginalAvatar();
-        }
-
-        if (saveAssets)
-        {
-            SaveChilloutAnimator();
-            SaveChilloutOverride();
-        }
-
-        // Clear the cache
-        avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
-        gestureMask = null;
-
-        Debug.Log("Conversion complete!");
-
-        isConverting = false;
     }
 
     Transform GetHeadBoneTransform(Animator animator)
