@@ -157,111 +157,49 @@ public class VRC3CVRCollisionTagConvertionConfig
         return config;
     }
 
-    public string[] CollisionTagToCVRType(string collisionTag)
+    bool TryGetCollisionTagMapping(string collisionTag, out Operation op, out string cvrType)
     {
-        string cvrType = null;
-        Operation op;
         // cf. https://discord.com/channels/410126604237406209/797279576459968555/1127093496923308103
         // https://discord.com/channels/410126604237406209/588350685255565344/1327758763242815539
         switch (collisionTag)
         {
-            case "Head":
-                op = Head;
-                cvrType = "mouth";
-                break;
-            case "Hand":
-                op = Hand;
-                cvrType = "index";
-                break;
-            case "HandL":
-                op = HandL;
-                cvrType = "index";
-                break;
-            case "HandR":
-                op = HandR;
-                cvrType = "index";
-                break;
-            case "Finger":
-                op = Finger;
-                cvrType = "index";
-                break;
-            case "FingerL":
-                op = FingerL;
-                cvrType = "index";
-                break;
-            case "FingerR":
-                op = FingerR;
-                cvrType = "index";
-                break;
-            case "FingerIndex":
-                op = FingerIndex;
-                cvrType = "index";
-                break;
-            case "FingerIndexL":
-                op = FingerIndexL;
-                cvrType = "index";
-                break;
-            case "FingerIndexR":
-                op = FingerIndexR;
-                cvrType = "index";
-                break;
-            case "FingerMiddle":
-                op = FingerMiddle;
-                cvrType = "index";
-                break;
-            case "FingerMiddleL":
-                op = FingerMiddleL;
-                cvrType = "index";
-                break;
-            case "FingerMiddleR":
-                op = FingerMiddleR;
-                cvrType = "index";
-                break;
-            case "FingerRing":
-                op = FingerRing;
-                cvrType = "index";
-                break;
-            case "FingerRingL":
-                op = FingerRingL;
-                cvrType = "index";
-                break;
-            case "FingerRingR":
-                op = FingerRingR;
-                cvrType = "index";
-                break;
-            case "FingerLittle":
-                op = FingerLittle;
-                cvrType = "index";
-                break;
-            case "FingerLittleL":
-                op = FingerLittleL;
-                cvrType = "index";
-                break;
-            case "FingerLittleR":
-                op = FingerLittleR;
-                cvrType = "index";
-                break;
-            default:
-                return new string[] { collisionTag };
+            case "Head": op = Head; cvrType = "mouth"; return true;
+            case "Hand": op = Hand; cvrType = "index"; return true;
+            case "HandL": op = HandL; cvrType = "index"; return true;
+            case "HandR": op = HandR; cvrType = "index"; return true;
+            case "Finger": op = Finger; cvrType = "index"; return true;
+            case "FingerL": op = FingerL; cvrType = "index"; return true;
+            case "FingerR": op = FingerR; cvrType = "index"; return true;
+            case "FingerIndex": op = FingerIndex; cvrType = "index"; return true;
+            case "FingerIndexL": op = FingerIndexL; cvrType = "index"; return true;
+            case "FingerIndexR": op = FingerIndexR; cvrType = "index"; return true;
+            case "FingerMiddle": op = FingerMiddle; cvrType = "index"; return true;
+            case "FingerMiddleL": op = FingerMiddleL; cvrType = "index"; return true;
+            case "FingerMiddleR": op = FingerMiddleR; cvrType = "index"; return true;
+            case "FingerRing": op = FingerRing; cvrType = "index"; return true;
+            case "FingerRingL": op = FingerRingL; cvrType = "index"; return true;
+            case "FingerRingR": op = FingerRingR; cvrType = "index"; return true;
+            case "FingerLittle": op = FingerLittle; cvrType = "index"; return true;
+            case "FingerLittleL": op = FingerLittleL; cvrType = "index"; return true;
+            case "FingerLittleR": op = FingerLittleR; cvrType = "index"; return true;
+            default: op = Operation.Inherit; cvrType = null; return false;
         }
-        if (op == Operation.ConvertAndKeep)
-        {
-            return new string[] { cvrType, collisionTag };
-        }
-        else if (op == Operation.Convert)
-        {
-            return new string[] { cvrType };
-        }
-        else if (op == Operation.Keep)
+    }
+
+    public string[] CollisionTagToCVRType(string collisionTag)
+    {
+        if (!TryGetCollisionTagMapping(collisionTag, out var op, out var cvrType))
         {
             return new string[] { collisionTag };
         }
-        else if (op == Operation.Delete)
+        switch (op)
         {
-            return new string[0];
+            case Operation.ConvertAndKeep: return new string[] { cvrType, collisionTag };
+            case Operation.Convert: return new string[] { cvrType };
+            case Operation.Keep: return new string[] { collisionTag };
+            case Operation.Delete: return new string[0];
+            default: return new string[] { collisionTag };
         }
-        // Inherit
-        return new string[] { collisionTag };
     }
 
     static Operation Is(Operation baseOperation, Operation operation)

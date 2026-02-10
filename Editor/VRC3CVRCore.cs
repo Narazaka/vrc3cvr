@@ -1562,113 +1562,46 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     static readonly string LocomotionAnimationPath = "Assets/ABI.CCK/Animations";
 #endif
 
+    Dictionary<string, Func<AnimationClip>> BuildProxyHandClipMap() => new Dictionary<string, Func<AnimationClip>>
+    {
+        { "proxy_hands_fist", () => handCombinedFistAnimationClip },
+        { "proxy_hands_gun", () => handCombinedGunAnimationClip },
+        { "proxy_hands_idle", () => handCombinedRelaxedAnimationClip },
+        { "proxy_hands_idle2", () => handCombinedRelaxedAnimationClip },
+        { "proxy_hands_open", () => handCombinedOpenAnimationClip },
+        { "proxy_hands_peace", () => handCombinedPeaceAnimationClip },
+        { "proxy_hands_point", () => handCombinedPointAnimationClip },
+        { "proxy_hands_rock", () => handCombinedRockNRollAnimationClip },
+        { "proxy_hands_thumbs_up", () => handCombinedThumbsUpAnimationClip },
+    };
+
+    static readonly Dictionary<string, string> proxyLocomotionClipMap = new Dictionary<string, string>
+    {
+        { "proxy_stand_still", "LocIdle.anim" },
+        { "proxy_idle", "LocIdle.anim" },
+        { "proxy_idle_2", "LocIdle.anim" },
+        { "proxy_idle_3", "LocIdle.anim" },
+        { "proxy_run_forward", "LocRunningForward.anim" },
+        { "proxy_run_backward", "LocRunningBackward.anim" },
+    };
+
     Motion ReplaceProxyAnimationClip(Motion clip)
     {
-        if (clip)
+        if (!clip) return clip;
+
+        var handClipMap = BuildProxyHandClipMap();
+        if (handClipMap.TryGetValue(clip.name, out var getClip))
         {
-            switch (clip.name)
-            {
-                case "proxy_hands_fist":
-                    if (handCombinedFistAnimationClip)
-                    {
-                        return handCombinedFistAnimationClip;
-                    }
-                    else
-                    {
-                        return clip;
-                    }
-                case "proxy_hands_gun":
-                    if (handCombinedGunAnimationClip)
-                    {
-                        return handCombinedGunAnimationClip;
-                    }
-                    else
-                    {
-                        return clip;
-                    }
-                case "proxy_hands_idle":
-                    if (handCombinedRelaxedAnimationClip)
-                    {
-                        return handCombinedRelaxedAnimationClip;
-                    }
-                    else
-                    {
-                        return clip;
-                    }
-                case "proxy_hands_idle2":
-                    if (handCombinedRelaxedAnimationClip)
-                    {
-                        return handCombinedRelaxedAnimationClip;
-                    }
-                    else
-                    {
-                        return clip;
-                    }
-                case "proxy_hands_open":
-                    if (handCombinedOpenAnimationClip)
-                    {
-                        return handCombinedOpenAnimationClip;
-                    }
-                    else
-                    {
-                        return clip;
-                    }
-                case "proxy_hands_peace":
-                    if (handCombinedPeaceAnimationClip)
-                    {
-                        return handCombinedPeaceAnimationClip;
-                    }
-                    else
-                    {
-                        return clip;
-                    }
-                case "proxy_hands_point":
-                    if (handCombinedPointAnimationClip)
-                    {
-                        return handCombinedPointAnimationClip;
-                    }
-                    else
-                    {
-                        return clip;
-                    }
-                case "proxy_hands_rock":
-                    if (handCombinedRockNRollAnimationClip)
-                    {
-                        return handCombinedRockNRollAnimationClip;
-                    }
-                    else
-                    {
-                        return clip;
-                    }
-                case "proxy_hands_thumbs_up":
-                    if (handCombinedThumbsUpAnimationClip)
-                    {
-                        return handCombinedThumbsUpAnimationClip;
-                    }
-                    else
-                    {
-                        return clip;
-                    }
-                case "proxy_stand_still":
-                    return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/LocIdle.anim", typeof(AnimationClip));
-                case "proxy_idle":
-                    return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/LocIdle.anim", typeof(AnimationClip));
-                case "proxy_idle_2":
-                    return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/LocIdle.anim", typeof(AnimationClip));
-                case "proxy_idle_3":
-                    return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/LocIdle.anim", typeof(AnimationClip));
-                case "proxy_run_forward":
-                    return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/LocRunningForward.anim", typeof(AnimationClip));
-                case "proxy_run_backward":
-                    return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/LocRunningBackward.anim", typeof(AnimationClip));
-                default:
-                    return clip;
-            }
+            var replacement = getClip();
+            return replacement ? replacement : clip;
         }
-        else
+
+        if (proxyLocomotionClipMap.TryGetValue(clip.name, out var locomotionFile))
         {
-            return clip;
+            return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/{locomotionFile}", typeof(AnimationClip));
         }
+
+        return clip;
     }
 
     void ProcessStateMachine(AnimatorStateMachine stateMachine, ref AnimatorControllerParameter[] parameters)
@@ -1994,72 +1927,29 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     static readonly string HandAnimationPath = "Assets/ABI.CCK/Animations";
 #endif
 
+    AnimationClip LoadCombinedHandAnimation(string gestureName)
+    {
+        var left = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeft{gestureName}.anim", typeof(AnimationClip));
+        var right = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRight{gestureName}.anim", typeof(AnimationClip));
+        if (left && right)
+        {
+            var combined = CombineAnimationClips(left, right);
+            combined.name = $"HandCombined{gestureName}";
+            return combined;
+        }
+        return null;
+    }
+
     void CreateCombinedHandAnimations()
     {
-        AnimationClip handLeftGunAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftGun.anim", typeof(AnimationClip));
-        AnimationClip handRightGunAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightGun.anim", typeof(AnimationClip));
-        if (handLeftGunAnimationClip && handRightGunAnimationClip)
-        {
-            handCombinedGunAnimationClip = CombineAnimationClips(handLeftGunAnimationClip, handRightGunAnimationClip);
-            handCombinedGunAnimationClip.name = "HandCombinedGun";
-        }
-
-        AnimationClip handLeftOpenAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftOpen.anim", typeof(AnimationClip));
-        AnimationClip handRightOpenAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightOpen.anim", typeof(AnimationClip));
-        if (handLeftOpenAnimationClip && handRightOpenAnimationClip)
-        {
-            handCombinedOpenAnimationClip = CombineAnimationClips(handLeftOpenAnimationClip, handRightOpenAnimationClip);
-            handCombinedOpenAnimationClip.name = "HandCombinedOpen";
-        }
-
-        AnimationClip handLeftPeaceAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftPeace.anim", typeof(AnimationClip));
-        AnimationClip handRightPeaceAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightPeace.anim", typeof(AnimationClip));
-        if (handLeftPeaceAnimationClip && handRightPeaceAnimationClip)
-        {
-            handCombinedPeaceAnimationClip = CombineAnimationClips(handLeftPeaceAnimationClip, handRightPeaceAnimationClip);
-            handCombinedPeaceAnimationClip.name = "HandCombinedPeace";
-        }
-
-        AnimationClip handLeftPointAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftPoint.anim", typeof(AnimationClip));
-        AnimationClip handRightPointAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightPoint.anim", typeof(AnimationClip));
-        if (handLeftPointAnimationClip && handRightPointAnimationClip)
-        {
-            handCombinedPointAnimationClip = CombineAnimationClips(handLeftPointAnimationClip, handRightPointAnimationClip);
-            handCombinedPointAnimationClip.name = "HandCombinedPoint";
-        }
-
-        AnimationClip handLeftRockNRollAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftRockNRoll.anim", typeof(AnimationClip));
-        AnimationClip handRightRockNRollAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightRockNRoll.anim", typeof(AnimationClip));
-        if (handLeftRockNRollAnimationClip && handRightRockNRollAnimationClip)
-        {
-            handCombinedRockNRollAnimationClip = CombineAnimationClips(handLeftRockNRollAnimationClip, handRightRockNRollAnimationClip);
-            handCombinedRockNRollAnimationClip.name = "HandCombinedRockNRoll";
-        }
-
-        AnimationClip handLeftThumbsUpAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftThumbsUp.anim", typeof(AnimationClip));
-        AnimationClip handRightThumbsUpAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightThumbsUp.anim", typeof(AnimationClip));
-        if (handLeftThumbsUpAnimationClip && handRightThumbsUpAnimationClip)
-        {
-            handCombinedThumbsUpAnimationClip = CombineAnimationClips(handLeftThumbsUpAnimationClip, handRightThumbsUpAnimationClip);
-            handCombinedThumbsUpAnimationClip.name = "HandCombinedThumbsUp";
-        }
-
-        //
-        AnimationClip handLeftRelaxedAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftRelaxed.anim", typeof(AnimationClip));
-        AnimationClip handRightRelaxedAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightRelaxed.anim", typeof(AnimationClip));
-        if (handLeftRelaxedAnimationClip && handRightRelaxedAnimationClip)
-        {
-            handCombinedRelaxedAnimationClip = CombineAnimationClips(handLeftRelaxedAnimationClip, handRightRelaxedAnimationClip);
-            handCombinedRelaxedAnimationClip.name = "HandCombinedRelaxed";
-        }
-
-        AnimationClip handLeftFistAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandLeftFist.anim", typeof(AnimationClip));
-        AnimationClip handRightFistAnimationClip = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{HandAnimationPath}/HandRightFist.anim", typeof(AnimationClip));
-        if (handLeftFistAnimationClip && handRightFistAnimationClip)
-        {
-            handCombinedFistAnimationClip = CombineAnimationClips(handLeftFistAnimationClip, handRightFistAnimationClip);
-            handCombinedFistAnimationClip.name = "HandCombinedFist";
-        }
+        handCombinedGunAnimationClip = LoadCombinedHandAnimation("Gun");
+        handCombinedOpenAnimationClip = LoadCombinedHandAnimation("Open");
+        handCombinedPeaceAnimationClip = LoadCombinedHandAnimation("Peace");
+        handCombinedPointAnimationClip = LoadCombinedHandAnimation("Point");
+        handCombinedRockNRollAnimationClip = LoadCombinedHandAnimation("RockNRoll");
+        handCombinedThumbsUpAnimationClip = LoadCombinedHandAnimation("ThumbsUp");
+        handCombinedRelaxedAnimationClip = LoadCombinedHandAnimation("Relaxed");
+        handCombinedFistAnimationClip = LoadCombinedHandAnimation("Fist");
 
         if (handCombinedRelaxedAnimationClip && handCombinedFistAnimationClip)
         {
