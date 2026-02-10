@@ -78,11 +78,6 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     AnimationClip handCombinedRockNRollAnimationClip;
     AnimationClip handCombinedThumbsUpAnimationClip;
 
-    bool GetAreToeBonesSet()
-    {
-        return true;
-    }
-
     public bool GetIsReadyForConvert()
     {
         return vrcAvatarDescriptor != null;
