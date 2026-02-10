@@ -1808,6 +1808,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         {
                             if (vrcParameter.convertRange)
                             {
+                                var sourceRange = vrcParameter.sourceMax - vrcParameter.sourceMin;
+                                if (sourceRange == 0f)
+                                {
+                                    Debug.LogWarning($"Parameter \"{vrcParameter.name}\" has zero source range (sourceMin == sourceMax == {vrcParameter.sourceMin}), skipping convertRange");
+                                }
+                                else
+                                {
                                 // src (srcMin - srcMax) => dst (dstMin - dstMax)
                                 // dst = (src - srcMin) * (dstMax - dstMin) / (srcMax - srcMin) + dstMin
                                 cvrDriver.EnterTasks.Add(new AnimatorDriverTask
@@ -1830,7 +1837,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                                     aParamType = TypeOf(vrcParameter.name),
                                     aName = vrcParameter.name,
                                     bType = AnimatorDriverTask.SourceType.Static,
-                                    bValue = (vrcParameter.destMax - vrcParameter.destMin) / (vrcParameter.sourceMax - vrcParameter.sourceMin),
+                                    bValue = (vrcParameter.destMax - vrcParameter.destMin) / sourceRange,
                                 });
                                 cvrDriver.EnterTasks.Add(new AnimatorDriverTask
                                 {
@@ -1843,6 +1850,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                                     bType = AnimatorDriverTask.SourceType.Static,
                                     bValue = vrcParameter.destMin,
                                 });
+                                }
                             }
                             else
                             {
