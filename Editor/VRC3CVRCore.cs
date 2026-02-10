@@ -2183,9 +2183,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         var newAnimatorController = new CopyAnimatorController(originalAnimatorController).CopyController();
 
-        for (int i = 0; i < newAnimatorController.layers.Length; i++)
+        var controllerLayers = newAnimatorController.layers;
+        var layersModified = false;
+        for (int i = 0; i < controllerLayers.Length; i++)
         {
-            AnimatorControllerLayer layer = newAnimatorController.layers[i];
+            AnimatorControllerLayer layer = controllerLayers[i];
 
             if (layer.stateMachine.states.Length > 0)
             { // Do not copy empty layers
@@ -2196,10 +2198,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 newAnimatorController.parameters = parameters;
 
                 layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(animatorID, i, layer.avatarMask);
-                var layers = newAnimatorController.layers;
-                layers[i] = layer;
-                newAnimatorController.layers = layers;
+                controllerLayers[i] = layer;
+                layersModified = true;
             }
+        }
+        if (layersModified)
+        {
+            newAnimatorController.layers = controllerLayers;
         }
 
         new CopyAnimatorController(newAnimatorController).CopyControllerTo(chilloutAnimatorController);
@@ -2258,11 +2263,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             throw new Exception("Failed to load the created animator!");
         }
 
-        Debug.Log("Found number of layers: " + chilloutAnimatorController.layers.Length);
+        var existingLayers = chilloutAnimatorController.layers;
 
-        if (chilloutAnimatorController.layers.Length != 4)
+        Debug.Log("Found number of layers: " + existingLayers.Length);
+
+        if (existingLayers.Length != 4)
         {
-            throw new Exception("Animator controller has unexpected number of layers: " + chilloutAnimatorController.layers.Length);
+            throw new Exception("Animator controller has unexpected number of layers: " + existingLayers.Length);
         }
 
         List<AnimatorControllerLayer> newLayers = new List<AnimatorControllerLayer>();
@@ -2280,7 +2287,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             allowedLayerNames = new string[] { "Locomotion/Emotes", "LeftHand", "RightHand" };
         }
 
-        foreach (AnimatorControllerLayer layer in chilloutAnimatorController.layers)
+        foreach (AnimatorControllerLayer layer in existingLayers)
         {
             if (Array.IndexOf(allowedLayerNames, layer.name) != -1)
             {
