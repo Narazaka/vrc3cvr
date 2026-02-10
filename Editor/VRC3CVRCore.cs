@@ -115,6 +115,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         if (isConverting == true)
         {
             Debug.Log("Cannot convert - already in progress");
+            return;
         }
 
         _emptyClip = null;
