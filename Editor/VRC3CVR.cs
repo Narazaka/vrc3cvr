@@ -96,13 +96,20 @@ public class VRC3CVR : EditorWindow
         if (vrc3cvr.animator != null)
         {
             Transform leftToesTransform = vrc3cvr.animator.GetBoneTransform(HumanBodyBones.LeftToes);
-            Transform righToesTransform = vrc3cvr.animator.GetBoneTransform(HumanBodyBones.RightToes);
+            Transform rightToesTransform = vrc3cvr.animator.GetBoneTransform(HumanBodyBones.RightToes);
 
-            if (leftToesTransform == null || righToesTransform == null)
+            if (leftToesTransform == null || rightToesTransform == null)
             {
                 CustomGUI.SmallLineGap();
 
-                CustomGUI.RenderErrorMessage(T.ToeError(leftToesTransform == null));
+                if (leftToesTransform == null)
+                {
+                    CustomGUI.RenderErrorMessage(T.ToeError(true));
+                }
+                if (rightToesTransform == null)
+                {
+                    CustomGUI.RenderErrorMessage(T.ToeError(false));
+                }
                 CustomGUI.RenderWarningMessage(T.ToeErrorDescription);
             }
         }
