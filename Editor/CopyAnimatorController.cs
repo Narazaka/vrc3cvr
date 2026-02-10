@@ -483,7 +483,7 @@ public class CopyAnimatorController
                 threshold = condition.threshold,
                 parameter = condition.parameter,
             };
-            var conditions = sourceTransition.conditions;
+            var conditions = newTransition.conditions;
             ArrayUtility.Add(ref conditions, newCondition);
             newTransition.conditions = conditions;
         }
@@ -524,7 +524,7 @@ public class CopyAnimatorController
                 threshold = condition.threshold,
                 parameter = condition.parameter,
             };
-            var conditions = sourceTransition.conditions;
+            var conditions = newTransition.conditions;
             ArrayUtility.Add(ref conditions, newCondition);
             newTransition.conditions = conditions;
         }
