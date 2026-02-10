@@ -63,6 +63,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     AvatarMask fullMask;
     AvatarMask musclesOnlyMask;
 
+    static readonly string EditorMaskDir = "Assets/PeanutTools/vrc3cvr/Editor";
+
+    static AvatarMask LoadMask(string fileName) =>
+        (AvatarMask)AssetDatabase.LoadAssetAtPath($"{EditorMaskDir}/{fileName}", typeof(AvatarMask));
+
     // Hands combined from both ChilloutVR animationClips
     AnimationClip handCombinedFistAnimationClip;
     AnimationClip handCombinedGunAnimationClip;
@@ -133,10 +138,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
         gestureMask = null;
 
-        // Load hardcoded masks
-        emptyMask = (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrEmptyMask.mask", typeof(AvatarMask));
-        fullMask = (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrFullMask.mask", typeof(AvatarMask));
-        musclesOnlyMask = (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrMusclesOnly.mask", typeof(AvatarMask));
+        // Load masks
+        emptyMask = LoadMask("vrc3cvrEmptyMask.mask");
+        fullMask = LoadMask("vrc3cvrFullMask.mask");
+        musclesOnlyMask = LoadMask("vrc3cvrMusclesOnly.mask");
 
         CreateChilloutAvatar();
         GetValuesFromVrcAvatar();
@@ -1970,13 +1975,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             switch (mask.name)
             {
                 case "vrc_Hand Left":
-                    return (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrHandLeft.mask", typeof(AvatarMask));
+                    return LoadMask("vrc3cvrHandLeft.mask");
                 case "vrc_Hand Right":
-                    return (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrHandRight.mask", typeof(AvatarMask));
+                    return LoadMask("vrc3cvrHandRight.mask");
                 case "vrc_HandsOnly":
-                    return (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrHandsOnly.mask", typeof(AvatarMask));
+                    return LoadMask("vrc3cvrHandsOnly.mask");
                 case "vrc_MusclesOnly":
-                    return (AvatarMask)AssetDatabase.LoadAssetAtPath("Assets/PeanutTools/vrc3cvr/Editor/vrc3cvrMusclesOnly.mask", typeof(AvatarMask));
+                    return LoadMask("vrc3cvrMusclesOnly.mask");
                 default:
                     return mask;
             }
