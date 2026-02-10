@@ -2334,16 +2334,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         vrcViewPosition = vrcAvatarDescriptor.ViewPosition;
 
-        if (vrcViewPosition == null)
-        {
-            throw new Exception("Could not find view position from VRC component!");
-        }
-
         Debug.Log("View position: " + vrcViewPosition);
 
         vrcVisemeBlendShapes = vrcAvatarDescriptor.VisemeBlendShapes;
 
-        if (vrcViewPosition == null)
+        if (vrcVisemeBlendShapes == null)
         {
             Debug.LogWarning("Could not find viseme blend shapes from VRC component");
         }
