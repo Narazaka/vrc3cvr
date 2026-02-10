@@ -2462,11 +2462,18 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         Debug.Log("Setting visemes...");
 
-        cvrAvatar.useVisemeLipsync = true;
-
-        for (int i = 0; i < vrcVisemeBlendShapes.Length; i++)
+        if (vrcVisemeBlendShapes != null && vrcVisemeBlendShapes.Length > 0)
         {
-            cvrAvatar.visemeBlendshapes[i] = vrcVisemeBlendShapes[i];
+            cvrAvatar.useVisemeLipsync = true;
+
+            for (int i = 0; i < vrcVisemeBlendShapes.Length; i++)
+            {
+                cvrAvatar.visemeBlendshapes[i] = vrcVisemeBlendShapes[i];
+            }
+        }
+        else
+        {
+            Debug.LogWarning("Cannot set visemes: no viseme blend shapes found");
         }
 
         Debug.Log("Setting view and voice position...");
