@@ -2363,7 +2363,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 int blinkBlendshapeIdx = eyelidsBlendshapes[0];
                 Mesh mesh = bodySkinnedMeshRenderer.sharedMesh;
 
-                if (blinkBlendshapeIdx > mesh.blendShapeCount)
+                if (blinkBlendshapeIdx >= mesh.blendShapeCount)
                 {
                     Debug.LogWarning("Could not use eyelid blendshape at index " + blinkBlendshapeIdx.ToString() + ": does not exist in mesh!");
                 }
