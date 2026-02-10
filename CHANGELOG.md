@@ -1,3 +1,10 @@
+# 3.0.0-beta.9
+
+- fix: Fixed an issue where only one error was shown when both toe bones were missing.
+- fix: Fixed missing error checks for viseme and blink blendshapes.
+- fix: Fixed an issue where conversion could be triggered again while already in progress.
+- fix: Code cleanup.
+
 # 3.0.0-beta.8
 
 - feat: Convert VRC Head Chop (only when the Scale is 0 or 1).
