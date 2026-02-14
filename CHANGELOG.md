@@ -1,3 +1,11 @@
+# 3.0.0-beta.10
+
+- Fixed an issue where per-path Collision Tag conversion settings did not function correctly in the component.
+- Ignore invalid range conversions in VRC Avatar Parameter Driver.
+- Prevent errors when Viseme BlendShapes are missing.
+- Prevent the process from getting stuck in the converting state.
+- Refactoring.
+
 # 3.0.0-beta.9
 
 - fix: Fixed an issue where only one error was shown when both toe bones were missing.
