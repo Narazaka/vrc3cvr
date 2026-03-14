@@ -2902,6 +2902,18 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     IEnumerable<EditorCurveBinding> ConvertBindingOfContactComponent(EditorCurveBinding binding)
     {
+        if (binding.propertyName == "m_Enabled")
+        {
+            return new EditorCurveBinding[]
+            {
+                new EditorCurveBinding
+                {
+                    path = binding.path,
+                    type = typeof(GameObject),
+                    propertyName = "m_IsActive",
+                },
+            };
+        }
         if (binding.propertyName == nameof(VRC.Dynamics.ContactBase.radius))
         {
             return new EditorCurveBinding[]
