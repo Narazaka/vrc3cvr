@@ -12,6 +12,24 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
 - ChilloutVR CCK 3.13.4～3.15.x, CCK_4.0.0_Preview.19
 - Unity 2022.3.22f1（VRChat SDK互換のバージョン）
 
+## 変換で行われること
+
+- ChilloutVR用アバターコンポーネントの追加（存在しない場合）
+- 顔メッシュの設定
+- Viseme（口パク）の設定
+- まばたきブレンドシェイプの設定
+- 視点位置・ボイス位置の設定（VRChatアバターの設定を元に）
+- 各パラメータに対応する高度な設定UIの追加
+  - Float：スライダー
+  - Boolean：トグル
+  - Int：ドロップダウン（1つだけならトグル）
+- 各Animator Controller（Gesture、FXなど）をCVR用に変換  
+  - `GestureLeftWeight` / `GestureRightWeight` を `GestureLeft` / `GestureRight` に変換  
+  - VRCParameterDriverなども変換
+- VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換
+  - VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。
+  - プレイ中のContactのShape Typeの変更は非対応です。
+
 ## 使い方 (CCK4 Previewを使うUnity 2022で完結する方法) [おすすめ]
 
 ### ツール
@@ -156,29 +174,35 @@ VRChatはUnity 2022.3.22f1、CCKはUnity 2021.3.45f1が必要です。
 
 ## Tips
 
+### アップロード数制限
+
+デフォルトで20個くらいしか枠がありません。
+
+課金すると増えるらしい？
+
+### 日本語化
+
 ChilloutVRのデフォルトUIでは非ASCII文字（日本語等）が文字化けしてしまいます。
 
 日本語で使う場合は、[日本語化パッチ](https://github.com/Narazaka/chilloutvr-jp-translation-tool)を導入して下さい。
 
-## 変換で行われること
+## トラブルシューティング
 
-- ChilloutVR用アバターコンポーネントの追加（存在しない場合）
-- 顔メッシュの設定
-- Viseme（口パク）の設定
-- まばたきブレンドシェイプの設定
-- 視点位置・ボイス位置の設定（VRChatアバターの設定を元に）
-- 各パラメータに対応する高度な設定UIの追加
-  - Float：スライダー
-  - Boolean：トグル
-  - Int：ドロップダウン（1つだけならトグル）
-- 各Animator Controller（Gesture、FXなど）をCVR用に変換  
-  - `GestureLeftWeight` / `GestureRightWeight` を `GestureLeft` / `GestureRight` に変換  
-  - VRCParameterDriverなども変換
-- VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換
-  - VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。
-  - プレイ中のContactのShape Typeの変更は非対応です。
+### "VRCExpressionParameters.Parameter does not contain a definition for defaultValue"（`VRCExpressionParameters.Parameter` に `defaultValue` が存在しない）等のエラー
 
-## ジェスチャーマッピング
+VRChat Avatar SDK3の最新版にアップデートしてください。
+
+### ジェスチャーで手が動かない
+
+「My avatar has custom hand animations」のチェックを外してから変換してください。
+
+### "The type or namespace 'VRC' could not be found"（`VRC`という型や名前空間が見つからない）エラー
+
+プロジェクトにVRCSDKが含まれていない可能性があります。SDKをインポートしてください。
+
+## 変換の詳細
+
+### ジェスチャーマッピング
 
 | ジェスチャー       | VRC | CVR |
 |--------------------|-----|-----|
@@ -191,21 +215,7 @@ ChilloutVRのデフォルトUIでは非ASCII文字（日本語等）が文字化
 | 銃（Gun）          | 6   | 3   |
 | 親指立て（Thumbs） | 7   | 2   |
 
-### トリガーウェイトの扱い
+#### トリガーウェイトの扱い
 
 VRCでは `GestureLeftWeight` と `GestureRightWeight` を使用しますが、CVRではこれらは存在しません。  
 代わりに `GestureLeft` の値でトリガー強度を確認します（0.5が50%相当）。
-
-## トラブルシューティング
-
-### `VRCExpressionParameters.Parameter` に `defaultValue` が存在しない等のエラー
-
-VRChat Avatar SDK3の最新版にアップデートしてください。
-
-### ジェスチャーで手が動かない
-
-「My avatar has custom hand animations」のチェックを外してから変換してください。
-
-### `VRC`という型や名前空間が見つからない
-
-プロジェクトにVRCSDKが含まれていない可能性があります。SDKをインポートしてください。
