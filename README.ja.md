@@ -14,6 +14,8 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
 
 ## 変換で行われること
 
+全体的にPhysbone固有の機能を除けば多くの部分がそのまま動作します。
+
 - ChilloutVR用アバターコンポーネントの追加（存在しない場合）
 - 顔メッシュの設定
 - Viseme（口パク）の設定
@@ -29,6 +31,14 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
 - VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換
   - VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。
   - プレイ中のContactのShape Typeの変更は非対応です。
+
+### 非対応シェーダー
+
+ChilloutVRはVRChatでも以前叫ばれたSPS-I(Single Pass Stereo Instancing)を実装しているプラットフォームです（VRChatでは結局行われなかった）。
+
+このためSPS-I未対応なシェーダーは描画がバグる（たとえばVRで片目にしか表示されない）ことがあります。
+
+lilToon等は問題ないですが、マイナーなシェーダーは問題になるかも知れません。
 
 ## 使い方 (CCK4 Previewを使うUnity 2022で完結する方法) [おすすめ]
 
