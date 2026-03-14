@@ -5,8 +5,8 @@
 Convert a VRChat SDK3 avatar to ChilloutVR with this Unity script.
 
 - Keep a BACKUP of your original project.
-- This is an fork of the forked project (https://github.com/SaracenOne/vrc3cvr) that is fork of the original project (https://github.com/imagitama/vrc3cvr).
-- It is not recommend you convert avatars with custom locomotion controllers, only FX and Gesture controllers.
+- This is a fork of the forked project (https://github.com/SaracenOne/vrc3cvr) that is a fork of the original project (https://github.com/imagitama/vrc3cvr).
+- It is not recommended you convert avatars with custom locomotion controllers, only FX and Gesture controllers.
 
 Tested with:
 

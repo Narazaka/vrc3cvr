@@ -26,7 +26,7 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
   - Boolean：トグル
   - Int：ドロップダウン（1つだけならトグル）
 - 各Animator Controller（Gesture、FXなど）をCVR用に変換  
-  - `GestureLeftWeight` / `GestureRightWeight` を `GestureLeft` / `GestureRight` に変換  
+  - `GestureLeftWeight` / `GestureRightWeight` を `GestureLeft` / `GestureRight` に変換（Fistアニメーションを確認してください！）
   - VRCParameterDriverなども変換
 - VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換
   - VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。
