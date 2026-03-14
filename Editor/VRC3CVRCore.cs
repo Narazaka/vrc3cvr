@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using UnityEditor.Animations;
+using UnityEngine.Animations;
 using VRC.SDK3.Avatars.ScriptableObjects;
 using VRCExpressionParameter = VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.Parameter;
 using VRC.SDK3.Avatars.Components;
@@ -31,6 +32,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     HashSet<string> contactReceiverParameters;
     HashSet<string> localTriggerPaths;
     HashSet<string> localPointerPaths;
+    List<(Transform parentBone, Transform createdRoot)> newContactRoots;
     GameObject chilloutAvatarGameObject;
     public GameObject chilloutAvatar => chilloutAvatarGameObject;
 
@@ -150,6 +152,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             if (convertVRCContactSendersAndReceivers)
             {
                 ConvertContactsToCVRComponents();
+                ExcludeContactsFromDynamicBones();
                 RemapAnimationOfContactComponent();
                 MakeProxyLayersOfConstantContactParameters();
                 EnsureLocalOnlyContacts();
@@ -2495,6 +2498,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         contactReceiverParameters = new HashSet<string>();
         localPointerPaths = new HashSet<string>();
         localTriggerPaths = new HashSet<string>();
+        newContactRoots = new List<(Transform, Transform)>();
         foreach (var sender in senders)
         {
             if (sender.collisionTags.Count == 0)
@@ -2511,6 +2515,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 var cvrPointer = contactGameObject.AddComponent<CVRPointer>();
                 cvrPointer.type = collisionTags.FirstOrDefault();
                 remappedPaths.Add(ChilloutAvatarRelativePath(contactGameObject));
+                newContactRoots.Add((sender.transform, contactGameObject.transform));
             }
             else
             {
@@ -2526,6 +2531,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     var cvrPointer = contactGameObject.AddComponent<CVRPointer>();
                     cvrPointer.type = collisionTag;
                     remappedPaths.Add(ChilloutAvatarRelativePath(contactGameObject));
+                    newContactRoots.Add((sender.transform, gameObject.transform));
                 }
             }
             if (sender.IsLocalOnly)
@@ -2546,6 +2552,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             }
             var collisionTagToCVRType = MakeCollisionTagToCVRType(receiver.gameObject);
             var contactGameObject = SuitableContactObjectWithCollider(receiver.gameObject, receiver);
+            newContactRoots.Add((receiver.transform, contactGameObject.transform));
             var cvrTrigger = contactGameObject.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
             cvrTrigger.useAdvancedTrigger = true;
             cvrTrigger.isLocalInteractable = receiver.allowSelf;
@@ -2620,6 +2627,131 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             }
             UnityEngine.Object.DestroyImmediate(receiver);
         }
+    }
+
+    void ExcludeContactsFromDynamicBones()
+    {
+        if (newContactRoots == null || newContactRoots.Count == 0) return;
+
+        // DynamicBone型をリフレクションで検索
+        var dynamicBoneType = AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(a => { try { return a.GetTypes(); } catch { return Type.EmptyTypes; } })
+            .FirstOrDefault(t => t.Name == "DynamicBone");
+        if (dynamicBoneType == null) return;
+
+        var rootField = dynamicBoneType.GetField("m_Root");
+        var dynamicBones = chilloutAvatarGameObject.GetComponentsInChildren(dynamicBoneType, true);
+        var dynamicBoneRoots = new HashSet<Transform>();
+        foreach (var db in dynamicBones)
+        {
+            var root = rootField?.GetValue(db) as Transform;
+            if (root == null) root = (db as Component).transform;
+            dynamicBoneRoots.Add(root);
+        }
+        if (dynamicBoneRoots.Count == 0) return;
+
+        Transform FindDynamicBoneRoot(Transform t)
+        {
+            while (t != null && t != chilloutAvatarGameObject.transform)
+            {
+                if (dynamicBoneRoots.Contains(t)) return t;
+                t = t.parent;
+            }
+            return null;
+        }
+
+        // DynamicBone root配下にあるcontactをparentBoneでグループ化
+        var groups = newContactRoots
+            .Select(x => (x.parentBone, x.createdRoot, dbRoot: FindDynamicBoneRoot(x.parentBone)))
+            .Where(x => x.dbRoot != null)
+            .GroupBy(x => x.parentBone);
+
+        foreach (var group in groups)
+        {
+            var parentBone = group.Key;
+            var dbRoot = group.First().dbRoot;
+            var dbRootParent = dbRoot.parent != null ? dbRoot.parent : chilloutAvatarGameObject.transform;
+
+            // コンテナ作成 (exclude-child-bonesパターン)
+            var containerName = GameObjectUtility.GetUniqueNameForSibling(
+                dbRootParent,
+                $"{parentBone.name}_ContactExclude");
+            var container = new GameObject(containerName).transform;
+            container.SetParent(parentBone, false);
+            container.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+            container.localScale = Vector3.one;
+            container.SetParent(dbRootParent, true); // world座標維持
+
+            // Constraint追加
+            var parentConstraint = container.gameObject.AddComponent<ParentConstraint>();
+            parentConstraint.AddSource(new ConstraintSource
+            {
+                sourceTransform = parentBone,
+                weight = 1f
+            });
+            parentConstraint.constraintActive = true;
+
+            var scaleConstraint = container.gameObject.AddComponent<ScaleConstraint>();
+            scaleConstraint.AddSource(new ConstraintSource
+            {
+                sourceTransform = parentBone,
+                weight = 1f
+            });
+            scaleConstraint.constraintActive = true;
+
+            // 各contactオブジェクトを移動し、パス更新
+            foreach (var (_, createdRoot, _) in group)
+            {
+                var oldPath = ChilloutAvatarRelativePath(createdRoot);
+                createdRoot.SetParent(container, true); // world座標維持
+                var newPath = ChilloutAvatarRelativePath(createdRoot);
+
+                UpdateContactPaths(oldPath, newPath);
+            }
+        }
+    }
+
+    void UpdateContactPaths(string oldPath, string newPath)
+    {
+        // contactComponentPathRemap の値(remapped paths)を更新
+        foreach (var key in contactComponentPathRemap.Keys.ToArray())
+        {
+            var paths = contactComponentPathRemap[key];
+            for (int i = 0; i < paths.Length; i++)
+            {
+                paths[i] = ReplacePath(paths[i], oldPath, newPath);
+            }
+        }
+
+        // localPointerPaths 更新
+        ReplacePathsInSet(localPointerPaths, oldPath, newPath);
+        // localTriggerPaths 更新
+        ReplacePathsInSet(localTriggerPaths, oldPath, newPath);
+    }
+
+    static string ReplacePath(string path, string oldPrefix, string newPrefix)
+    {
+        if (path == oldPrefix) return newPrefix;
+        if (path.StartsWith(oldPrefix + "/"))
+            return newPrefix + path.Substring(oldPrefix.Length);
+        return path;
+    }
+
+    static void ReplacePathsInSet(HashSet<string> set, string oldPrefix, string newPrefix)
+    {
+        var toRemove = new List<string>();
+        var toAdd = new List<string>();
+        foreach (var path in set)
+        {
+            var replaced = ReplacePath(path, oldPrefix, newPrefix);
+            if (replaced != path)
+            {
+                toRemove.Add(path);
+                toAdd.Add(replaced);
+            }
+        }
+        foreach (var p in toRemove) set.Remove(p);
+        foreach (var p in toAdd) set.Add(p);
     }
 
     Func<string, string[]> MakeCollisionTagToCVRType(GameObject gameObject)
