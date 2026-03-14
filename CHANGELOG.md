@@ -1,3 +1,8 @@
+# 3.0.0-beta.11
+
+- fix: Fixed an issue where DynamicBone stopped working when Contacts were present on objects under a DynamicBone hierarchy.
+- feat: Contact enabled animations are now correctly converted to GameObject active state.
+
 # 3.0.0-beta.10
 
 - Fixed an issue where per-path Collision Tag conversion settings did not function correctly in the component.
