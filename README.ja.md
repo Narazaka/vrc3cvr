@@ -186,6 +186,14 @@ ChilloutVRのデフォルトUIでは非ASCII文字（日本語等）が文字化
 
 日本語で使う場合は、[日本語化パッチ](https://github.com/Narazaka/chilloutvr-jp-translation-tool)を導入して下さい。
 
+### CVRがVRCより不便
+
+CVRでは不便はMODでどうにかするスタイルです。
+
+https://github.com/knah/CVRMelonAssistant 等を使ってMODを導入しましょう。
+
+（CVRはもともとVRCがMOD禁止になったのに反発する流れの中で作られたプラットフォームです）
+
 ## トラブルシューティング
 
 ### "VRCExpressionParameters.Parameter does not contain a definition for defaultValue"（`VRCExpressionParameters.Parameter` に `defaultValue` が存在しない）等のエラー
