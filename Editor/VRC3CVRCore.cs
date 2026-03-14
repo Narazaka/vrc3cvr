@@ -2672,32 +2672,36 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             var dbRoot = group.First().dbRoot;
             var dbRootParent = dbRoot.parent != null ? dbRoot.parent : chilloutAvatarGameObject.transform;
 
-            // コンテナ作成 (exclude-child-bonesパターン)
-            var containerName = GameObjectUtility.GetUniqueNameForSibling(
-                dbRootParent,
-                $"{parentBone.name}_ContactExclude");
-            var container = new GameObject(containerName).transform;
-            container.SetParent(parentBone, false);
-            container.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
-            container.localScale = Vector3.one;
-            container.SetParent(dbRootParent, true); // world座標維持
-
-            // Constraint追加
-            var parentConstraint = container.gameObject.AddComponent<ParentConstraint>();
-            parentConstraint.AddSource(new ConstraintSource
+            // exclude-child-bonesパターンのコンテナを検索または作成
+            var container = FindExistingExcludeChildBonesContainer(dbRootParent, parentBone);
+            if (container == null)
             {
-                sourceTransform = parentBone,
-                weight = 1f
-            });
-            parentConstraint.constraintActive = true;
+                var containerName = GameObjectUtility.GetUniqueNameForSibling(
+                    dbRootParent,
+                    $"{parentBone.name}_ExcludeChildBones");
+                container = new GameObject(containerName).transform;
+                container.SetParent(parentBone, false);
+                container.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+                container.localScale = Vector3.one;
+                container.SetParent(dbRootParent, true); // world座標維持
 
-            var scaleConstraint = container.gameObject.AddComponent<ScaleConstraint>();
-            scaleConstraint.AddSource(new ConstraintSource
-            {
-                sourceTransform = parentBone,
-                weight = 1f
-            });
-            scaleConstraint.constraintActive = true;
+                // Constraint追加
+                var parentConstraint = container.gameObject.AddComponent<ParentConstraint>();
+                parentConstraint.AddSource(new ConstraintSource
+                {
+                    sourceTransform = parentBone,
+                    weight = 1f
+                });
+                parentConstraint.constraintActive = true;
+
+                var scaleConstraint = container.gameObject.AddComponent<ScaleConstraint>();
+                scaleConstraint.AddSource(new ConstraintSource
+                {
+                    sourceTransform = parentBone,
+                    weight = 1f
+                });
+                scaleConstraint.constraintActive = true;
+            }
 
             // 各contactオブジェクトを移動し、パス更新
             foreach (var (_, createdRoot, _) in group)
@@ -2709,6 +2713,25 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 UpdateContactPaths(oldPath, newPath);
             }
         }
+    }
+
+    static Transform FindExistingExcludeChildBonesContainer(Transform searchParent, Transform parentBone)
+    {
+        var expectedName = $"{parentBone.name}_ExcludeChildBones";
+        for (int i = 0; i < searchParent.childCount; i++)
+        {
+            var child = searchParent.GetChild(i);
+            if (child.name != expectedName) continue;
+
+            var pc = child.GetComponent<ParentConstraint>();
+            if (pc == null || pc.sourceCount == 0 || pc.GetSource(0).sourceTransform != parentBone) continue;
+
+            var sc = child.GetComponent<ScaleConstraint>();
+            if (sc == null || sc.sourceCount == 0 || sc.GetSource(0).sourceTransform != parentBone) continue;
+
+            return child;
+        }
+        return null;
     }
 
     void UpdateContactPaths(string oldPath, string newPath)
