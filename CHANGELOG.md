@@ -1,3 +1,7 @@
+# 3.0.0-beta.12
+
+- fix: docs
+
 # 3.0.0-beta.11
 
 - fix: Fixed an issue where DynamicBone stopped working when Contacts were present on objects under a DynamicBone hierarchy.
