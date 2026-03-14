@@ -16,7 +16,7 @@ Tested with:
 
 ## What does it do?
 
-Most things in the FX layer work as-is, except for PhysBone-specific features.
+Most things work as-is, except for PhysBone-specific features and features that require layers other than FX/Gesture.
 
 - adds a ChilloutVR avatar component (if missing)
 - sets the face mesh
