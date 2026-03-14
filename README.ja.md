@@ -12,7 +12,7 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
 - ChilloutVR CCK 3.13.4～3.15.x, CCK_4.0.0_Preview.19
 - Unity 2022.3.22f1（VRChat SDK互換のバージョン）
 
-## 使い方 (CCK4 Previewを使うUnity 2022で完結する方法)
+## 使い方 (CCK4 Previewを使うUnity 2022で完結する方法) [おすすめ]
 
 ### ツール
 
