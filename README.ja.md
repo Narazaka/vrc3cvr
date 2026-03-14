@@ -37,7 +37,7 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
 
 **揺らさない子ボーンがある場合は？**
 
-CVRのDynamicBoneは古いバージョンであるため、子ボーンは全て揺らすボーンである必要があるのか、PBのignore指定相当がききません。
+CVRのDynamicBoneは古いバージョンであるためか、Root直下のボーンにはExclusion（PBのignore指定）相当がききません。
 
 これを解決するために [ExcludeChildBones](https://github.com/Narazaka/ExcludeChildBones) というツールを作ったので、場合によって使って下さい。（Modular Avatar(NDMF)によって動作するので、このコンポーネントを付けて設定してから改めてベイクする）
 
@@ -91,7 +91,7 @@ CVRのDynamicBoneは古いバージョンであるため、子ボーンは全て
 
 **揺らさない子ボーンがある場合は？**
 
-CVRのDynamicBoneは古いバージョンであるため、子ボーンは全て揺らすボーンである必要があるのか、PBのignore指定相当がききません。
+CVRのDynamicBoneは古いバージョンであるためか、Root直下のボーンにはExclusion（PBのignore指定）相当がききません。
 
 これを解決するために [ExcludeChildBones](https://github.com/Narazaka/ExcludeChildBones) というツールを作ったので、場合によって使って下さい。（Modular Avatar(NDMF)によって動作するので、このコンポーネントを付けて設定してから改めてベイクする）
 
