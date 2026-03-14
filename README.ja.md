@@ -3,7 +3,7 @@
 VRChat SDK3のアバターをChilloutVR用に変換します。
 
 - 元のプロジェクトのバックアップを必ず取ってください。
-- 本プロジェクトは、元のプロジェクト（https://github.com/imagitama/vrc3cvr）をフォークしたプロジェクト（https://github.com/SaracenOne/vrc3cvr）をさらにフォークしたものです。
+- 本プロジェクトは、元のプロジェクト（ https://github.com/imagitama/vrc3cvr ）をフォークしたプロジェクト（ https://github.com/SaracenOne/vrc3cvr ）をさらにフォークしたものです。
 - Locomotionレイヤーの変換は非推奨です。FXとGestureレイヤーのみの変換を推奨します。
 
 ## 動作確認済み環境
