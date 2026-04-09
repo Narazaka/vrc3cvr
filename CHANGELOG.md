@@ -1,3 +1,7 @@
+# 3.0.0-beta.13
+
+- fix: LessThen -> LessThan, to match CCK_4.0.0-Preview.25 and later
+
 # 3.0.0-beta.12
 
 - fix: docs
