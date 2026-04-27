@@ -1734,7 +1734,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                                 });
                                 cvrDriver.EnterTasks.Add(new AnimatorDriverTask
                                 {
-                                    op = AnimatorDriverTask.Operator.LessThen,
+                                    op = AnimatorDriverTask.Operator.LessThan,
                                     targetName = vrcParameter.name,
                                     targetType = TypeOf(vrcParameter.name),
                                     aType = AnimatorDriverTask.SourceType.Parameter,
