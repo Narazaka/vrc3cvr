@@ -1,3 +1,10 @@
+# 3.0.0-rc.0
+
+- feat: docs for CCK4
+- fix: docs for VRCConstraints conversion (Prefabulous)
+- feat: adjust to CCK4 default Auto-Generated Avatar Pointers
+- fix: The Contact conversion settings in the VRC3CVR component were not taken into account
+
 # 3.0.0-beta.13
 
 - fix: LessThen -> LessThan, to match CCK_4.0.0-Preview.25 and later
