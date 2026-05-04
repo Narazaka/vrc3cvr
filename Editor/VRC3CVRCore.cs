@@ -1808,7 +1808,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         }
                     }
                 }
-                else if (behaviour is VRCAnimatorLocomotionControl)
+                else if (behaviour is VRCAnimatorLocomotionControl && convertVRCAnimatorLocomotionControl)
                 {
                     var bodyControl = state.behaviours.FirstOrDefault(b => b is BodyControl) as BodyControl;
                     if (bodyControl == null) bodyControl = state.AddStateMachineBehaviour<BodyControl>();
@@ -1819,7 +1819,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         targetWeight = vrcLocomotionControl.disableLocomotion ? 0f : 1f,
                     });
                 }
-                else if (behaviour is VRCAnimatorTrackingControl)
+                else if (behaviour is VRCAnimatorTrackingControl && convertVRCAnimatorTrackingControl)
                 {
                     var vrcTrackingControl = behaviour as VRCAnimatorTrackingControl;
                     if (vrcTrackingControl.trackingHead != VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.NoChange ||
