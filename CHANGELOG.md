@@ -1,3 +1,7 @@
+# 3.0.0-rc.1
+
+- fix: null checks / minor bugs
+
 # 3.0.0-rc.0
 
 - feat: docs for CCK4
