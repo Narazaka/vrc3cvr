@@ -278,27 +278,33 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             Debug.Log($"Converting VRCSpatialAudioSource on {spatial.gameObject.name}");
             var audioSource = spatial.GetComponent<AudioSource>();
-            audioSource.spatialBlend = spatial.EnableSpatialization ? 1f : 0f;
-            if (!spatial.UseAudioSourceVolumeCurve)
+            if (audioSource != null)
             {
-                audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
-                audioSource.minDistance = spatial.Near;
-                audioSource.maxDistance = spatial.Far;
-                audioSource.volume = spatial.Gain / 10f; // Gain ???
+                audioSource.spatialBlend = spatial.EnableSpatialization ? 1f : 0f;
+                if (!spatial.UseAudioSourceVolumeCurve)
+                {
+                    audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
+                    audioSource.minDistance = spatial.Near;
+                    audioSource.maxDistance = spatial.Far;
+                    audioSource.volume = spatial.Gain / 10f; // Gain ???
+                }
+                EditorUtility.SetDirty(audioSource);
             }
-            EditorUtility.SetDirty(audioSource);
             UnityEngine.Object.DestroyImmediate(spatial);
         }
         foreach (var onsp in onspAudioSources)
         {
             Debug.Log($"Converting AudioSource on {onsp.gameObject.name}");
             var audioSource = onsp.GetComponent<AudioSource>();
-            audioSource.spatialBlend = onsp.EnableSpatialization ? 1f : 0f;
-            audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
-            audioSource.minDistance = onsp.Near;
-            audioSource.maxDistance = onsp.Far;
-            audioSource.volume = onsp.Gain / 10f; // Gain ???
-            EditorUtility.SetDirty(audioSource);
+            if (audioSource != null)
+            {
+                audioSource.spatialBlend = onsp.EnableSpatialization ? 1f : 0f;
+                audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
+                audioSource.minDistance = onsp.Near;
+                audioSource.maxDistance = onsp.Far;
+                audioSource.volume = onsp.Gain / 10f; // Gain ???
+                EditorUtility.SetDirty(audioSource);
+            }
             UnityEngine.Object.DestroyImmediate(onsp);
         }
     }
@@ -1240,7 +1246,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             if (i >= (int)VRCBaseAnimatorID.MAX || i < 0)
             {
                 Debug.Log("Unknown VRC animator id");
-                return;
+                continue;
             }
 
             VRCBaseAnimatorID baseAnimatorID = (VRCBaseAnimatorID)i;
@@ -2238,7 +2244,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         int[] eyelidsBlendshapes = vrcAvatarDescriptor.customEyeLookSettings.eyelidsBlendshapes;
 
-        if (eyelidsBlendshapes.Length >= 1 && eyelidsBlendshapes[0] != -1)
+        if (eyelidsBlendshapes != null && eyelidsBlendshapes.Length >= 1 && eyelidsBlendshapes[0] != -1)
         {
             if (bodySkinnedMeshRenderer != null)
             {
