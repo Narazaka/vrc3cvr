@@ -30,9 +30,7 @@ namespace PeanutTools_VRC3CVR {
         public static void MyLinks(string repoName) {
             GUILayout.Label("Links:");
 
-            RenderLink("  Download new versions from GitHub", "https://github.com/imagitama/" + repoName);
-            RenderLink("  Get support from my Discord", "https://discord.gg/R6Scz6ccdn");
-            RenderLink("  Follow me on Twitter", "https://twitter.com/@HiPeanutBuddha");
+            RenderLink("  Download new versions from GitHub", "https://github.com/Narazaka/" + repoName);
         }
 
         public static void HorizontalRule() {
