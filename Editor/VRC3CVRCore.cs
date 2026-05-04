@@ -2780,7 +2780,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     Func<string, string[]> MakeCollisionTagToCVRType(GameObject gameObject)
     {
         var configs = FindConfigsInParent(gameObject.transform);
-        var config = VRC3CVRCollisionTagConvertionConfig.WithInherits(configs.Reverse());
+        var config = VRC3CVRCollisionTagConvertionConfig.WithInherits(new VRC3CVRCollisionTagConvertionConfig[] { collisionTagConvertionConfig }.Concat(configs.Reverse()));
         return config.CollisionTagToCVRType;
     }
 
