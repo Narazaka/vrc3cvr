@@ -30,10 +30,9 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring ConvertVRCContactSendersAndReceivers => new istring("Convert VRC Contact Senders and Receivers to CVR Pointer and CVR Advanced Avatar Trigger", "VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換");
         public static istring ConvertVRCContactSendersAndReceiversDescription => new istring("Unlike VRC Contact, CVR Pointer and Trigger only change values when the contact collides. This difference may cause compatibility issues.", "VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。");
         public static istring CollisionTagConvertionConfig => new istring("Collision Tag Convertion Config", "Collision Tag 変換設定");
-        public static istring CollisionTagConvertionConfigDescription => new istring("Convert \"Head\" to \"mouth\" and \"Hand\"s and \"Finger\"s to \"index\"?", "\"Hand\"を\"mouth\"に、\"Hand\"等と\"Finger\"等を\"index\"に変換する?");
         public static istring CollisionTagConvertionConfigWithPaths => new istring("Collision Tag Convertion Config per path", "パスごとのCollision Tag 変換設定");
-        public static istring CreateVRCContactEquivalentPointers => new istring("Create VRC Contact Equivalent CVR Pointers", "VRC Contact 相当の CVR Pointer を作成");
-        public static istring CreateVRCContactEquivalentPointersDescription => new istring("Creates CVR Pointers for VRC default Contact Senders", "VRCデフォルトの VRC Contact Senderに相当するCVR Pointerを作成します");
+        public static istring CreateVRCContactEquivalentPointers => new istring("Create VRC Contact Equivalent CVR Pointers (LEGACY)", "VRC Contact 相当の CVR Pointer を作成 (レガシー）");
+        public static istring CreateVRCContactEquivalentPointersDescription => new istring("Creates CVR Pointers for VRC default Contact Senders (legacy)", "VRCデフォルトの VRC Contact Senderに相当するCVR Pointerを作成します (レガシー)");
         public static istring AdjustContactParameterSync => new istring("Adjust Contact Parameter Sync", "Contact Receiverに使用されるパラメーターを同期させる");
         public static istring AdjustContactParameterSyncDescription => new istring("Unlike the Contact Receiver, the CVR Advanced Avatar Trigger doesn't operate remotely, so it synchronizes parameters to replicate its functionality.", "CVR Advanced Avatar TriggerはContact Receiverと違ってリモートで動作しないため、パラメーター側で同期させて動作を再現します。");
         public static istring Menu => new istring("Menu", "メニュー");
@@ -238,23 +237,25 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             EditorGUI.indentLevel++;
 
             Toggle(nameof(VRC3CVRConvertConfig.convertVRCContactSendersAndReceivers), T.ConvertVRCContactSendersAndReceivers, T.ConvertVRCContactSendersAndReceiversDescription);
-
-            Toggle(nameof(VRC3CVRConvertConfig.createVRCContactEquivalentPointers), T.CreateVRCContactEquivalentPointers, T.CreateVRCContactEquivalentPointersDescription);
-
+            
             Toggle(nameof(VRC3CVRConvertConfig.adjustContactParameterSync), T.AdjustContactParameterSync, T.AdjustContactParameterSyncDescription);
 
             var collisionTagConvertionConfigProperty = vrc3cvr.FindPropertyRelative(nameof(VRC3CVRConvertConfig.collisionTagConvertionConfig));
             var collisionTagConvertionConfigLabel = T.CollisionTagConvertionConfig.GUIContent;
             Height(EditorGUI.GetPropertyHeight(collisionTagConvertionConfigProperty, collisionTagConvertionConfigLabel, true));
-            if (draw) EditorGUI.PropertyField(position, collisionTagConvertionConfigProperty, collisionTagConvertionConfigLabel, true);
+            if (draw)
+            {
+                EditorGUI.PropertyField(position, collisionTagConvertionConfigProperty, collisionTagConvertionConfigLabel, true);
+            }
             LF();
-            HelpBox(T.CollisionTagConvertionConfigDescription);
 
             var collisionTagConvertionConfigWithPathsProperty = vrc3cvr.FindPropertyRelative(nameof(VRC3CVRConvertConfig.collisionTagConvertionConfigWithPaths));
             var collisionTagConvertionConfigWithPathsLabel = T.CollisionTagConvertionConfigWithPaths.GUIContent;
             Height(EditorGUI.GetPropertyHeight(collisionTagConvertionConfigWithPathsProperty, collisionTagConvertionConfigWithPathsLabel, true));
             if (draw) EditorGUI.PropertyField(position, collisionTagConvertionConfigWithPathsProperty, collisionTagConvertionConfigWithPathsLabel, true);
             LF();
+
+            Toggle(nameof(VRC3CVRConvertConfig.createVRCContactEquivalentPointers), T.CreateVRCContactEquivalentPointers, T.CreateVRCContactEquivalentPointersDescription);
 
             EditorGUI.indentLevel--;
 

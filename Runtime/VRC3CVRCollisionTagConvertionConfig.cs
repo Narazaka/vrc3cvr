@@ -1,31 +1,36 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using System.Linq;
 
 [Serializable]
 public class VRC3CVRCollisionTagConvertionConfig
 {
     public static VRC3CVRCollisionTagConvertionConfig DefaultConfig => new VRC3CVRCollisionTagConvertionConfig
     {
-        Head = Operation.ConvertAndKeep,
-        Hand = Operation.ConvertAndKeep,
-        HandL = Operation.ConvertAndKeep,
-        HandR = Operation.ConvertAndKeep,
-        Finger = Operation.ConvertAndKeep,
-        FingerL = Operation.ConvertAndKeep,
-        FingerR = Operation.ConvertAndKeep,
-        FingerIndex = Operation.ConvertAndKeep,
-        FingerIndexL = Operation.ConvertAndKeep,
-        FingerIndexR = Operation.ConvertAndKeep,
-        FingerMiddle = Operation.Keep,
-        FingerMiddleL = Operation.Keep,
-        FingerMiddleR = Operation.Keep,
-        FingerRing = Operation.Keep,
-        FingerRingL = Operation.Keep,
-        FingerRingR = Operation.Keep,
-        FingerLittle = Operation.Keep,
-        FingerLittleL = Operation.Keep,
-        FingerLittleR = Operation.Keep,
+        Head = Operation.Convert,
+        Torso = Operation.Convert,
+        Hand = Operation.Convert,
+        HandL = Operation.Convert,
+        HandR = Operation.Convert,
+        Foot = Operation.Convert,
+        FootL = Operation.Convert,
+        FootR = Operation.Convert,
+        Finger = Operation.Convert,
+        FingerL = Operation.Convert,
+        FingerR = Operation.Convert,
+        FingerIndex = Operation.Convert,
+        FingerIndexL = Operation.Convert,
+        FingerIndexR = Operation.Convert,
+        FingerMiddle = Operation.Convert,
+        FingerMiddleL = Operation.Convert,
+        FingerMiddleR = Operation.Convert,
+        FingerRing = Operation.Convert,
+        FingerRingL = Operation.Convert,
+        FingerRingR = Operation.Convert,
+        FingerLittle = Operation.Convert,
+        FingerLittleL = Operation.Convert,
+        FingerLittleR = Operation.Convert,
     };
     public enum Operation
     {
@@ -35,31 +40,37 @@ public class VRC3CVRCollisionTagConvertionConfig
         Keep,
         Delete,
     }
-    [Tooltip("mouth")] public Operation Head;
-    [Tooltip("index")] public Operation Hand;
-    [Tooltip("index")] public Operation HandL;
-    [Tooltip("index")] public Operation HandR;
-    [Tooltip("index")] public Operation Finger;
-    [Tooltip("index")] public Operation FingerL;
-    [Tooltip("index")] public Operation FingerR;
-    [Tooltip("index")] public Operation FingerIndex;
-    [Tooltip("index")] public Operation FingerIndexL;
-    [Tooltip("index")] public Operation FingerIndexR;
-    [Tooltip("index")] public Operation FingerMiddle;
-    [Tooltip("index")] public Operation FingerMiddleL;
-    [Tooltip("index")] public Operation FingerMiddleR;
-    [Tooltip("index")] public Operation FingerRing;
-    [Tooltip("index")] public Operation FingerRingL;
-    [Tooltip("index")] public Operation FingerRingR;
-    [Tooltip("index")] public Operation FingerLittle;
-    [Tooltip("index")] public Operation FingerLittleL;
-    [Tooltip("index")] public Operation FingerLittleR;
+    [Tooltip("Head")] public Operation Head;
+    [Tooltip("Torso")] public Operation Torso;
+    [Tooltip("Hand")] public Operation Hand;
+    [Tooltip("LeftHand")] public Operation HandL;
+    [Tooltip("RightHand")] public Operation HandR;
+    [Tooltip("Foot")] public Operation Foot;
+    [Tooltip("LeftFoot")] public Operation FootL;
+    [Tooltip("RightFoot")] public Operation FootR;
+    [Tooltip("Finger")] public Operation Finger;
+    [Tooltip("Left(Fingers)")] public Operation FingerL;
+    [Tooltip("Right(Fingers)")] public Operation FingerR;
+    [Tooltip("Index")] public Operation FingerIndex;
+    [Tooltip("LeftIndex")] public Operation FingerIndexL;
+    [Tooltip("RightIndex")] public Operation FingerIndexR;
+    [Tooltip("LeftMiddle + RightMiddle")] public Operation FingerMiddle;
+    [Tooltip("LeftMiddle")] public Operation FingerMiddleL;
+    [Tooltip("RightMiddle")] public Operation FingerMiddleR;
+    [Tooltip("LeftRing + RightRing")] public Operation FingerRing;
+    [Tooltip("LeftRing")] public Operation FingerRingL;
+    [Tooltip("RightRing")] public Operation FingerRingR;
+    [Tooltip("LeftLittle + RightLittle")] public Operation FingerLittle;
+    [Tooltip("LeftLittle")] public Operation FingerLittleL;
+    [Tooltip("RightLittle")] public Operation FingerLittleR;
     public Operation All
     {
         set
         {
             Head = value;
+            Torso = value;
             Hands = value;
+            Foots = value;
             AllFingers = value;
         }
     }
@@ -70,6 +81,15 @@ public class VRC3CVRCollisionTagConvertionConfig
             Hand = value;
             HandL = value;
             HandR = value;
+        }
+    }
+    public Operation Foots
+    {
+        set
+        {
+            Foot = value;
+            FootL = value;
+            FootR = value;
         }
     }
     public Operation AllFingers
@@ -135,9 +155,13 @@ public class VRC3CVRCollisionTagConvertionConfig
         foreach (var c in parentsToChild)
         {
             config.Head = Is(config.Head, c.Head);
+            config.Torso = Is(config.Torso, c.Torso);
             config.Hand = Is(config.Hand, c.Hand);
             config.HandL = Is(config.HandL, c.HandL);
             config.HandR = Is(config.HandR, c.HandR);
+            config.Foot = Is(config.Foot, c.Foot);
+            config.FootL = Is(config.FootL, c.FootL);
+            config.FootR = Is(config.FootR, c.FootR);
             config.Finger = Is(config.Finger, c.Finger);
             config.FingerL = Is(config.FingerL, c.FingerL);
             config.FingerR = Is(config.FingerR, c.FingerR);
@@ -157,45 +181,49 @@ public class VRC3CVRCollisionTagConvertionConfig
         return config;
     }
 
-    bool TryGetCollisionTagMapping(string collisionTag, out Operation op, out string cvrType)
+    bool TryGetCollisionTagMapping(string collisionTag, out Operation op, out string[] cvrTypes)
     {
         // cf. https://discord.com/channels/410126604237406209/797279576459968555/1127093496923308103
         // https://discord.com/channels/410126604237406209/588350685255565344/1327758763242815539
         switch (collisionTag)
         {
-            case "Head": op = Head; cvrType = "mouth"; return true;
-            case "Hand": op = Hand; cvrType = "index"; return true;
-            case "HandL": op = HandL; cvrType = "index"; return true;
-            case "HandR": op = HandR; cvrType = "index"; return true;
-            case "Finger": op = Finger; cvrType = "index"; return true;
-            case "FingerL": op = FingerL; cvrType = "index"; return true;
-            case "FingerR": op = FingerR; cvrType = "index"; return true;
-            case "FingerIndex": op = FingerIndex; cvrType = "index"; return true;
-            case "FingerIndexL": op = FingerIndexL; cvrType = "index"; return true;
-            case "FingerIndexR": op = FingerIndexR; cvrType = "index"; return true;
-            case "FingerMiddle": op = FingerMiddle; cvrType = "index"; return true;
-            case "FingerMiddleL": op = FingerMiddleL; cvrType = "index"; return true;
-            case "FingerMiddleR": op = FingerMiddleR; cvrType = "index"; return true;
-            case "FingerRing": op = FingerRing; cvrType = "index"; return true;
-            case "FingerRingL": op = FingerRingL; cvrType = "index"; return true;
-            case "FingerRingR": op = FingerRingR; cvrType = "index"; return true;
-            case "FingerLittle": op = FingerLittle; cvrType = "index"; return true;
-            case "FingerLittleL": op = FingerLittleL; cvrType = "index"; return true;
-            case "FingerLittleR": op = FingerLittleR; cvrType = "index"; return true;
-            default: op = Operation.Inherit; cvrType = null; return false;
+            case "Head": op = Head; cvrTypes = new string[] { "Head" }; return true;
+            case "Torso": op = Torso; cvrTypes = new string[] { "Torso" }; return true;
+            case "Hand": op = Hand; cvrTypes = new string[] { "Hand" }; return true;
+            case "HandL": op = HandL; cvrTypes = new string[] { "LeftHand" }; return true;
+            case "HandR": op = HandR; cvrTypes = new string[] { "RightHand" }; return true;
+            case "Foot": op = Foot; cvrTypes = new string[] { "Foot" }; return true;
+            case "FootL": op = FootL; cvrTypes = new string[] { "LeftFoot" }; return true;
+            case "FootR": op = FootR; cvrTypes = new string[] { "RightFoot" }; return true;
+            case "Finger": op = Finger; cvrTypes = new string[] { "Finger" }; return true;
+            case "FingerL": op = FingerL; cvrTypes = new string[] { "LeftIndex", "LeftMiddle", "LeftRing", "LeftLittle" }; return true;
+            case "FingerR": op = FingerR; cvrTypes = new string[] { "RightIndex", "RightMiddle", "RightRing", "RightLittle" }; return true;
+            case "FingerIndex": op = FingerIndex; cvrTypes = new string[] { "Index" }; return true;
+            case "FingerIndexL": op = FingerIndexL; cvrTypes = new string[] { "LeftIndex" }; return true;
+            case "FingerIndexR": op = FingerIndexR; cvrTypes = new string[] { "RightIndex" }; return true;
+            case "FingerMiddle": op = FingerMiddle; cvrTypes = new string[] { "LeftMiddle", "RightMiddle" }; return true;
+            case "FingerMiddleL": op = FingerMiddleL; cvrTypes = new string[] { "LeftMiddle" }; return true;
+            case "FingerMiddleR": op = FingerMiddleR; cvrTypes = new string[] { "RightMiddle" }; return true;
+            case "FingerRing": op = FingerRing; cvrTypes = new string[] { "LeftRing", "RightRing" }; return true;
+            case "FingerRingL": op = FingerRingL; cvrTypes = new string[] { "LeftRing" }; return true;
+            case "FingerRingR": op = FingerRingR; cvrTypes = new string[] { "RightRing" }; return true;
+            case "FingerLittle": op = FingerLittle; cvrTypes = new string[] { "LeftLittle", "RightLittle" }; return true;
+            case "FingerLittleL": op = FingerLittleL; cvrTypes = new string[] { "LeftLittle" }; return true;
+            case "FingerLittleR": op = FingerLittleR; cvrTypes = new string[] { "RightLittle" }; return true;
+            default: op = Operation.Inherit; cvrTypes = null; return false;
         }
     }
 
     public string[] CollisionTagToCVRType(string collisionTag)
     {
-        if (!TryGetCollisionTagMapping(collisionTag, out var op, out var cvrType))
+        if (!TryGetCollisionTagMapping(collisionTag, out var op, out var cvrTypes))
         {
             return new string[] { collisionTag };
         }
         switch (op)
         {
-            case Operation.ConvertAndKeep: return new string[] { cvrType, collisionTag };
-            case Operation.Convert: return new string[] { cvrType };
+            case Operation.ConvertAndKeep: return cvrTypes.Concat(new string[] { collisionTag }).Distinct().ToArray();
+            case Operation.Convert: return cvrTypes;
             case Operation.Keep: return new string[] { collisionTag };
             case Operation.Delete: return new string[0];
             default: return new string[] { collisionTag };
