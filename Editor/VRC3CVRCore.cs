@@ -628,7 +628,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         }
                         else
                         {
-                            var lastIndex = (int)intIdTable.Last().Key;
+                            var lastIndex = (int)intIdTable.Keys.Max();
                             var menuEntryNames = new List<string>();
                             for (var j = 0; j < lastIndex + 1; j++)
                             {
@@ -2152,15 +2152,16 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     void CreateEmptyChilloutAnimator()
     {
         var sourceAnimator = AssetDatabase.LoadAssetAtPath<AnimatorController>($"{AnimatorPath}/AvatarAnimator.controller");
+
+        if (sourceAnimator == null)
+        {
+            throw new Exception("Failed to load the created animator!");
+        }
+
         chilloutAnimatorController = new CopyAnimatorController(sourceAnimator).CopyController();
         chilloutAnimatorController.name = cvrAvatar.gameObject.name + "_ChilloutVR_Gestures";
 
         Debug.Log("Loading animator...");
-
-        if (chilloutAnimatorController == null)
-        {
-            throw new Exception("Failed to load the created animator!");
-        }
 
         var existingLayers = chilloutAnimatorController.layers;
 
@@ -2514,7 +2515,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             var collisionTagToCVRType = MakeCollisionTagToCVRType(sender.gameObject);
             var originalPath = ChilloutAvatarRelativePath(sender);
             var remappedPaths = new List<string>();
-            var collisionTags = sender.collisionTags.SelectMany(collisionTagToCVRType).Distinct().ToArray(); ;
+            var collisionTags = sender.collisionTags.SelectMany(collisionTagToCVRType).Distinct().ToArray();
             if (collisionTags.Length == 1)
             {
                 var contactGameObject = SuitableContactObjectWithCollider(sender.gameObject, sender);

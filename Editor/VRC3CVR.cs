@@ -50,7 +50,7 @@ public class VRC3CVR : EditorWindow
     void OnEnable()
     {
         serializedObject = new SerializedObject(this);
-        _vrc3cvr = new VRC3CVRCore();
+        if (_vrc3cvr == null) _vrc3cvr = new VRC3CVRCore();
         vrc3cvrProperty = serializedObject.FindProperty("_vrc3cvr");
         shouldCloneAvatarProperty = vrc3cvrProperty.FindPropertyRelative(nameof(VRC3CVRConvertConfig.shouldCloneAvatar));
     }
