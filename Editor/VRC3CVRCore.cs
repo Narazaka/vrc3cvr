@@ -165,6 +165,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             ConvertVrcParametersToChillout();
             SetNonZeroDefaultValueParameters();
             AdjustParameterNames();
+            MakeGestureWeightFeedLayers();
             InsertChilloutOverride();
 
             ConvertVrcComponents();
@@ -1415,21 +1416,24 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     {
                         thresholdLow = 0.01f;
 
-                        for (int w = 0; w < transition.conditions.Length; w++)
+                        if (gestureWeightConversionMode == GestureWeightConversionMode.FoldToGestureLeft)
                         {
-                            AnimatorCondition conditionW = transition.conditions[w];
-                            if (
-                                (condition.parameter == "GestureLeft" && conditionW.parameter == "GestureLeftWeight") ||
-                                (condition.parameter == "GestureRight" && conditionW.parameter == "GestureRightWeight")
-                            )
+                            for (int w = 0; w < transition.conditions.Length; w++)
                             {
-                                if (conditionW.mode == AnimatorConditionMode.Less)
+                                AnimatorCondition conditionW = transition.conditions[w];
+                                if (
+                                    (condition.parameter == "GestureLeft" && conditionW.parameter == "GestureLeftWeight") ||
+                                    (condition.parameter == "GestureRight" && conditionW.parameter == "GestureRightWeight")
+                                )
                                 {
-                                    thresholdHigh = conditionW.threshold;
-                                }
-                                else
-                                {
-                                    thresholdLow = conditionW.threshold;
+                                    if (conditionW.mode == AnimatorConditionMode.Less)
+                                    {
+                                        thresholdHigh = conditionW.threshold;
+                                    }
+                                    else
+                                    {
+                                        thresholdLow = conditionW.threshold;
+                                    }
                                 }
                             }
                         }
@@ -1438,21 +1442,24 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     {
                         thresholdHigh = 0.01f;
 
-                        for (int w = 0; w < transition.conditions.Length; w++)
+                        if (gestureWeightConversionMode == GestureWeightConversionMode.FoldToGestureLeft)
                         {
-                            AnimatorCondition conditionW = transition.conditions[w];
-                            if (
-                                (condition.parameter == "GestureLeft" && conditionW.parameter == "GestureLeftWeight") ||
-                                (condition.parameter == "GestureRight" && conditionW.parameter == "GestureRightWeight")
-                            )
+                            for (int w = 0; w < transition.conditions.Length; w++)
                             {
-                                if (conditionW.mode == AnimatorConditionMode.Less)
+                                AnimatorCondition conditionW = transition.conditions[w];
+                                if (
+                                    (condition.parameter == "GestureLeft" && conditionW.parameter == "GestureLeftWeight") ||
+                                    (condition.parameter == "GestureRight" && conditionW.parameter == "GestureRightWeight")
+                                )
                                 {
-                                    thresholdHigh = conditionW.threshold;
-                                }
-                                else
-                                {
-                                    thresholdLow = conditionW.threshold;
+                                    if (conditionW.mode == AnimatorConditionMode.Less)
+                                    {
+                                        thresholdHigh = conditionW.threshold;
+                                    }
+                                    else
+                                    {
+                                        thresholdLow = conditionW.threshold;
+                                    }
                                 }
                             }
                         }
@@ -1556,6 +1563,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             }
             else if (condition.parameter == "GestureLeftWeight" || condition.parameter == "GestureRightWeight")
             {
+                if (gestureWeightConversionMode == GestureWeightConversionMode.DerivedParameter)
+                {
+                    // The weight parameter survives and is fed from GestureLeft (see MakeGestureWeightFeedLayers)
+                    conditionsToAdd.Add(condition);
+                    continue;
+                }
+
                 // Look for fist gesture and create condition if needed
                 bool gestureFound = false;
 
@@ -1575,37 +1589,85 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     }
                 }
 
-                // Create condition if gesture weight is used by itself
+                // Create condition if gesture weight is used by itself.
+                // VRChat semantics: weight is 0 while Neutral, the analog squeeze while Fist,
+                // and fixed 1 for every other gesture.
                 if (!gestureFound)
                 {
-                    float thresholdLow = -0.1f;
-                    float thresholdHigh = 1.1f;
+                    string parameterName = condition.parameter == "GestureLeftWeight" ? "GestureLeft" : "GestureRight";
 
+                    // Float conditions only support Greater/Less
                     if (condition.mode == AnimatorConditionMode.Less)
                     {
-                        thresholdHigh = condition.threshold;
+                        if (condition.threshold > 1f)
+                        {
+                            // weight <= 1 always: the condition is always satisfied, drop it
+                        }
+                        else if (condition.threshold <= 0f)
+                        {
+                            // weight >= 0 always: keep the transition unreachable
+                            AnimatorCondition impossibleCondition = new AnimatorCondition();
+                            impossibleCondition.parameter = parameterName;
+                            impossibleCondition.mode = AnimatorConditionMode.Greater;
+                            impossibleCondition.threshold = 9999f;
+                            conditionsToAdd.Add(impossibleCondition);
+                        }
+                        else
+                        {
+                            // Neutral (weight 0) or Fist squeezing below the threshold; the two bands
+                            // are adjacent in ChilloutVR so one range covers both. Other gestures
+                            // (fixed 1) never satisfy weight < threshold <= 1.
+                            AnimatorCondition newConditionGreaterThan = new AnimatorCondition();
+                            newConditionGreaterThan.parameter = parameterName;
+                            newConditionGreaterThan.mode = AnimatorConditionMode.Greater;
+                            newConditionGreaterThan.threshold = -0.1f;
+
+                            conditionsToAdd.Add(newConditionGreaterThan);
+
+                            AnimatorCondition newConditionLessThan = new AnimatorCondition();
+                            newConditionLessThan.parameter = parameterName;
+                            newConditionLessThan.mode = AnimatorConditionMode.Less;
+                            newConditionLessThan.threshold = condition.threshold;
+
+                            conditionsToAdd.Add(newConditionLessThan);
+                        }
                     }
                     else
                     {
-                        thresholdLow = condition.threshold;
+                        if (condition.threshold < 0f)
+                        {
+                            // weight >= 0 always: the condition is always satisfied, drop it
+                        }
+                        else if (condition.threshold >= 1f)
+                        {
+                            // weight <= 1 always: keep the transition unreachable
+                            AnimatorCondition impossibleCondition = new AnimatorCondition();
+                            impossibleCondition.parameter = parameterName;
+                            impossibleCondition.mode = AnimatorConditionMode.Greater;
+                            impossibleCondition.threshold = 9999f;
+                            conditionsToAdd.Add(impossibleCondition);
+                        }
+                        else
+                        {
+                            // Fist squeezing above the threshold...
+                            AnimatorCondition newConditionLessThan = new AnimatorCondition();
+                            newConditionLessThan.parameter = parameterName;
+                            newConditionLessThan.mode = AnimatorConditionMode.Less;
+                            newConditionLessThan.threshold = 1.1f;
+
+                            conditionsToAdd.Add(newConditionLessThan);
+
+                            AnimatorCondition newConditionGreaterThan = new AnimatorCondition();
+                            newConditionGreaterThan.parameter = parameterName;
+                            newConditionGreaterThan.mode = AnimatorConditionMode.Greater;
+                            newConditionGreaterThan.threshold = Mathf.Max(condition.threshold, 0.01f);
+
+                            conditionsToAdd.Add(newConditionGreaterThan);
+
+                            // ...or any non-Neutral non-Fist gesture, whose weight is fixed 1
+                            AddGestureWeightRunDuplicates(transition, c, parameterName, transitionsToAdd);
+                        }
                     }
-
-                    string parameterName = condition.parameter == "GestureLeftWeight" ? "GestureLeft" : "GestureRight";
-
-                    // Create replace conditions for ChilloutVR
-                    AnimatorCondition newConditionLessThan = new AnimatorCondition();
-                    newConditionLessThan.parameter = parameterName;
-                    newConditionLessThan.mode = AnimatorConditionMode.Less;
-                    newConditionLessThan.threshold = thresholdHigh;
-
-                    conditionsToAdd.Add(newConditionLessThan);
-
-                    AnimatorCondition newConditionGreaterThan = new AnimatorCondition();
-                    newConditionGreaterThan.parameter = parameterName;
-                    newConditionGreaterThan.mode = AnimatorConditionMode.Greater;
-                    newConditionGreaterThan.threshold = thresholdLow;
-
-                    conditionsToAdd.Add(newConditionGreaterThan);
                 }
             }
             else
@@ -1652,6 +1714,133 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             {
                 newTransition.AddCondition(transition.conditions[c].mode, transition.conditions[c].threshold, transition.conditions[c].parameter);
             }
+        }
+
+        return newTransition;
+    }
+
+    // Fold mode: redrive weight-driven blend trees with GestureLeft/GestureRight. During Fist the
+    // gesture value is the squeeze amount itself. Other gestures read fixed 1 in VRChat, so widen
+    // Simple1D trees with boundary children at -1 (open hand) and 2 (gestures 2..6) holding the
+    // weight==1 motion; the tree clamps to them outside the original 0..1 range.
+    void FoldGestureWeightOnBlendTree(BlendTree blendTree)
+    {
+        var isWeightX = blendTree.blendParameter == "GestureLeftWeight" || blendTree.blendParameter == "GestureRightWeight";
+        if (isWeightX)
+        {
+            blendTree.blendParameter = blendTree.blendParameter == "GestureLeftWeight" ? "GestureLeft" : "GestureRight";
+        }
+        if (blendTree.blendParameterY == "GestureLeftWeight" || blendTree.blendParameterY == "GestureRightWeight")
+        {
+            blendTree.blendParameterY = blendTree.blendParameterY == "GestureLeftWeight" ? "GestureLeft" : "GestureRight";
+            Debug.LogWarning("2D blend tree \"" + blendTree.name + "\" is driven by a gesture weight on its Y axis; the fixed weight 1 of non-Fist gestures cannot be reproduced");
+        }
+
+        if (isWeightX)
+        {
+            var children = blendTree.children;
+            if (blendTree.blendType == BlendTreeType.Simple1D && children.Length > 0)
+            {
+                var topChild = children[0];
+                foreach (var child in children)
+                {
+                    if (child.threshold > topChild.threshold)
+                    {
+                        topChild = child;
+                    }
+                }
+                var newChildren = new ChildMotion[children.Length + 2];
+                newChildren[0] = new ChildMotion { motion = topChild.motion, threshold = -1f, timeScale = topChild.timeScale, cycleOffset = topChild.cycleOffset, mirror = topChild.mirror };
+                System.Array.Copy(children, 0, newChildren, 1, children.Length);
+                newChildren[newChildren.Length - 1] = new ChildMotion { motion = topChild.motion, threshold = 2f, timeScale = topChild.timeScale, cycleOffset = topChild.cycleOffset, mirror = topChild.mirror };
+
+                // Assign thresholds/range in this exact order: setting min/max clamps existing
+                // children into the range, and automatic thresholds redistribute on assignment
+                blendTree.useAutomaticThresholds = false;
+                blendTree.minThreshold = -1f;
+                blendTree.maxThreshold = 2f;
+                blendTree.children = newChildren;
+            }
+            else if (blendTree.blendType != BlendTreeType.Simple1D)
+            {
+                Debug.LogWarning("Blend tree \"" + blendTree.name + "\" of type " + blendTree.blendType + " is driven by a gesture weight; the fixed weight 1 of non-Fist gestures cannot be reproduced");
+            }
+        }
+
+        foreach (var child in blendTree.children)
+        {
+            if (child.motion is BlendTree childBlendTree)
+            {
+                FoldGestureWeightOnBlendTree(childBlendTree);
+            }
+        }
+    }
+
+    // Fold mode: a standalone weight condition is also satisfied by every non-Neutral
+    // non-Fist gesture (their weight is fixed 1 in VRChat). Those gestures sit at
+    // -1 (open hand) and 2..6 in ChilloutVR, so add one OR transition per range.
+    void AddGestureWeightRunDuplicates<AnimatorTranstitionType>(AnimatorTranstitionType transition, int conditionIndex, string gestureParameterName, List<AnimatorTranstitionType> transitionsToAdd) where AnimatorTranstitionType : AnimatorTransitionBase, new()
+    {
+        var runConditions = new AnimatorCondition[]
+        {
+            new AnimatorCondition { parameter = gestureParameterName, mode = AnimatorConditionMode.Less, threshold = -0.9f },
+            new AnimatorCondition { parameter = gestureParameterName, mode = AnimatorConditionMode.Greater, threshold = 1.9f },
+        };
+        foreach (var runCondition in runConditions)
+        {
+            AnimatorTranstitionType newTransition = DuplicateTransitionWithoutCondition(transition, conditionIndex);
+
+            List<AnimatorTranstitionType> transitionsToAdd2 = new List<AnimatorTranstitionType>();
+            List<AnimatorCondition> conditionsToAdd2 = new List<AnimatorCondition>();
+
+            ProcessTransition(newTransition, transitionsToAdd2, conditionsToAdd2);
+            conditionsToAdd2.Add(runCondition);
+            newTransition.conditions = conditionsToAdd2.ToArray();
+
+            transitionsToAdd.Add(newTransition);
+            // Nested duplicates are OR branches of the remaining conditions and must carry the range condition too
+            foreach (var nestedTransition in transitionsToAdd2)
+            {
+                var nestedConditions = nestedTransition.conditions;
+                ArrayUtility.Add(ref nestedConditions, runCondition);
+                nestedTransition.conditions = nestedConditions;
+            }
+            transitionsToAdd.AddRange(transitionsToAdd2);
+        }
+    }
+
+    AnimatorTranstitionType DuplicateTransitionWithoutCondition<AnimatorTranstitionType>(AnimatorTranstitionType transition, int conditionIndex) where AnimatorTranstitionType : AnimatorTransitionBase, new()
+    {
+        AnimatorTranstitionType newTransition = new AnimatorTranstitionType();
+        if (newTransition is AnimatorStateTransition)
+        {
+            AnimatorStateTransition newTransitionTyped = newTransition as AnimatorStateTransition;
+            AnimatorStateTransition transitionTyped = transition as AnimatorStateTransition;
+            newTransitionTyped.duration = transitionTyped.duration;
+            newTransitionTyped.canTransitionToSelf = transitionTyped.canTransitionToSelf;
+            newTransitionTyped.exitTime = transitionTyped.exitTime;
+            newTransitionTyped.hasExitTime = transitionTyped.hasExitTime;
+            newTransitionTyped.hasFixedDuration = transitionTyped.hasFixedDuration;
+            newTransitionTyped.interruptionSource = transitionTyped.interruptionSource;
+            newTransitionTyped.offset = transitionTyped.offset;
+            newTransitionTyped.orderedInterruption = transitionTyped.orderedInterruption;
+        }
+
+        newTransition.name = transition.name;
+        newTransition.destinationState = transition.destinationState;
+        newTransition.destinationStateMachine = transition.destinationStateMachine;
+        newTransition.hideFlags = transition.hideFlags;
+        newTransition.isExit = transition.isExit;
+        newTransition.solo = transition.solo;
+        newTransition.mute = transition.mute;
+
+        for (int c = 0; c < transition.conditions.Length; c++)
+        {
+            if (c == conditionIndex)
+            {
+                continue;
+            }
+            newTransition.AddCondition(transition.conditions[c].mode, transition.conditions[c].threshold, transition.conditions[c].parameter);
         }
 
         return newTransition;
@@ -1713,37 +1902,30 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
             AnimatorState state = stateMachine.states[s].state;
 
-            // assuming they only ever check weight for the Fist animation
-            if (state.timeParameter == "GestureLeftWeight")
+            if (gestureWeightConversionMode == GestureWeightConversionMode.FoldToGestureLeft)
             {
-                state.timeParameter = "GestureLeft";
+                // GestureLeft is only the weight while Fist; outside Fist a non-looping clip clamps
+                // to its end (= weight 1, accidentally correct for gestures 2..6) but open hand (-1)
+                // clamps to 0 and looping clips wrap, so motion time stays partially accurate.
+                if (state.timeParameter == "GestureLeftWeight")
+                {
+                    state.timeParameter = "GestureLeft";
+                }
+                else if (state.timeParameter == "GestureRightWeight")
+                {
+                    state.timeParameter = "GestureRight";
+                }
             }
-            else if (state.timeParameter == "GestureRightWeight")
-            {
-                state.timeParameter = "GestureRight";
-            }
+            // In DerivedParameter mode weight references are kept; the parameter is fed from
+            // GestureLeft (MakeGestureWeightFeedLayers) and renamed later by AdjustParameterNames
 
             if (state.motion is BlendTree)
             {
                 BlendTree blendTree = (BlendTree)state.motion;
 
-                // X
-                if (blendTree.blendParameter == "GestureLeftWeight")
+                if (gestureWeightConversionMode == GestureWeightConversionMode.FoldToGestureLeft)
                 {
-                    blendTree.blendParameter = "GestureLeft";
-                }
-                else if (blendTree.blendParameter == "GestureRightWeight")
-                {
-                    blendTree.blendParameter = "GestureRight";
-                }
-                // Y
-                if (blendTree.blendParameterY == "GestureLeftWeight")
-                {
-                    blendTree.blendParameterY = "GestureLeft";
-                }
-                else if (blendTree.blendParameterY == "GestureRightWeight")
-                {
-                    blendTree.blendParameterY = "GestureRight";
+                    FoldGestureWeightOnBlendTree(blendTree);
                 }
 
                 ChildMotion[] blendTreeMotions = blendTree.children;
@@ -3251,6 +3433,101 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             chilloutAnimatorController.AddLayer(layer);
         }
         chilloutAnimatorController.parameters = parameters;
+    }
+
+    void MakeGestureWeightFeedLayers()
+    {
+        if (gestureWeightConversionMode != GestureWeightConversionMode.DerivedParameter)
+        {
+            return;
+        }
+        MakeGestureWeightFeedLayer("GestureLeft", "GestureLeftWeight");
+        MakeGestureWeightFeedLayer("GestureRight", "GestureRightWeight");
+    }
+
+    // DerivedParameter mode: rebuild VRChat's weight semantics (Neutral: 0 / Fist: analog squeeze /
+    // other gestures: fixed 1) from the gesture value. A Simple1D blend tree over GestureLeft with
+    // clips that write the weight parameter gives the exact piecewise function: the 0..1 segment is
+    // the identity ramp, and the tree clamps to 1 outside it (open hand -1 and gestures 2..6).
+    // Consumers read the parameter one animator evaluation later (one frame of latency).
+    // Runs after AdjustParameterNames so parameter names are final.
+    void MakeGestureWeightFeedLayer(string gestureParameterName, string weightParameterName)
+    {
+        var parameters = chilloutAnimatorController.parameters;
+        var weightParameter = parameters.FirstOrDefault(p => p.name == weightParameterName) ??
+            parameters.FirstOrDefault(p => p.name == NonSyncParameterName(weightParameterName));
+        if (weightParameter == null)
+        {
+            // the avatar does not use this weight parameter
+            return;
+        }
+        if (!parameters.Any(p => p.name == gestureParameterName))
+        {
+            ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+            {
+                name = gestureParameterName,
+                type = AnimatorControllerParameterType.Float,
+                defaultFloat = 0f,
+            });
+            chilloutAnimatorController.parameters = parameters;
+        }
+
+        AnimationClip MakeWeightClip(float value)
+        {
+            var clip = new AnimationClip { name = "VRC3CVR_" + weightParameterName + "_" + value };
+            clip.SetCurve("", typeof(Animator), weightParameter.name, AnimationCurve.Constant(0f, 1f, value));
+            return clip;
+        }
+        var zeroClip = MakeWeightClip(0f);
+        var oneClip = MakeWeightClip(1f);
+
+        var blendTree = new BlendTree
+        {
+            name = "VRC3CVR_" + weightParameterName,
+            hideFlags = HideFlags.HideInHierarchy,
+            blendType = BlendTreeType.Simple1D,
+            blendParameter = gestureParameterName,
+            useAutomaticThresholds = false,
+            minThreshold = -1f,
+            maxThreshold = 2f,
+        };
+        blendTree.children = new ChildMotion[]
+        {
+            new ChildMotion { motion = oneClip, threshold = -1f, timeScale = 1f },
+            new ChildMotion { motion = zeroClip, threshold = 0f, timeScale = 1f },
+            new ChildMotion { motion = oneClip, threshold = 1f, timeScale = 1f },
+            new ChildMotion { motion = oneClip, threshold = 2f, timeScale = 1f },
+        };
+
+        var feedState = new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = "Feed",
+            writeDefaultValues = true,
+            motion = blendTree,
+        };
+        var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_" + weightParameterName);
+        var layer = new AnimatorControllerLayer
+        {
+            name = layerName,
+            defaultWeight = 1f,
+            blendingMode = AnimatorLayerBlendingMode.Override,
+            avatarMask = emptyMask,
+            stateMachine = new AnimatorStateMachine
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                name = layerName,
+                entryPosition = new Vector3(0, -100),
+                exitPosition = new Vector3(0, 200),
+                anyStatePosition = new Vector3(0, -300),
+                defaultState = feedState,
+                states = new ChildAnimatorState[]
+                {
+                    new ChildAnimatorState { state = feedState, position = new Vector3(0, 0) },
+                },
+            },
+        };
+        chilloutAnimatorController.AddLayer(layer);
     }
 
     void EnsureLocalOnlyContacts()

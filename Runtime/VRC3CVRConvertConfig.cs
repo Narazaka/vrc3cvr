@@ -5,6 +5,22 @@ using VRC.SDK3.Avatars.Components;
 [Serializable]
 public class VRC3CVRConvertConfig
 {
+    // VRChat's Gesture*Weight is 0 while Neutral, the analog squeeze while Fist,
+    // and fixed 1 for every other gesture. ChilloutVR has no weight parameter;
+    // its GestureLeft/GestureRight float itself is the squeeze amount during Fist.
+    public enum GestureWeightConversionMode
+    {
+        // Rewrite every weight reference onto GestureLeft/GestureRight, compiling the
+        // "fixed 1 outside Fist" rule into the consumers: extra OR transitions for weight
+        // conditions and boundary children for weight-driven 1D blend trees.
+        // Zero latency; motion time states keep the plain fold (partially accurate).
+        FoldToGestureLeft,
+        // Keep the weight parameters and feed them from GestureLeft via a generated
+        // blend tree layer that writes the parameter (AAP). Faithful for every consumer
+        // including motion time, at the cost of one frame of latency.
+        DerivedParameter,
+    }
+
     public VRCAvatarDescriptor vrcAvatarDescriptor;
     public string outputDirName = "VRC3CVR_Output";
     public bool shouldCloneAvatar = true;
@@ -18,6 +34,7 @@ public class VRC3CVRConvertConfig
     public bool preserveParameterSyncState = true;
     public bool convertVRCAnimatorLocomotionControl = true;
     public bool convertVRCAnimatorTrackingControl = true;
+    public GestureWeightConversionMode gestureWeightConversionMode = GestureWeightConversionMode.FoldToGestureLeft;
     public bool convertVRCContactSendersAndReceivers = true;
     public VRC3CVRCollisionTagConvertionConfig collisionTagConvertionConfig = VRC3CVRCollisionTagConvertionConfig.DefaultConfig;
     public VRC3CVRCollisionTagConvertionConfigWithPath[] collisionTagConvertionConfigWithPaths = new VRC3CVRCollisionTagConvertionConfigWithPath[] {};
@@ -47,6 +64,7 @@ public class VRC3CVRConvertConfig
         preserveParameterSyncState = other.preserveParameterSyncState;
         convertVRCAnimatorLocomotionControl = other.convertVRCAnimatorLocomotionControl;
         convertVRCAnimatorTrackingControl = other.convertVRCAnimatorTrackingControl;
+        gestureWeightConversionMode = other.gestureWeightConversionMode;
         convertVRCContactSendersAndReceivers = other.convertVRCContactSendersAndReceivers;
         collisionTagConvertionConfig = other.collisionTagConvertionConfig;
         collisionTagConvertionConfigWithPaths = other.collisionTagConvertionConfigWithPaths;
