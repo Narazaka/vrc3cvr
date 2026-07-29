@@ -26,11 +26,12 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
   - Boolean：トグル
   - Int：ドロップダウン（1つだけならトグル）
 - 各Animator Controller（Gesture、FXなど）をCVR用に変換  
-  - `GestureLeftWeight` / `GestureRightWeight` を `GestureLeft` / `GestureRight` に変換（Fistアニメーションを確認してください！）
+  - `GestureLeftWeight` / `GestureRightWeight` の参照を変換（選択可能な2方式: 遅延なしの`GestureLeft`/`GestureRight`への書き換え、または全用途を再現するweightパラメータ生成（1フレーム遅延））
   - VRCParameterDriverなども変換
 - VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換
   - VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。
   - プレイ中のContactのShape Typeの変更は非対応です。
+- VRC ConstraintsをUnity Constraintsに変換（アニメーションされたプロパティも変換）
 
 ### 非対応シェーダー
 
@@ -46,8 +47,7 @@ lilToon等は問題ないですが、マイナーなシェーダーは問題に�
 
 - VRC3CVR: [Releases](https://github.com/Narazaka/vrc3cvr/releases/latest)にアクセスし、「Assets」を展開して`.unitypackage`をダウンロードします。
 - CCK4: [ChilloutVR CCK](https://docs.abinteractive.net/cck/setup/)
-- Prefabulous for Platform Conversions（VRC Contraintsを普通のConstraintsに変換する）: [Prefabulous](https://docs.hai-vr.dev/docs/products/prefabulous#download) からリスティングを登録し、VCC/ALCOMから同名パッケージをインストールする。
-- Modular Avatar: https://modular-avatar.nadena.dev/ 上記Prefabulousを使う時は必須
+- Modular Avatar（任意）: https://modular-avatar.nadena.dev/
 - PhysBone→DynamicBone変換（任意）: https://github.com/FACS01-01/PhysBone-to-DynamicBone
 - DynamicBoneを買ってないけど変換したい場合（任意）: https://github.com/VRLabs/Dynamic-Bones-Stub
 
@@ -78,10 +78,9 @@ CVRのDynamicBoneは古いバージョンであるためか、Root直下のボ�
 2. （任意）[PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone)などを使用してPhysBonesをDynamicBonesに変換しておきます。
 3. ChilloutVR CCK4 Preview をVRChatアバタープロジェクトにインポートします。
 4. VRC3CVRの`.unitypackage`をインポートします。
-5. アバター直下に`PA-Conversions VRC Constraints -> Unity Constraints`コンポーネントを付けます。
-6. アバター直下にVRC3CVRコンポーネントを付けて、Manual bakeします。（`Tools -> Modular Avatar -> Manual bake avatar`）
+5. アバター直下にVRC3CVRコンポーネントを付けて、Manual bakeします。（`Tools -> Modular Avatar -> Manual bake avatar`）
 
-#### Modular Avatarが無い場合（VRC Constraintsは変換されません！）
+#### Modular Avatarが無い場合
 
 1. Unity 2022.3.22f1 / VRChat SDK 3.x（VCCを使用）でVRChatアバターをセットアップします。
 2. （任意）[PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone)などを使用してPhysBonesをDynamicBonesに変換しておきます。
@@ -149,5 +148,5 @@ VRChat Avatar SDK3の最新版にアップデートしてください。
 
 #### トリガーウェイトの扱い
 
-VRCでは `GestureLeftWeight` と `GestureRightWeight` を使用しますが、CVRではこれらは存在しません。  
-代わりに `GestureLeft` の値でトリガー強度を確認します（0.5が50%相当）。
+VRCの `GestureLeftWeight` / `GestureRightWeight` は、Neutralで0、Fistで握り込み量、他のジェスチャーで1固定です。CVRにこれらは存在せず、Fist中は `GestureLeft` の値自体が握り込み量になります（0.5が50%相当）。  
+vrc3cvrの変換は2方式から選べます: 遅延なしの `GestureLeft` への書き換え、または全用途でVRChatの挙動を再現するweightパラメータ生成（1フレーム遅延）。

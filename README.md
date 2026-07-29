@@ -28,11 +28,12 @@ Most things work as-is, except for PhysBone-specific features and features that 
   - toggle for all boolean params
   - dropdown for all int params (toggle if only 1 int found)
 - converts each animator controller (gestures, FX, etc.) to support ChilloutVR's gesture system
-  - references to `GestureLeftWeight`/`GestureRightWeight` are converted to `GestureLeft`/`GestureRight` (check your Fist animation!)
+  - references to `GestureLeftWeight`/`GestureRightWeight` are converted (two selectable modes: rewrite onto `GestureLeft`/`GestureRight` with no latency, or generate a weight parameter that reproduces every usage with one frame of latency)
   - converts VRCParameterDriver etc.
 - Convert VRC Contact Senders and Receivers to CVR Pointer and CVR Advanced Avatar Trigger
   - Unlike VRC Contact, CVR Pointer and Trigger only change values when the contact collides. This difference may cause compatibility issues.
   - Changing Shape Type in game is not supported.
+- converts VRC Constraints to Unity Constraints (including animated constraint properties)
 
 ### Unsupported Shaders
 
@@ -48,8 +49,7 @@ lilToon and other major shaders should work fine, but less common shaders may ha
 
 - VRC3CVR: Go to [Releases](https://github.com/Narazaka/vrc3cvr/releases/latest) and expand "Assets" and download the `.unitypackage`.
 - CCK4: [ChilloutVR CCK](https://docs.abinteractive.net/cck/setup/)
-- Prefabulous for Platform Conversions (converts VRC Constraints to regular Constraints): Register the listing from [Prefabulous](https://docs.hai-vr.dev/docs/products/prefabulous#download), then install the package of the same name via VCC/ALCOM.
-- Modular Avatar: https://modular-avatar.nadena.dev/ Required when using the Prefabulous above.
+- Modular Avatar (optional): https://modular-avatar.nadena.dev/
 - PhysBone to DynamicBone converter (optional): https://github.com/FACS01-01/PhysBone-to-DynamicBone
 - DynamicBone stub if you haven't purchased it (optional): https://github.com/VRLabs/Dynamic-Bones-Stub
 
@@ -80,10 +80,9 @@ To solve this, I created a tool called [ExcludeChildBones](https://github.com/Na
 2. (optional) convert your PhysBones to DynamicBones by [PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone) etc.
 3. Import ChilloutVR CCK4 Preview to the VRChat avatar project.
 4. Import the vrc3cvr `.unitypackage`
-5. Add a `PA-Conversions VRC Constraints -> Unity Constraints` component to the avatar root.
-6. Add a VRC3CVR component to the avatar root, then Manual bake. (`Tools -> Modular Avatar -> Manual bake avatar`)
+5. Add a VRC3CVR component to the avatar root, then Manual bake. (`Tools -> Modular Avatar -> Manual bake avatar`)
 
-#### Without Modular Avatar (VRC Constraints will not be converted!)
+#### Without Modular Avatar
 
 1. Setup your VRChat avatars with Unity 2022.3.22f1 / VRChat SDK 3.x (use VCC)
 2. (optional) convert your PhysBones to DynamicBones by [PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone) etc.
@@ -153,4 +152,4 @@ Mapping of VRC gestures to CVR:
 
 #### Trigger weight
 
-VRC has two parameters `GestureLeftWeight` and `GestureRightWeight`. They do not exist in CVR and instead check `GestureLeft` amount where 0.5 is 50% of the trigger for the fist animation.
+VRC has two parameters `GestureLeftWeight` and `GestureRightWeight` (0 while Neutral, the analog squeeze while Fist, fixed 1 for other gestures). They do not exist in CVR; instead the `GestureLeft` value itself is the squeeze amount during Fist (0.5 is 50% of the trigger). vrc3cvr offers two conversion modes: rewriting weight references onto `GestureLeft` (no latency), or generating a weight parameter that reproduces the VRChat behavior for every usage (one frame of latency).

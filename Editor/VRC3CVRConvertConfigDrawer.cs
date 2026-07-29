@@ -48,6 +48,8 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring UseHierarchicalMenuName => new istring("Use hierarchical menu name", "階層メニュー名を使用");
         public static istring UseHierarchicalDropdownMenuName => new istring("Use hierarchical dropdown menu name", "ドロップダウンメニュー名も階層化");
         public static istring AddActionMenuModAnnotations => new istring("Add Action Menu Mod annotations", "Action Menu Mod用の種別タグを付与");
+        public static istring ConvertVrcConstraints => new istring("Convert VRC Constraints", "VRC Constraintsを変換");
+        public static istring ConvertVrcConstraintsDescription => new istring("Converts VRC Constraints to Unity Constraints, including animated constraint properties. VRC-specific features (FreezeToWorld, SolveInLocalSpace, execution order control) have no Unity equivalent and are dropped with warnings.", "VRC ConstraintsをUnity Constraintsに変換します（アニメーションされたプロパティも変換）。VRC固有機能（FreezeToWorld、SolveInLocalSpace、実行順序制御）はUnityに相当機能がないため警告つきで破棄されます。");
         public static istring ConvertVrcHeadChops => new istring("Convert VRC Head Chops", "VRC Head Chopを変換");
         public static istring ConvertVrcHeadChopsDescription => new istring("Only commonly used scales of 0 or 1 are converted.", "よく使われるスケールが0か1のもののみ変換します。");
         public static istring ConvertVrcSpatialAudioSources => new istring("Convert VRC Spatial Audio Sources", "VRC Spatial Audio Sourceを変換");
@@ -316,6 +318,8 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             Toggle(nameof(VRC3CVRConvertConfig.addActionMenuModAnnotations), T.AddActionMenuModAnnotations);
 
             EditorGUI.indentLevel--;
+
+            Toggle(nameof(VRC3CVRConvertConfig.convertVrcConstraints), T.ConvertVrcConstraints, T.ConvertVrcConstraintsDescription);
 
             Toggle(nameof(VRC3CVRConvertConfig.convertVrcHeadChops), T.ConvertVrcHeadChops, T.ConvertVrcHeadChopsDescription);
 

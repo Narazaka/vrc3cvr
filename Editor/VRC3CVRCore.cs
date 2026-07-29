@@ -14,6 +14,8 @@ using VRC.SDK3.Avatars.Components;
 using ABI.CCK.Components;
 using ABI.CCK.Scripts;
 using VRC.SDK3.Dynamics.Contact.Components;
+using VRC.SDK3.Dynamics.Constraint.Components;
+using VRCConstraintBase = VRC.Dynamics.VRCConstraintBase;
 
 [Serializable]
 public class VRC3CVRCore : VRC3CVRConvertConfig
@@ -28,6 +30,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     AnimatorController chilloutAnimatorController;
     AnimatorController[] vrcAnimatorControllers;
     Dictionary<string, string[]> contactComponentPathRemap;
+    Dictionary<(string path, Type vrcType), (string path, int sourceIndexOffset)> constraintComponentPathRemap;
     HashSet<string> constantContactProxiedParameters;
     HashSet<string> contactReceiverParameters;
     HashSet<string> localTriggerPaths;
@@ -160,6 +163,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             if (createVRCContactEquivalentPointers)
             {
                 CreateVRCContactEquivalentPointers();
+            }
+            if (convertVrcConstraints)
+            {
+                ConvertVrcConstraintsToUnityConstraints();
+                RemapAnimationOfConstraintComponent();
             }
             SetAnimator();
             ConvertVrcParametersToChillout();
@@ -3708,6 +3716,399 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var streamedTypes = GameStateParameterStreams.Select(s => s.streamType).ToHashSet();
         stream.entries.RemoveAll(entry => entry != null && streamedTypes.Contains(entry.type));
         stream.entries.AddRange(streamedEntries);
+    }
+
+    // VRC Constraints -> Unity Constraints. The field and animation property mappings are the
+    // reverse of the VRC SDK's own Unity->VRC converter tables in AvatarDynamicsSetup.cs
+    // (ConstraintAnimatorTypeRebindDictionary / ConstraintAnimatorPropertyRebindDictionary /
+    // ConstraintAnimatorArrayPostfixPropertyRebindDictionary).
+    static readonly Dictionary<Type, Type> vrcToUnityConstraintTypeMap = new Dictionary<Type, Type>
+    {
+        { typeof(VRCPositionConstraint), typeof(PositionConstraint) },
+        { typeof(VRCRotationConstraint), typeof(RotationConstraint) },
+        { typeof(VRCScaleConstraint), typeof(ScaleConstraint) },
+        { typeof(VRCParentConstraint), typeof(ParentConstraint) },
+        { typeof(VRCAimConstraint), typeof(AimConstraint) },
+        { typeof(VRCLookAtConstraint), typeof(LookAtConstraint) },
+    };
+
+    void ConvertVrcConstraintsToUnityConstraints()
+    {
+        constraintComponentPathRemap = new Dictionary<(string, Type), (string, int)>();
+        var avatarRoot = chilloutAvatarGameObject.transform;
+        foreach (var vrcConstraint in chilloutAvatarGameObject.GetComponentsInChildren<VRCConstraintBase>(true))
+        {
+            if (!vrcToUnityConstraintTypeMap.TryGetValue(vrcConstraint.GetType(), out var unityType))
+            {
+                Debug.LogWarning($"Unknown VRC constraint type \"{vrcConstraint.GetType().Name}\" on \"{vrcConstraint.name}\" is not converted");
+                continue;
+            }
+
+            // Unity constraints can only move their own transform, so the converted constraint
+            // lives on the target's GameObject when a Target Transform is set
+            var host = vrcConstraint.GetEffectiveTargetTransform();
+            if (host == null)
+            {
+                host = vrcConstraint.transform;
+            }
+            if (host != avatarRoot && !host.IsChildOf(avatarRoot))
+            {
+                Debug.LogWarning($"VRC constraint on \"{vrcConstraint.name}\" targets \"{host.name}\" outside the avatar; attaching the converted constraint to itself instead");
+                host = vrcConstraint.transform;
+            }
+
+            if (vrcConstraint.FreezeToWorld)
+            {
+                Debug.LogWarning($"VRC constraint on \"{vrcConstraint.name}\" uses FreezeToWorld, which has no Unity equivalent and is dropped");
+            }
+            if (vrcConstraint.SolveInLocalSpace)
+            {
+                Debug.LogWarning($"VRC constraint on \"{vrcConstraint.name}\" uses SolveInLocalSpace, which has no Unity equivalent; the converted constraint solves in world space");
+            }
+
+            // Unity constraints are [DisallowMultipleComponent]; merge sources into an existing one
+            var existingConstraint = host.GetComponent(unityType);
+            var merged = existingConstraint != null;
+            var unityConstraint = (IConstraint)(existingConstraint != null ? existingConstraint : host.gameObject.AddComponent(unityType));
+            if (merged)
+            {
+                Debug.LogWarning($"Multiple constraints of type {unityType.Name} on \"{host.name}\"; sources are merged and the first constraint's settings win");
+            }
+
+            var sourceIndexOffset = AddConstraintSources(vrcConstraint, unityConstraint);
+
+            if (!merged)
+            {
+                switch (vrcConstraint)
+                {
+                    case VRCPositionConstraint c:
+                    {
+                        var unity = (PositionConstraint)unityConstraint;
+                        unity.translationAtRest = c.PositionAtRest;
+                        unity.translationOffset = c.PositionOffset;
+                        unity.translationAxis = ConstraintAxesFrom(c.AffectsPositionX, c.AffectsPositionY, c.AffectsPositionZ);
+                        break;
+                    }
+                    case VRCRotationConstraint c:
+                    {
+                        var unity = (RotationConstraint)unityConstraint;
+                        unity.rotationAtRest = c.RotationAtRest;
+                        unity.rotationOffset = c.RotationOffset;
+                        unity.rotationAxis = ConstraintAxesFrom(c.AffectsRotationX, c.AffectsRotationY, c.AffectsRotationZ);
+                        break;
+                    }
+                    case VRCScaleConstraint c:
+                    {
+                        var unity = (ScaleConstraint)unityConstraint;
+                        unity.scaleAtRest = c.ScaleAtRest;
+                        unity.scaleOffset = c.ScaleOffset;
+                        unity.scalingAxis = ConstraintAxesFrom(c.AffectsScaleX, c.AffectsScaleY, c.AffectsScaleZ);
+                        break;
+                    }
+                    case VRCParentConstraint c:
+                    {
+                        var unity = (ParentConstraint)unityConstraint;
+                        unity.translationAtRest = c.PositionAtRest;
+                        unity.rotationAtRest = c.RotationAtRest;
+                        unity.translationAxis = ConstraintAxesFrom(c.AffectsPositionX, c.AffectsPositionY, c.AffectsPositionZ);
+                        unity.rotationAxis = ConstraintAxesFrom(c.AffectsRotationX, c.AffectsRotationY, c.AffectsRotationZ);
+                        break;
+                    }
+                    case VRCAimConstraint c:
+                    {
+                        var unity = (AimConstraint)unityConstraint;
+                        unity.aimVector = c.AimAxis;
+                        unity.upVector = c.UpAxis;
+                        unity.worldUpVector = c.WorldUpVector;
+                        unity.worldUpObject = c.WorldUpTransform;
+                        // the enum values are identical (SceneUp/ObjectUp/ObjectRotationUp/Vector/None)
+                        unity.worldUpType = (AimConstraint.WorldUpType)(int)c.WorldUp;
+                        unity.rotationAtRest = c.RotationAtRest;
+                        unity.rotationOffset = c.RotationOffset;
+                        unity.rotationAxis = ConstraintAxesFrom(c.AffectsRotationX, c.AffectsRotationY, c.AffectsRotationZ);
+                        break;
+                    }
+                    case VRCLookAtConstraint c:
+                    {
+                        var unity = (LookAtConstraint)unityConstraint;
+                        unity.roll = c.Roll;
+                        unity.useUpObject = c.UseUpTransform;
+                        unity.worldUpObject = c.WorldUpTransform;
+                        unity.rotationAtRest = c.RotationAtRest;
+                        unity.rotationOffset = c.RotationOffset;
+                        break;
+                    }
+                }
+
+                ((Behaviour)unityConstraint).enabled = vrcConstraint.enabled;
+                unityConstraint.weight = vrcConstraint.GlobalWeight;
+                unityConstraint.locked = vrcConstraint.Locked;
+                // activate last so Unity does not recompute the rest state from the current pose
+                unityConstraint.constraintActive = vrcConstraint.IsActive;
+            }
+
+            var oldPath = ChilloutAvatarRelativePath(vrcConstraint);
+            var newPath = ChilloutAvatarRelativePath(host.gameObject);
+            var remapKey = (oldPath, vrcConstraint.GetType());
+            if (!constraintComponentPathRemap.ContainsKey(remapKey))
+            {
+                // first component wins: Unity resolves animation bindings to the first
+                // component of a type, so keep the first converted constraint's mapping
+                constraintComponentPathRemap[remapKey] = (newPath, sourceIndexOffset);
+            }
+            UnityEngine.Object.DestroyImmediate(vrcConstraint);
+        }
+    }
+
+    static Axis ConstraintAxesFrom(bool x, bool y, bool z)
+    {
+        return (x ? Axis.X : Axis.None) | (y ? Axis.Y : Axis.None) | (z ? Axis.Z : Axis.None);
+    }
+
+    // Returns the index at which this constraint's sources begin in the (possibly merged)
+    // Unity constraint, so animated per-source properties can be re-indexed
+    int AddConstraintSources(VRCConstraintBase vrcConstraint, IConstraint unityConstraint)
+    {
+        // Sources with a null transform are kept: they preserve the indices of animated
+        // per-source properties and their weight still participates in weight normalization
+        var sources = new List<ConstraintSource>();
+        unityConstraint.GetSources(sources);
+        var baseIndex = sources.Count;
+        var vrcSources = new List<VRC.Dynamics.VRCConstraintSource>();
+        foreach (var source in vrcConstraint.Sources)
+        {
+            vrcSources.Add(source);
+            sources.Add(new ConstraintSource
+            {
+                sourceTransform = source.SourceTransform,
+                weight = source.Weight,
+            });
+        }
+        unityConstraint.SetSources(sources);
+        if (unityConstraint is ParentConstraint parentConstraint)
+        {
+            for (var i = 0; i < vrcSources.Count; i++)
+            {
+                parentConstraint.SetTranslationOffset(baseIndex + i, vrcSources[i].ParentPositionOffset);
+                parentConstraint.SetRotationOffset(baseIndex + i, vrcSources[i].ParentRotationOffset);
+            }
+        }
+        return baseIndex;
+    }
+
+    // Reverse of the VRC SDK's ConstraintAnimatorPropertyRebindDictionary
+    static readonly Dictionary<string, string> vrcToUnityConstraintPropertyMap = new Dictionary<string, string>
+    {
+        { "m_Enabled", "m_Enabled" },
+        { "IsActive", "m_Active" },
+        { "GlobalWeight", "m_Weight" },
+        { "Locked", "m_IsLocked" },
+        { "PositionAtRest.x", "m_TranslationAtRest.x" },
+        { "PositionAtRest.y", "m_TranslationAtRest.y" },
+        { "PositionAtRest.z", "m_TranslationAtRest.z" },
+        { "PositionOffset.x", "m_TranslationOffset.x" },
+        { "PositionOffset.y", "m_TranslationOffset.y" },
+        { "PositionOffset.z", "m_TranslationOffset.z" },
+        { "AffectsPositionX", "m_AffectTranslationX" },
+        { "AffectsPositionY", "m_AffectTranslationY" },
+        { "AffectsPositionZ", "m_AffectTranslationZ" },
+        { "RotationAtRest.x", "m_RotationAtRest.x" },
+        { "RotationAtRest.y", "m_RotationAtRest.y" },
+        { "RotationAtRest.z", "m_RotationAtRest.z" },
+        { "RotationOffset.x", "m_RotationOffset.x" },
+        { "RotationOffset.y", "m_RotationOffset.y" },
+        { "RotationOffset.z", "m_RotationOffset.z" },
+        { "AffectsRotationX", "m_AffectRotationX" },
+        { "AffectsRotationY", "m_AffectRotationY" },
+        { "AffectsRotationZ", "m_AffectRotationZ" },
+        { "ScaleAtRest.x", "m_ScaleAtRest.x" },
+        { "ScaleAtRest.y", "m_ScaleAtRest.y" },
+        { "ScaleAtRest.z", "m_ScaleAtRest.z" },
+        { "ScaleOffset.x", "m_ScaleOffset.x" },
+        { "ScaleOffset.y", "m_ScaleOffset.y" },
+        { "ScaleOffset.z", "m_ScaleOffset.z" },
+        { "AffectsScaleX", "m_AffectScalingX" },
+        { "AffectsScaleY", "m_AffectScalingY" },
+        { "AffectsScaleZ", "m_AffectScalingZ" },
+        { "AimAxis.x", "m_AimVector.x" },
+        { "AimAxis.y", "m_AimVector.y" },
+        { "AimAxis.z", "m_AimVector.z" },
+        { "UpAxis.x", "m_UpVector.x" },
+        { "UpAxis.y", "m_UpVector.y" },
+        { "UpAxis.z", "m_UpVector.z" },
+        { "WorldUpVector.x", "m_WorldUpVector.x" },
+        { "WorldUpVector.y", "m_WorldUpVector.y" },
+        { "WorldUpVector.z", "m_WorldUpVector.z" },
+        { "WorldUpTransform", "m_WorldUpObject" },
+        { "WorldUp", "m_UpType" },
+        { "UseUpTransform", "m_UseUpObject" },
+        { "Roll", "m_Roll" },
+    };
+
+    // Reverse of the VRC SDK's ConstraintAnimatorArrayPostfixPropertyRebindDictionary
+    static readonly System.Text.RegularExpressions.Regex constraintSourcePropertyRe = new System.Text.RegularExpressions.Regex(@"^Sources\.source(\d+)\.(.+)$");
+    static readonly Dictionary<string, string> vrcToUnityConstraintSourcePropertyMap = new Dictionary<string, string>
+    {
+        { "SourceTransform", "m_Sources.Array.data[{0}].sourceTransform" },
+        { "Weight", "m_Sources.Array.data[{0}].weight" },
+        { "ParentPositionOffset.x", "m_TranslationOffsets.Array.data[{0}].x" },
+        { "ParentPositionOffset.y", "m_TranslationOffsets.Array.data[{0}].y" },
+        { "ParentPositionOffset.z", "m_TranslationOffsets.Array.data[{0}].z" },
+        { "ParentRotationOffset.x", "m_RotationOffsets.Array.data[{0}].x" },
+        { "ParentRotationOffset.y", "m_RotationOffsets.Array.data[{0}].y" },
+        { "ParentRotationOffset.z", "m_RotationOffsets.Array.data[{0}].z" },
+    };
+
+    bool TryConvertConstraintBinding(EditorCurveBinding binding, out EditorCurveBinding converted)
+    {
+        converted = default;
+        if (!vrcToUnityConstraintTypeMap.TryGetValue(binding.type, out var unityType))
+        {
+            return false;
+        }
+        var path = binding.path;
+        var sourceIndexOffset = 0;
+        if (constraintComponentPathRemap.TryGetValue((binding.path, binding.type), out var remapped))
+        {
+            path = remapped.path;
+            sourceIndexOffset = remapped.sourceIndexOffset;
+        }
+        string propertyName;
+        if (vrcToUnityConstraintPropertyMap.TryGetValue(binding.propertyName, out var mappedProperty))
+        {
+            propertyName = mappedProperty;
+        }
+        else
+        {
+            var match = constraintSourcePropertyRe.Match(binding.propertyName);
+            if (!match.Success || !vrcToUnityConstraintSourcePropertyMap.TryGetValue(match.Groups[2].Value, out var mappedSourceProperty))
+            {
+                // VRC-only properties (FreezeToWorld, SolveInLocalSpace, RebakeOffsetsWhenUnfrozen, TargetTransform)
+                return false;
+            }
+            // when constraints were merged, this constraint's sources sit after the ones merged before it
+            var sourceIndex = int.Parse(match.Groups[1].Value) + sourceIndexOffset;
+            propertyName = string.Format(mappedSourceProperty, sourceIndex);
+        }
+        converted = new EditorCurveBinding
+        {
+            path = path,
+            type = unityType,
+            propertyName = propertyName,
+        };
+        return true;
+    }
+
+    void RemapAnimationOfConstraintComponent()
+    {
+        foreach (var layer in chilloutAnimatorController.layers)
+        {
+            if (layer.stateMachine != null)
+            {
+                RemapAnimationOfConstraintComponent(layer.stateMachine);
+            }
+        }
+    }
+
+    void RemapAnimationOfConstraintComponent(AnimatorStateMachine stateMachine)
+    {
+        foreach (var childState in stateMachine.states)
+        {
+            if (childState.state.motion is AnimationClip)
+            {
+                var newClip = RemapAnimationClipOfConstraintComponent(childState.state.motion as AnimationClip);
+                if (newClip != null)
+                {
+                    childState.state.motion = newClip;
+                }
+            }
+            if (childState.state.motion is BlendTree)
+            {
+                RemapAnimationOfConstraintComponent(childState.state.motion as BlendTree);
+            }
+        }
+        foreach (var childStateMachine in stateMachine.stateMachines)
+        {
+            RemapAnimationOfConstraintComponent(childStateMachine.stateMachine);
+        }
+    }
+
+    void RemapAnimationOfConstraintComponent(BlendTree blendTree)
+    {
+        var children = blendTree.children;
+        for (var i = 0; i < children.Length; ++i)
+        {
+            var childMotion = children[i];
+            if (childMotion.motion is AnimationClip)
+            {
+                var newClip = RemapAnimationClipOfConstraintComponent(childMotion.motion as AnimationClip);
+                if (newClip != null)
+                {
+                    childMotion.motion = newClip;
+                    children[i] = childMotion;
+                }
+            }
+            else if (childMotion.motion is BlendTree)
+            {
+                RemapAnimationOfConstraintComponent(childMotion.motion as BlendTree);
+            }
+        }
+        blendTree.children = children;
+    }
+
+    AnimationClip RemapAnimationClipOfConstraintComponent(AnimationClip clip)
+    {
+        var floatBindings = AnimationUtility.GetCurveBindings(clip);
+        var objectBindings = AnimationUtility.GetObjectReferenceCurveBindings(clip);
+        if (!floatBindings.Concat(objectBindings).Any(b => vrcToUnityConstraintTypeMap.ContainsKey(b.type)))
+        {
+            return null;
+        }
+        var newClip = new AnimationClip
+        {
+            name = clip.name + "_Remapped",
+            legacy = clip.legacy,
+            frameRate = clip.frameRate,
+            wrapMode = clip.wrapMode,
+        };
+        EditorUtility.CopySerialized(clip, newClip);
+        newClip.name = clip.name + "_Remapped";
+        foreach (var binding in floatBindings)
+        {
+            if (!vrcToUnityConstraintTypeMap.ContainsKey(binding.type))
+            {
+                continue;
+            }
+            var curve = AnimationUtility.GetEditorCurve(newClip, binding);
+            AnimationUtility.SetEditorCurve(newClip, binding, null);
+            if (TryConvertConstraintBinding(binding, out var converted))
+            {
+                AnimationUtility.SetEditorCurve(newClip, converted, curve);
+            }
+            else
+            {
+                Debug.LogWarning($"Animated constraint property \"{binding.propertyName}\" at \"{binding.path}\" in clip \"{clip.name}\" has no Unity equivalent and is dropped");
+            }
+        }
+        foreach (var binding in objectBindings)
+        {
+            if (!vrcToUnityConstraintTypeMap.ContainsKey(binding.type))
+            {
+                continue;
+            }
+            var objectCurve = AnimationUtility.GetObjectReferenceCurve(newClip, binding);
+            AnimationUtility.SetObjectReferenceCurve(newClip, binding, null);
+            if (TryConvertConstraintBinding(binding, out var converted))
+            {
+                AnimationUtility.SetObjectReferenceCurve(newClip, converted, objectCurve);
+            }
+            else
+            {
+                Debug.LogWarning($"Animated constraint property \"{binding.propertyName}\" at \"{binding.path}\" in clip \"{clip.name}\" has no Unity equivalent and is dropped");
+            }
+        }
+        Debug.Log($"Remapped constraints: {clip}");
+        return newClip;
     }
 
     void EnsureLocalOnlyContacts()

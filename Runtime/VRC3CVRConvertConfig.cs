@@ -49,6 +49,7 @@ public class VRC3CVRConvertConfig
     public bool useHierarchicalMenuName = true;
     public bool useHierarchicalDropdownMenuName = true;
     public bool addActionMenuModAnnotations = true;
+    public bool convertVrcConstraints = true;
     public bool convertVrcHeadChops = true;
     public bool convertVrcSpatialAudioSources = true;
     public bool shouldDeleteVRCAvatarDescriptorAndPipelineManager = true;
@@ -80,6 +81,7 @@ public class VRC3CVRConvertConfig
         useHierarchicalMenuName = other.useHierarchicalMenuName;
         useHierarchicalDropdownMenuName = other.useHierarchicalDropdownMenuName;
         addActionMenuModAnnotations = other.addActionMenuModAnnotations;
+        convertVrcConstraints = other.convertVrcConstraints;
         convertVrcHeadChops = other.convertVrcHeadChops;
         convertVrcSpatialAudioSources = other.convertVrcSpatialAudioSources;
         shouldDeleteVRCAvatarDescriptorAndPipelineManager = other.shouldDeleteVRCAvatarDescriptorAndPipelineManager;
