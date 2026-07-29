@@ -2084,6 +2084,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         var controllerLayers = newAnimatorController.layers;
         var layersModified = false;
+        // Unity forces the first layer's runtime weight to 1 regardless of its serialized value
+        // (many controllers serialize it as 0). After merging this layer is no longer first,
+        // so bake the forced weight in to keep it enabled.
+        if (controllerLayers.Length > 0 && controllerLayers[0].defaultWeight != 1f)
+        {
+            controllerLayers[0].defaultWeight = 1f;
+            layersModified = true;
+        }
         for (int i = 0; i < controllerLayers.Length; i++)
         {
             AnimatorControllerLayer layer = controllerLayers[i];
