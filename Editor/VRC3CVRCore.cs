@@ -1950,8 +1950,33 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 }
             }
 
+            // VRC behaviours have been converted to CVR equivalents (or have none);
+            // remove them so they do not remain as dead components in the CVR controller
+            var stateBehaviours = state.behaviours;
+            var keptBehaviours = stateBehaviours.Where(b => !IsVrcStateMachineBehaviour(b)).ToArray();
+            if (keptBehaviours.Length != stateBehaviours.Length)
+            {
+                state.behaviours = keptBehaviours;
+                foreach (var behaviour in stateBehaviours.Where(IsVrcStateMachineBehaviour))
+                {
+                    UnityEngine.Object.DestroyImmediate(behaviour);
+                }
+            }
+
             AnimatorStateTransition[] newTransitions = ProcessTransitions(state.transitions);
             state.transitions = newTransitions;
+        }
+
+        // VRC behaviours attached to the state machine itself are never converted; remove them too
+        var machineBehaviours = stateMachine.behaviours;
+        var keptMachineBehaviours = machineBehaviours.Where(b => !IsVrcStateMachineBehaviour(b)).ToArray();
+        if (keptMachineBehaviours.Length != machineBehaviours.Length)
+        {
+            stateMachine.behaviours = keptMachineBehaviours;
+            foreach (var behaviour in machineBehaviours.Where(IsVrcStateMachineBehaviour))
+            {
+                UnityEngine.Object.DestroyImmediate(behaviour);
+            }
         }
 
         stateMachine.anyStateTransitions = ProcessTransitions(stateMachine.anyStateTransitions);
@@ -1966,6 +1991,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             ProcessStateMachine(childStateMachine.stateMachine, ref parameters);
         }
+    }
+
+    static bool IsVrcStateMachineBehaviour(StateMachineBehaviour behaviour)
+    {
+        if (behaviour == null) return false;
+        var ns = behaviour.GetType().Namespace;
+        return ns != null && (ns == "VRC" || ns.StartsWith("VRC."));
     }
 
     static AnimatorDriverTask.ParameterType AnimatorDriverParameterType(AnimatorControllerParameter[] parameters, string name)
