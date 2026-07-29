@@ -35,6 +35,11 @@ public class VRC3CVRConvertConfig
     public bool convertVRCAnimatorLocomotionControl = true;
     public bool convertVRCAnimatorTrackingControl = true;
     public GestureWeightConversionMode gestureWeightConversionMode = GestureWeightConversionMode.FoldToGestureLeft;
+    // Feed MuteSelf/VRMode/Upright from the game via CVRParameterStream. The stream only runs on
+    // the wearer's client, so these parameters are declared synced (no # prefix) and CVR's normal
+    // parameter sync carries the values to remotes. Sync cost per CVRAvatar.GetParameterSyncUsage:
+    // non-bool 32 bits each, bools packed 8 per 8 bits.
+    public bool feedGameStateParameters = true;
     public bool convertVRCContactSendersAndReceivers = true;
     public VRC3CVRCollisionTagConvertionConfig collisionTagConvertionConfig = VRC3CVRCollisionTagConvertionConfig.DefaultConfig;
     public VRC3CVRCollisionTagConvertionConfigWithPath[] collisionTagConvertionConfigWithPaths = new VRC3CVRCollisionTagConvertionConfigWithPath[] {};
@@ -65,6 +70,7 @@ public class VRC3CVRConvertConfig
         convertVRCAnimatorLocomotionControl = other.convertVRCAnimatorLocomotionControl;
         convertVRCAnimatorTrackingControl = other.convertVRCAnimatorTrackingControl;
         gestureWeightConversionMode = other.gestureWeightConversionMode;
+        feedGameStateParameters = other.feedGameStateParameters;
         convertVRCContactSendersAndReceivers = other.convertVRCContactSendersAndReceivers;
         collisionTagConvertionConfig = other.collisionTagConvertionConfig;
         collisionTagConvertionConfigWithPaths = other.collisionTagConvertionConfigWithPaths;

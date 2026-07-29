@@ -31,6 +31,9 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring GestureWeightModeFold => new istring("Rewrite to GestureLeft (no latency)", "GestureLeftへ書き換え (遅延なし)");
         public static istring GestureWeightModeDerived => new istring("Generate a weight parameter (covers every usage, 1 frame latency)", "weightパラメータを生成 (全対応・1フレーム遅延)");
         public static istring GestureWeightConversionModeDescription => new istring("Both modes reproduce VRChat's weight behavior (0 while Neutral, the squeeze amount while Fist, fixed 1 for other gestures). \"Rewrite\" reacts without latency, but cannot reproduce some rare usages (motion time, 2D blend trees). \"Generate\" reproduces every usage, but reactions lag one frame (about 16 ms). The default is fine for most avatars.", "どちらもVRChatのweight挙動（Neutralで0、Fistで握り込み量、他ジェスチャーで1固定）を再現します。「書き換え」は遅延なく反応しますが、一部の稀な使われ方（motion time・2Dブレンドツリー）を再現できません。「生成」はすべての使われ方を再現しますが、反応が1フレーム（約16ms）遅れます。通常は既定の「書き換え」で問題ありません。");
+        public static istring GameStateParameters => new istring("Game State Parameters", "ゲーム状態パラメータ");
+        public static istring FeedGameStateParameters => new istring("Feed MuteSelf / VRMode / Upright", "MuteSelf / VRMode / Upright を供給");
+        public static istring FeedGameStateParametersDescription => new istring("Feeds these VRChat built-ins from the game via CVR Parameter Stream on the wearer's client, and keeps them synced so remote viewers see the values too (sync cost: VRMode/Upright 32 bits each, MuteSelf joins the 8-bit bool packing; only when the avatar uses them).", "これらのVRChat組み込みパラメータをCVR Parameter Streamで装着者クライアントから供給し、同期対象にすることでリモートにも値を届けます（同期コスト: VRMode/Upright 各32bit、MuteSelfはBoolの8bitパックに相乗り。アバターが使用している場合のみ）。");
         public static istring VRCContacts => new istring("VRC Contacts", "VRC Contact");
         public static istring ConvertVRCContactSendersAndReceivers => new istring("Convert VRC Contact Senders and Receivers to CVR Pointer and CVR Advanced Avatar Trigger", "VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換");
         public static istring ConvertVRCContactSendersAndReceiversDescription => new istring("Unlike VRC Contact, CVR Pointer and Trigger only change values when the contact collides. This difference may cause compatibility issues.", "VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。");
@@ -262,6 +265,14 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             EditorGUI.indentLevel++;
 
             EnumPopup(nameof(VRC3CVRConvertConfig.gestureWeightConversionMode), T.GestureWeightConversionMode, new string[] { T.GestureWeightModeFold, T.GestureWeightModeDerived }, T.GestureWeightConversionModeDescription);
+
+            EditorGUI.indentLevel--;
+
+            HeaderLabel(T.GameStateParameters);
+
+            EditorGUI.indentLevel++;
+
+            Toggle(nameof(VRC3CVRConvertConfig.feedGameStateParameters), T.FeedGameStateParameters, T.FeedGameStateParametersDescription);
 
             EditorGUI.indentLevel--;
 

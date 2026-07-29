@@ -166,6 +166,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             SetNonZeroDefaultValueParameters();
             AdjustParameterNames();
             MakeGestureWeightFeedLayers();
+            MakeVelocityMagnitudeFeedLayer();
+            MakeGameStateParameterStreams();
             InsertChilloutOverride();
 
             ConvertVrcComponents();
@@ -873,6 +875,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             preserveParameters.UnionWith(muscleNames);
         }
         if (adjustContactParameterSync) preserveParameters.UnionWith(contactReceiverParameters);
+        // Stream-fed parameters only run on the wearer's client; keeping them synced (no # prefix)
+        // lets CVR's normal parameter sync carry the values to remotes (see MakeGameStateParameterStreams)
+        if (feedGameStateParameters) preserveParameters.UnionWith(GameStateParameterStreams.Select(s => s.parameterName));
         if (!addActionMenuModAnnotations)
         {
             impulseParameters = new HashSet<string>();
@@ -3528,6 +3533,181 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             },
         };
         chilloutAnimatorController.AddLayer(layer);
+    }
+
+    // VRChat supplies VelocityMagnitude; ChilloutVR does not, so recompute it from the
+    // VelocityX/Y/Z core parameters, which the client feeds on every avatar copy (locals via the
+    // movement system, remotes via PuppetMaster from the replicated movement data). The result
+    // stays local (each client computes its own copy), so this costs no sync bits.
+    // Runs after AdjustParameterNames so parameter names are final.
+    void MakeVelocityMagnitudeFeedLayer()
+    {
+        var parameters = chilloutAnimatorController.parameters;
+        var magnitudeParameter = parameters.FirstOrDefault(p => p.name == "VelocityMagnitude") ??
+            parameters.FirstOrDefault(p => p.name == NonSyncParameterName("VelocityMagnitude"));
+        if (magnitudeParameter == null)
+        {
+            // the avatar does not use VelocityMagnitude
+            return;
+        }
+
+        foreach (var inputName in new[] { "VelocityX", "VelocityY", "VelocityZ" })
+        {
+            if (!parameters.Any(p => p.name == inputName))
+            {
+                ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+                {
+                    name = inputName,
+                    type = AnimatorControllerParameterType.Float,
+                    defaultFloat = 0f,
+                });
+            }
+        }
+        var scratchParameter = new AnimatorControllerParameter
+        {
+            name = NonSyncParameterName("VelocityMagnitudeCalc"),
+            type = AnimatorControllerParameterType.Float,
+            defaultFloat = 0f,
+        };
+        ArrayUtility.Add(ref parameters, scratchParameter);
+        chilloutAnimatorController.parameters = parameters;
+
+        AnimatorDriverTask Task(AnimatorDriverTask.Operator op, string targetName, string aName, string bName, float bValue = 0f)
+        {
+            return new AnimatorDriverTask
+            {
+                op = op,
+                targetName = targetName,
+                targetType = AnimatorDriverTask.ParameterType.Float,
+                aType = AnimatorDriverTask.SourceType.Parameter,
+                aParamType = AnimatorDriverTask.ParameterType.Float,
+                aName = aName,
+                bType = bName == null ? AnimatorDriverTask.SourceType.Static : AnimatorDriverTask.SourceType.Parameter,
+                bParamType = AnimatorDriverTask.ParameterType.Float,
+                bName = bName ?? "",
+                bValue = bValue,
+            };
+        }
+
+        var scratch = scratchParameter.name;
+        var target = magnitudeParameter.name;
+        // A short clip gives the state a length so the self transition re-enters it (and reruns
+        // the driver) every tick; the animated property is undeclared and does nothing
+        var tickClip = new AnimationClip { name = "VRC3CVR_VelocityMagnitudeTick" };
+        tickClip.SetCurve("", typeof(Animator), NonSyncParameterName("VelocityMagnitudeTick"), AnimationCurve.Constant(0f, 1f / 60f, 0f));
+        var recomputeState = new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = "Recompute",
+            writeDefaultValues = false,
+            motion = tickClip,
+            behaviours = new StateMachineBehaviour[]
+            {
+                new AnimatorDriver
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    // remote copies run this too; their VelocityX/Y/Z come from the replicated movement
+                    localOnly = false,
+                    EnterTasks = new List<AnimatorDriverTask>
+                    {
+                        Task(AnimatorDriverTask.Operator.Multiplication, scratch, "VelocityX", "VelocityX"),
+                        Task(AnimatorDriverTask.Operator.Multiplication, target, "VelocityY", "VelocityY"),
+                        Task(AnimatorDriverTask.Operator.Addition, scratch, scratch, target),
+                        Task(AnimatorDriverTask.Operator.Multiplication, target, "VelocityZ", "VelocityZ"),
+                        Task(AnimatorDriverTask.Operator.Addition, scratch, scratch, target),
+                        Task(AnimatorDriverTask.Operator.Power, target, scratch, null, 0.5f),
+                    },
+                },
+            },
+        };
+        recomputeState.transitions = new AnimatorStateTransition[]
+        {
+            new AnimatorStateTransition
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                hasExitTime = true,
+                exitTime = 1f,
+                hasFixedDuration = true,
+                duration = 0f,
+                offset = 0f,
+                destinationState = recomputeState,
+            },
+        };
+        var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_VelocityMagnitude");
+        var layer = new AnimatorControllerLayer
+        {
+            name = layerName,
+            defaultWeight = 1f,
+            blendingMode = AnimatorLayerBlendingMode.Override,
+            avatarMask = emptyMask,
+            stateMachine = new AnimatorStateMachine
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                name = layerName,
+                entryPosition = new Vector3(0, -100),
+                exitPosition = new Vector3(0, 200),
+                anyStatePosition = new Vector3(0, -300),
+                defaultState = recomputeState,
+                states = new ChildAnimatorState[]
+                {
+                    new ChildAnimatorState { state = recomputeState, position = new Vector3(0, 0) },
+                },
+            },
+        };
+        chilloutAnimatorController.AddLayer(layer);
+    }
+
+    // VRChat built-ins that ChilloutVR does not supply to the animator. The client's parameter
+    // stream provides equivalent sources; each stream type's semantics were verified against the
+    // decompiled client (DeviceMode: isUsingVr ? 1 : 0, matching VRMode).
+    static readonly (string parameterName, CVRParameterStreamEntry.Type streamType)[] GameStateParameterStreams =
+    {
+        ("MuteSelf", CVRParameterStreamEntry.Type.LocalPlayerMuted),
+        ("VRMode", CVRParameterStreamEntry.Type.DeviceMode),
+        ("Upright", CVRParameterStreamEntry.Type.AvatarUpright),
+    };
+
+    // Feed MuteSelf/VRMode/Upright on the wearer's client via CVRParameterStream; the parameters
+    // are kept synced (AdjustParameterNames) so remotes receive the values through CVR's normal
+    // parameter sync. Runs after AdjustParameterNames so parameter names are final.
+    void MakeGameStateParameterStreams()
+    {
+        if (!feedGameStateParameters)
+        {
+            return;
+        }
+        var parameters = chilloutAnimatorController.parameters;
+        var streamedEntries = new List<CVRParameterStreamEntry>();
+        foreach (var (parameterName, streamType) in GameStateParameterStreams)
+        {
+            if (!parameters.Any(p => p.name == parameterName))
+            {
+                // the avatar does not use this parameter
+                continue;
+            }
+            streamedEntries.Add(new CVRParameterStreamEntry
+            {
+                type = streamType,
+                targetType = CVRParameterStreamEntry.TargetType.AvatarAnimator,
+                applicationType = CVRParameterStreamEntry.ApplicationType.Override,
+                parameterName = parameterName,
+            });
+        }
+        if (streamedEntries.Count == 0)
+        {
+            return;
+        }
+
+        var stream = chilloutAvatarGameObject.GetComponent<CVRParameterStream>();
+        if (stream == null)
+        {
+            stream = chilloutAvatarGameObject.AddComponent<CVRParameterStream>();
+        }
+        stream.referenceType = CVRParameterStream.ReferenceType.Avatar;
+        // Replace our own entry types so reconversion stays idempotent, but keep any other entries
+        var streamedTypes = GameStateParameterStreams.Select(s => s.streamType).ToHashSet();
+        stream.entries.RemoveAll(entry => entry != null && streamedTypes.Contains(entry.type));
+        stream.entries.AddRange(streamedEntries);
     }
 
     void EnsureLocalOnlyContacts()

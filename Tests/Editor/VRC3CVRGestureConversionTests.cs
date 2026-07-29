@@ -300,5 +300,154 @@ public class VRC3CVRGestureConversionTests
         Assert.AreEqual(0, controller.layers.Length);
         Object.DestroyImmediate(controller);
     }
+
+    // ---- VelocityMagnitude recomputation layer ----
+
+    [Test]
+    public void VelocityMagnitudeLayer_RecomputesFromVelocityComponents()
+    {
+        var core = MakeCore(VRC3CVRConvertConfig.GestureWeightConversionMode.FoldToGestureLeft);
+        var controller = new AnimatorController { name = "velocityTest" };
+        controller.AddParameter("#VelocityMagnitude", AnimatorControllerParameterType.Float);
+        typeof(VRC3CVRCore).GetField("chilloutAnimatorController", Flags).SetValue(core, controller);
+
+        typeof(VRC3CVRCore).GetMethod("MakeVelocityMagnitudeFeedLayer", Flags).Invoke(core, null);
+
+        // VelocityX/Y/Z are declared on demand, plus the scratch parameter
+        var parameterNames = controller.parameters.Select(p => p.name).ToArray();
+        CollectionAssert.Contains(parameterNames, "VelocityX");
+        CollectionAssert.Contains(parameterNames, "VelocityY");
+        CollectionAssert.Contains(parameterNames, "VelocityZ");
+        CollectionAssert.Contains(parameterNames, "#VelocityMagnitudeCalc");
+
+        Assert.AreEqual(1, controller.layers.Length);
+        var layer = controller.layers[0];
+        Assert.AreEqual(1f, layer.defaultWeight);
+        var state = layer.stateMachine.states.Single().state;
+        // self transition keeps the driver ticking
+        Assert.AreEqual(state, state.transitions.Single().destinationState);
+        var driver = (ABI.CCK.Components.AnimatorDriver)state.behaviours.Single();
+        Assert.IsFalse(driver.localOnly);
+        Assert.AreEqual(
+            new[]
+            {
+                "Multiplication #VelocityMagnitudeCalc = VelocityX, VelocityX",
+                "Multiplication #VelocityMagnitude = VelocityY, VelocityY",
+                "Addition #VelocityMagnitudeCalc = #VelocityMagnitudeCalc, #VelocityMagnitude",
+                "Multiplication #VelocityMagnitude = VelocityZ, VelocityZ",
+                "Addition #VelocityMagnitudeCalc = #VelocityMagnitudeCalc, #VelocityMagnitude",
+                "Power #VelocityMagnitude = #VelocityMagnitudeCalc, 0.5",
+            },
+            driver.EnterTasks.Select(t =>
+                t.op + " " + t.targetName + " = " + t.aName + ", " +
+                (t.bType == ABI.CCK.Components.AnimatorDriverTask.SourceType.Static ? t.bValue.ToString("0.#") : t.bName)
+            ).ToArray());
+
+        Object.DestroyImmediate(controller);
+    }
+
+    [Test]
+    public void VelocityMagnitudeLayer_SkippedWhenParameterUnused()
+    {
+        var core = MakeCore(VRC3CVRConvertConfig.GestureWeightConversionMode.FoldToGestureLeft);
+        var controller = new AnimatorController { name = "velocityTest" };
+        typeof(VRC3CVRCore).GetField("chilloutAnimatorController", Flags).SetValue(core, controller);
+
+        typeof(VRC3CVRCore).GetMethod("MakeVelocityMagnitudeFeedLayer", Flags).Invoke(core, null);
+
+        Assert.AreEqual(0, controller.layers.Length);
+        Object.DestroyImmediate(controller);
+    }
+
+    // ---- Game state parameter streams (MuteSelf / VRMode / Upright) ----
+
+    static VRC3CVRCore MakeStreamCore(AnimatorController controller, GameObject avatar, bool feed = true)
+    {
+        var core = new VRC3CVRCore { feedGameStateParameters = feed };
+        typeof(VRC3CVRCore).GetField("chilloutAnimatorController", Flags).SetValue(core, controller);
+        typeof(VRC3CVRCore).GetField("chilloutAvatarGameObject", Flags).SetValue(core, avatar);
+        return core;
+    }
+
+    [Test]
+    public void GameStateStream_GeneratesEntriesForDeclaredParameters()
+    {
+        var controller = new AnimatorController { name = "streamTest" };
+        controller.AddParameter("MuteSelf", AnimatorControllerParameterType.Bool);
+        controller.AddParameter("Upright", AnimatorControllerParameterType.Float);
+        var avatar = new GameObject("StreamTestAvatar");
+        var core = MakeStreamCore(controller, avatar);
+
+        typeof(VRC3CVRCore).GetMethod("MakeGameStateParameterStreams", Flags).Invoke(core, null);
+
+        var stream = avatar.GetComponent<ABI.CCK.Components.CVRParameterStream>();
+        Assert.IsNotNull(stream);
+        Assert.AreEqual(ABI.CCK.Components.CVRParameterStream.ReferenceType.Avatar, stream.referenceType);
+        // VRMode is not declared, so only the two declared parameters get entries
+        Assert.AreEqual(
+            new[]
+            {
+                "LocalPlayerMuted -> MuteSelf (AvatarAnimator, Override)",
+                "AvatarUpright -> Upright (AvatarAnimator, Override)",
+            },
+            stream.entries.Select(e => e.type + " -> " + e.parameterName + " (" + e.targetType + ", " + e.applicationType + ")").ToArray());
+
+        Object.DestroyImmediate(avatar);
+        Object.DestroyImmediate(controller);
+    }
+
+    [Test]
+    public void GameStateStream_IsIdempotentAndKeepsForeignEntries()
+    {
+        var controller = new AnimatorController { name = "streamTest" };
+        controller.AddParameter("VRMode", AnimatorControllerParameterType.Int);
+        var avatar = new GameObject("StreamTestAvatar");
+        var core = MakeStreamCore(controller, avatar);
+
+        // a pre-existing entry of an unrelated type must survive
+        var existingStream = avatar.AddComponent<ABI.CCK.Components.CVRParameterStream>();
+        existingStream.entries.Add(new ABI.CCK.Components.CVRParameterStreamEntry
+        {
+            type = ABI.CCK.Components.CVRParameterStreamEntry.Type.TimeSeconds,
+            parameterName = "UserParam",
+        });
+
+        var method = typeof(VRC3CVRCore).GetMethod("MakeGameStateParameterStreams", Flags);
+        method.Invoke(core, null);
+        method.Invoke(core, null);
+
+        var stream = avatar.GetComponent<ABI.CCK.Components.CVRParameterStream>();
+        Assert.AreEqual(
+            new[] { "TimeSeconds -> UserParam", "DeviceMode -> VRMode" },
+            stream.entries.Select(e => e.type + " -> " + e.parameterName).ToArray());
+
+        Object.DestroyImmediate(avatar);
+        Object.DestroyImmediate(controller);
+    }
+
+    [Test]
+    public void GameStateStream_SkippedWhenDisabledOrUnused()
+    {
+        var controller = new AnimatorController { name = "streamTest" };
+        controller.AddParameter("MuteSelf", AnimatorControllerParameterType.Bool);
+        var avatarDisabled = new GameObject("StreamTestAvatarDisabled");
+        var coreDisabled = MakeStreamCore(controller, avatarDisabled, feed: false);
+        var method = typeof(VRC3CVRCore).GetMethod("MakeGameStateParameterStreams", Flags);
+
+        method.Invoke(coreDisabled, null);
+        Assert.IsNull(avatarDisabled.GetComponent<ABI.CCK.Components.CVRParameterStream>());
+
+        var controllerUnused = new AnimatorController { name = "streamTestUnused" };
+        var avatarUnused = new GameObject("StreamTestAvatarUnused");
+        var coreUnused = MakeStreamCore(controllerUnused, avatarUnused);
+
+        method.Invoke(coreUnused, null);
+        Assert.IsNull(avatarUnused.GetComponent<ABI.CCK.Components.CVRParameterStream>());
+
+        Object.DestroyImmediate(avatarDisabled);
+        Object.DestroyImmediate(avatarUnused);
+        Object.DestroyImmediate(controller);
+        Object.DestroyImmediate(controllerUnused);
+    }
 }
 #endif
