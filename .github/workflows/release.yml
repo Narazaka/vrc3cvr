@@ -22,7 +22,7 @@ jobs:
           clean: false
 
       - name: Create .meta list
-        run: find Assets/PeanutTools/VRC3CVR -name \*.meta >> metaList
+        run: find Assets/PeanutTools/VRC3CVR -name \*.meta -not -path "*/Tests/*" -not -name "Tests.meta" >> metaList
 
       - name: Create UnityPackage
         uses: pCYSl5EDgo/create-unitypackage@cfcd3cf0391a5ef1306342794866a9897c32af0b
