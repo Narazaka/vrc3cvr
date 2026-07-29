@@ -1358,6 +1358,51 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
             if (condition.parameter == "GestureLeft" || condition.parameter == "GestureRight")
             {
+                if (condition.mode == AnimatorConditionMode.Greater || condition.mode == AnimatorConditionMode.Less)
+                {
+                    // VRChat and ChilloutVR use different gesture numbering so a numeric
+                    // comparison cannot be carried over. Expand into one transition per
+                    // matching VRChat gesture and convert each as an Equals condition.
+                    List<float> matchingGestures = new List<float>();
+                    for (int g = 0; g <= 7; g++)
+                    {
+                        if (condition.mode == AnimatorConditionMode.Greater ? g > condition.threshold : g < condition.threshold)
+                        {
+                            matchingGestures.Add(g);
+                        }
+                    }
+
+                    if (matchingGestures.Count == 0)
+                    {
+                        // No gesture can satisfy this condition; keep the transition unreachable
+                        Debug.LogWarning("Gesture condition \"" + condition.parameter + " " + condition.mode + " " + condition.threshold + "\" can never be satisfied");
+                        AnimatorCondition impossibleCondition = new AnimatorCondition();
+                        impossibleCondition.parameter = condition.parameter;
+                        impossibleCondition.mode = AnimatorConditionMode.Greater;
+                        impossibleCondition.threshold = 9999f;
+                        conditionsToAdd.Add(impossibleCondition);
+                        continue;
+                    }
+
+                    for (int m = 1; m < matchingGestures.Count; m++)
+                    {
+                        AnimatorTranstitionType newTransition = DuplicateTransitionWithGestureEquals(transition, c, matchingGestures[m]);
+
+                        List<AnimatorTranstitionType> transitionsToAdd2 = new List<AnimatorTranstitionType>();
+                        List<AnimatorCondition> conditionsToAdd2 = new List<AnimatorCondition>();
+
+                        ProcessTransition(newTransition, transitionsToAdd2, conditionsToAdd2, isDuplicate);
+                        newTransition.conditions = conditionsToAdd2.ToArray();
+
+                        transitionsToAdd.Add(newTransition);
+                        transitionsToAdd.AddRange(transitionsToAdd2);
+                    }
+
+                    // The first match is converted in place by the Equals branch below
+                    condition.mode = AnimatorConditionMode.Equals;
+                    condition.threshold = matchingGestures[0];
+                }
+
                 float chilloutGestureNumber = GetChilloutGestureNumberForVrchatGestureNumber(condition.threshold);
 
                 if (condition.mode == AnimatorConditionMode.Equals)
@@ -1499,7 +1544,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         newTransition.conditions = conditionsToAdd2.ToArray();
 
                         transitionsToAdd.Add(newTransition);
+                        // The duplicate may itself have been expanded into further transitions
+                        transitionsToAdd.AddRange(transitionsToAdd2);
                     }
+                }
+                else
+                {
+                    // If/IfNot cannot appear on an int parameter but keep the condition just in case
+                    conditionsToAdd.Add(condition);
                 }
             }
             else if (condition.parameter == "GestureLeftWeight" || condition.parameter == "GestureRightWeight")
@@ -1563,6 +1615,46 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
 
         transition.conditions = conditionsToAdd.ToArray();
+    }
+
+    AnimatorTranstitionType DuplicateTransitionWithGestureEquals<AnimatorTranstitionType>(AnimatorTranstitionType transition, int conditionIndex, float gestureThreshold) where AnimatorTranstitionType : AnimatorTransitionBase, new()
+    {
+        AnimatorTranstitionType newTransition = new AnimatorTranstitionType();
+        if (newTransition is AnimatorStateTransition)
+        {
+            AnimatorStateTransition newTransitionTyped = newTransition as AnimatorStateTransition;
+            AnimatorStateTransition transitionTyped = transition as AnimatorStateTransition;
+            newTransitionTyped.duration = transitionTyped.duration;
+            newTransitionTyped.canTransitionToSelf = transitionTyped.canTransitionToSelf;
+            newTransitionTyped.exitTime = transitionTyped.exitTime;
+            newTransitionTyped.hasExitTime = transitionTyped.hasExitTime;
+            newTransitionTyped.hasFixedDuration = transitionTyped.hasFixedDuration;
+            newTransitionTyped.interruptionSource = transitionTyped.interruptionSource;
+            newTransitionTyped.offset = transitionTyped.offset;
+            newTransitionTyped.orderedInterruption = transitionTyped.orderedInterruption;
+        }
+
+        newTransition.name = transition.name;
+        newTransition.destinationState = transition.destinationState;
+        newTransition.destinationStateMachine = transition.destinationStateMachine;
+        newTransition.hideFlags = transition.hideFlags;
+        newTransition.isExit = transition.isExit;
+        newTransition.solo = transition.solo;
+        newTransition.mute = transition.mute;
+
+        for (int c = 0; c < transition.conditions.Length; c++)
+        {
+            if (c == conditionIndex)
+            {
+                newTransition.AddCondition(AnimatorConditionMode.Equals, gestureThreshold, transition.conditions[c].parameter);
+            }
+            else
+            {
+                newTransition.AddCondition(transition.conditions[c].mode, transition.conditions[c].threshold, transition.conditions[c].parameter);
+            }
+        }
+
+        return newTransition;
     }
 
 #if CVR_CCK_4_OR_NEWER
