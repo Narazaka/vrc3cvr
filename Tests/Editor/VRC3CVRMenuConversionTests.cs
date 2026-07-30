@@ -362,15 +362,15 @@ public class VRC3CVRMenuConversionTests
     }
 
     [Test]
-    public void Bug_IntParameterOnlyUsedAsPuppetSubParameter_ThrowsInvalidOperationException()
+    public void IntParameterOnlyUsedAsPuppetSubParameter_ProducesNoMenuEntry()
     {
-        // REAL BUG: an Int-typed VRC parameter referenced only via a puppet's subParameters (never
-        // through a Toggle/Button at an integer value) ends up in toggleTable keyed solely at
-        // float.NaN. ConvertVrcParametersToChillout's Int branch then does
-        // `(int)intIdTable.Keys.Max()` (i.e. (int)NaN) as the dropdown's upper bound; whatever that
-        // cast produces, the option-building loop can never actually find a NaN-keyed entry, so
-        // menuEntryNames ends up empty (or full of "---" placeholders) either way, and
-        // GetMenuNameCommonParent(...).First() throws on the empty filtered sequence.
+        // VRChat's puppet controls (Radial/TwoAxis/FourAxis) only accept Float parameters for their
+        // subParameters -- the value is driven continuously by stick/dial position, not chosen from a
+        // discrete list. An Int-typed parameter referenced only that way (e.g. a hand-edited or
+        // malformed menu asset) therefore has no set of named options to build a CVR dropdown from,
+        // and no toggle semantics either (it's never set to a fixed value by a Toggle/Button). The
+        // correct conversion is to skip generating a menu entry for it -- not crash, not fabricate a
+        // dropdown out of nothing -- while still converting the underlying animator parameter itself.
         var puppet = new VRCExpressionsMenu.Control
         {
             name = "Aim",
@@ -385,7 +385,43 @@ public class VRC3CVRMenuConversionTests
         SetMenu(Menu(puppet));
         SetParams(Param("AimX", VRCExpressionParameters.ValueType.Int));
 
-        Assert.Throws<InvalidOperationException>(Convert);
+        Convert();
+
+        Assert.AreEqual(0, Settings.Count);
+    }
+
+    [Test]
+    public void IntParameterUsedAsBothDropdownAndPuppetSubParameter_IgnoresPuppetEntryInDropdown()
+    {
+        // Same puppet-subParameter NaN registration as above, but this time the Int parameter is also
+        // driven by a normal Toggle-group dropdown. The NaN "continuous value" entry carries no
+        // discrete option and must not corrupt the dropdown's option range/count -- the dropdown
+        // should come out exactly as if the puppet reference wasn't there at all.
+        var puppet = new VRCExpressionsMenu.Control
+        {
+            name = "Aim",
+            type = VRCExpressionsMenu.Control.ControlType.TwoAxisPuppet,
+            parameter = new VRCExpressionsMenu.Control.Parameter { name = "" },
+            subParameters = new[]
+            {
+                new VRCExpressionsMenu.Control.Parameter { name = "Color" },
+                new VRCExpressionsMenu.Control.Parameter { name = "" },
+            },
+        };
+        var subMenu = Menu(
+            Toggle("Red", "Color", 0f),
+            Toggle("Green", "Color", 1f),
+            Toggle("Blue", "Color", 2f));
+        SetMenu(Menu(SubMenuControl("Colors", subMenu), puppet));
+        SetParams(Param("Color", VRCExpressionParameters.ValueType.Int, defaultValue: 1f));
+
+        Convert();
+
+        Assert.AreEqual(1, Settings.Count);
+        var entry = Settings[0];
+        Assert.AreEqual(CVRAdvancedSettingsEntry.SettingsType.Dropdown, entry.type);
+        var dropdown = (CVRAdvancesAvatarSettingGameObjectDropdown)entry.setting;
+        Assert.AreEqual(new[] { "Red", "Green", "Blue" }, dropdown.options.Select(o => o.name).ToArray());
     }
 
     [Test]

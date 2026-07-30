@@ -625,9 +625,23 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 case VRCExpressionParameters.ValueType.Int:
                     if (toggleTable.TryGetValue(vrcParam.name, out var intIdTable))
                     {
-                        if (intIdTable.Count == 1 && intIdTable.First().Key == 1)
+                        // float.NaN keys come from TreatLabeledSubParameter/RadialPuppet's subParameter
+                        // handling: they register the parameter that continuously drives a puppet axis
+                        // (radial/2D/4D). VRChat only allows Float parameters there, but a malformed or
+                        // hand-edited menu can reference an Int parameter instead. That entry has no
+                        // discrete "selected option" value -- it is driven continuously, not chosen from
+                        // a list -- so it must be excluded from the dropdown's option range/count
+                        // calculations below, or a puppet-only Int parameter (NaN is its only key) turns
+                        // into (int)NaN range math and an empty option list.
+                        var discreteIdTable = intIdTable.Where(p => !float.IsNaN(p.Key)).ToDictionary(p => p.Key, p => p.Value);
+
+                        if (discreteIdTable.Count == 0)
                         {
-                            var menuNameAndType = intIdTable.First().Value;
+                            Debug.LogWarning($"Int parameter \"{vrcParam.name}\" is only referenced as a puppet sub-parameter, which VRChat expects to be a Float parameter. It has no discrete options to build a menu entry from, so no CVR menu entry is being generated for it (the animator parameter itself is still converted).");
+                        }
+                        else if (discreteIdTable.Count == 1 && discreteIdTable.First().Key == 1)
+                        {
+                            var menuNameAndType = discreteIdTable.First().Value;
                             Debug.Log("Param has only one option and value = 1 so we are making a toggle instead");
                             newParam = new CVRAdvancedSettingsEntry()
                             {
@@ -650,12 +664,12 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                             // control.value (and therefore the key here) can be negative; start the
                             // range at the lowest key instead of assuming it is always 0, or negative
                             // options are silently dropped from the resulting dropdown.
-                            var firstIndex = (int)intIdTable.Keys.Min();
-                            var lastIndex = (int)intIdTable.Keys.Max();
+                            var firstIndex = (int)discreteIdTable.Keys.Min();
+                            var lastIndex = (int)discreteIdTable.Keys.Max();
                             var menuEntryNames = new List<string>();
                             for (var j = firstIndex; j < lastIndex + 1; j++)
                             {
-                                menuEntryNames.Add(intIdTable.TryGetValue(j, out var menuEntry) ? menuEntry.name : "---");
+                                menuEntryNames.Add(discreteIdTable.TryGetValue(j, out var menuEntry) ? menuEntry.name : "---");
                             }
                             var menuName = GetMenuNameCommonParent(menuEntryNames.Where(name => name != "---"));
                             menuEntryNames = menuEntryNames.Select(name =>
@@ -680,7 +694,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                                     usedType = CVRAdvancesAvatarSettingBase.ParameterType.Int
                                 }
                             };
-                            if (intIdTable.Values.All(v => v.type == VRCExpressionsMenu.Control.ControlType.Button))
+                            if (discreteIdTable.Values.All(v => v.type == VRCExpressionsMenu.Control.ControlType.Button))
                             {
                                 impulseParameters.Add(vrcParam.name);
                             }
