@@ -641,9 +641,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         }
                         else
                         {
+                            // control.value (and therefore the key here) can be negative; start the
+                            // range at the lowest key instead of assuming it is always 0, or negative
+                            // options are silently dropped from the resulting dropdown.
+                            var firstIndex = (int)intIdTable.Keys.Min();
                             var lastIndex = (int)intIdTable.Keys.Max();
                             var menuEntryNames = new List<string>();
-                            for (var j = 0; j < lastIndex + 1; j++)
+                            for (var j = firstIndex; j < lastIndex + 1; j++)
                             {
                                 menuEntryNames.Add(intIdTable.TryGetValue(j, out var menuEntry) ? menuEntry.name : "---");
                             }
