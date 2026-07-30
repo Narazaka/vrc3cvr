@@ -2363,6 +2363,37 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 combinedAvatarMask.SetHumanoidBodyPartActive((AvatarMaskBodyPart)i,
                     layerMask.GetHumanoidBodyPartActive((AvatarMaskBodyPart)i) & baseMask.GetHumanoidBodyPartActive((AvatarMaskBodyPart)i));
             }
+
+            // transformCount == 0 means "no transform-path restriction" (every transform is
+            // implicitly active) -- our built-in masks (fullMask/musclesOnlyMask/etc.) never
+            // restrict specific transforms, only humanoid body parts, so a path missing from one
+            // side's list must default to active rather than being treated as excluded. Otherwise
+            // combining with one of those built-ins would silently wipe out any transform-path
+            // restriction the other (e.g. per-layer) mask defines. A path only ends up inactive in
+            // the combined mask if either side explicitly marks it inactive.
+            Dictionary<string, bool> GetTransformActiveByPath(AvatarMask mask)
+            {
+                var map = new Dictionary<string, bool>();
+                for (int i = 0; i < mask.transformCount; i++)
+                {
+                    map[mask.GetTransformPath(i)] = mask.GetTransformActive(i);
+                }
+                return map;
+            }
+
+            var baseTransforms = GetTransformActiveByPath(baseMask);
+            var layerTransforms = GetTransformActiveByPath(layerMask);
+            var allTransformPaths = baseTransforms.Keys.Union(layerTransforms.Keys).ToList();
+            combinedAvatarMask.transformCount = allTransformPaths.Count;
+            for (int i = 0; i < allTransformPaths.Count; i++)
+            {
+                var path = allTransformPaths[i];
+                var baseActive = !baseTransforms.TryGetValue(path, out var baseTransformActive) || baseTransformActive;
+                var layerActive = !layerTransforms.TryGetValue(path, out var layerTransformActive) || layerTransformActive;
+                combinedAvatarMask.SetTransformPath(i, path);
+                combinedAvatarMask.SetTransformActive(i, baseActive && layerActive);
+            }
+
             avatarMaskCombineCache[(baseMask, layerMask)] = combinedAvatarMask;
             if (baseMask.name != "" && layerMask.name != "")
             {
