@@ -68,7 +68,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     AvatarMask fullMask;
     AvatarMask musclesOnlyMask;
 
-    static readonly string EditorMaskDir = "Assets/PeanutTools/vrc3cvr/Editor";
+    // must match the directory on disk exactly: on a case-sensitive filesystem a mismatch makes
+    // every mask load return null, which leaves layers unmasked instead of raising anything
+    static readonly string EditorMaskDir = "Assets/PeanutTools/VRC3CVR/Editor";
 
     static AvatarMask LoadMask(string fileName) =>
         (AvatarMask)AssetDatabase.LoadAssetAtPath($"{EditorMaskDir}/{fileName}", typeof(AvatarMask));
