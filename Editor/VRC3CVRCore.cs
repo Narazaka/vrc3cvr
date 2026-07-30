@@ -651,7 +651,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                             menuEntryNames = menuEntryNames.Select(name =>
                             {
                                 if (name == "---") return "---";
-                                if (useHierarchicalDropdownMenuName) return name.Substring(menuName.Length + 1);
+                                // menuName is the shared submenu prefix (without a trailing "/"); when the
+                                // toggles live directly in the root menu there is no common submenu, so
+                                // GetMenuNameCommonParent returns "" and there is no "/" separator to skip.
+                                if (useHierarchicalDropdownMenuName) return string.IsNullOrEmpty(menuName) ? name : name.Substring(menuName.Length + 1);
                                 return MenuNameWithoutStack(name);
                             }).ToList();
                             newParam = new CVRAdvancedSettingsEntry()
