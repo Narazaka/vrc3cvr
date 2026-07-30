@@ -627,17 +627,17 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     {
                         // float.NaN keys come from TreatLabeledSubParameter/RadialPuppet's subParameter
                         // handling: they register the parameter that continuously drives a puppet axis
-                        // (radial/2D/4D). VRChat only allows Float parameters there, but a malformed or
-                        // hand-edited menu can reference an Int parameter instead. That entry has no
-                        // discrete "selected option" value -- it is driven continuously, not chosen from
-                        // a list -- so it must be excluded from the dropdown's option range/count
-                        // calculations below, or a puppet-only Int parameter (NaN is its only key) turns
-                        // into (int)NaN range math and an empty option list.
+                        // (radial/2D/4D). An Int can be picked there -- the SDK only warns about Bool --
+                        // though it barely works in VRChat either, where the axis only ever drives 0 and 1.
+                        // Such an entry has no discrete "selected option" value, so it must be excluded
+                        // from the dropdown's option range/count calculations below, or a puppet-only Int
+                        // parameter (NaN is its only key) turns into (int)NaN range math and an empty
+                        // option list. Losing the menu entry is acceptable; crashing the conversion is not.
                         var discreteIdTable = intIdTable.Where(p => !float.IsNaN(p.Key)).ToDictionary(p => p.Key, p => p.Value);
 
                         if (discreteIdTable.Count == 0)
                         {
-                            Debug.LogWarning($"Int parameter \"{vrcParam.name}\" is only referenced as a puppet sub-parameter, which VRChat expects to be a Float parameter. It has no discrete options to build a menu entry from, so no CVR menu entry is being generated for it (the animator parameter itself is still converted).");
+                            Debug.LogWarning($"Int parameter \"{vrcParam.name}\" is only referenced as a puppet sub-parameter, where VRChat itself only drives it between 0 and 1. It has no discrete options to build a menu entry from, so no CVR menu entry is generated for it (the animator parameter itself is still converted).");
                         }
                         else if (discreteIdTable.Count == 1 && discreteIdTable.First().Key == 1)
                         {
