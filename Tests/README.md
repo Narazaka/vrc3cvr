@@ -48,7 +48,21 @@ the groups can be inspected one at a time by hand.
 Convert the avatar with `Tools → VRC3CVR` (once per gesture weight mode) and upload with the
 CCK Control Panel, or drive both programmatically — the CCK exposes
 `ContentBuilderAPI.BuildAndUpload(assetInfo, BuildConfig.Default, uploadInfo, new LegalAssurance(true, true), ct)`,
-which needs no UI (see issue #23). Keep the resulting content ids: the mod switches avatars by id.
+which needs no UI (see issue #23).
+
+Upload once, then **reuse the same content ids on every later run**: an upload replaces whatever
+id it is given, and CVR accounts have a limited number of content slots, so uploading fresh each
+time burns them. The ids identify personal CVR content and are deliberately not stored in this
+repository — write them into `VRC3CVR_VerificationAvatarIds.txt` next to the game (and next to the
+Unity project for the editor-side uploader), one per line:
+
+```
+fold=<content id of the rewrite-mode avatar>
+derived=<content id of the derived-mode avatar>
+```
+
+Both the mod and the uploader refuse to run for an entry that is missing rather than creating a
+new avatar.
 
 ### 2.3 Build and install the mod
 
@@ -61,8 +75,8 @@ copy bin\Release\VRC3CVRVerification.dll "<ChilloutVR>\Mods\"
 The project references the game and MelonLoader assemblies directly; override the game path
 with `-p:CvrDir="..."` if it is not the default Steam location.
 
-Set the avatar ids at the top of `Mod.cs` (`FoldAvatarId` / `DerivedAvatarId`) to the ones you
-uploaded.
+Put `VRC3CVR_VerificationAvatarIds.txt` (see 2.2) next to `ChilloutVR.exe` so the mod knows which
+avatars to wear.
 
 ### 2.4 Run
 

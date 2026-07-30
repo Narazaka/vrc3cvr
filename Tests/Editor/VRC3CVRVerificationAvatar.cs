@@ -7,6 +7,8 @@ using VRC.Dynamics;
 using VRC.SDK3.Avatars.Components;
 using VRC.SDK3.Avatars.ScriptableObjects;
 using VRC.SDK3.Dynamics.Constraint.Components;
+using VRC.SDK3.Dynamics.Contact.Components;
+using VRC.SDKBase;
 
 // Generates a self-contained primitive humanoid avatar whose gimmicks make every in-game
 // verification item of the conversion observable (see the table in issue #17 / #21):
@@ -45,16 +47,29 @@ public static class VRC3CVRVerificationAvatar
         var materials = new Materials(assetFolder);
         BuildGimmickObjects(root, materials);
         BuildConstraintObjects(root, bones, materials);
+        BuildContactObjects(root, materials);
+        var faceMesh = BuildFaceMesh(bones.head, assetFolder, materials, out var visemeBlendShapeNames, out var blinkBlendShapeIndex);
 
         var fx = BuildFxController(assetFolder);
+        var handMask = BuildHandMask(assetFolder);
+        var gesture = BuildGestureController(assetFolder, handMask);
         var descriptor = root.AddComponent<VRCAvatarDescriptor>();
         descriptor.ViewPosition = new Vector3(0f, 1.45f, 0.1f);
+        descriptor.lipSync = VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape;
+        descriptor.VisemeSkinnedMesh = faceMesh;
+        descriptor.VisemeBlendShapes = visemeBlendShapeNames;
+        descriptor.customEyeLookSettings.eyelidType = VRCAvatarDescriptor.EyelidType.Blendshapes;
+        descriptor.customEyeLookSettings.eyelidsSkinnedMesh = faceMesh;
+        descriptor.customEyeLookSettings.eyelidsBlendshapes = new int[] { blinkBlendShapeIndex, -1, -1 };
         descriptor.customizeAnimationLayers = true;
         descriptor.baseAnimationLayers = new VRCAvatarDescriptor.CustomAnimLayer[]
         {
             new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Base, isDefault = true },
             new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Additive, isDefault = true },
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Gesture, isDefault = true },
+            // dedicated (non-default) gesture controller: exercises the GESTURE avatar mask
+            // branch and the CVR default hand layer deletion branch, both unreachable while
+            // isDefault is true / no controller is assigned
+            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Gesture, isDefault = false, animatorController = gesture },
             new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Action, isDefault = true },
             new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.FX, isDefault = false, animatorController = fx },
         };
@@ -256,6 +271,14 @@ public static class VRC3CVRVerificationAvatar
         Marker("FistGate", gesture, new Vector3(-0.1f, 0f, 0f), Vector3.one * 0.06f, materials.red,
             "ON only while L Fist squeezed > 0.5\nmust stay OFF on other gestures");
 
+        // reflects the actual converted Gesture-layer state machine (as opposed to the FX
+        // weight/gate markers above, which only read the shared GestureLeft/Weight parameters):
+        // exclusively lit per Fist/Open/Point state on the L hand
+        Marker("GestureFistMarker", gesture, new Vector3(-0.5f, -0.18f, 0f), Vector3.one * 0.05f, materials.red,
+            "ON while the converted Gesture layer is in its Fist state\n(dedicated Gesture controller, not FX)");
+        Marker("GestureOpenMarker", gesture, new Vector3(-0.3f, -0.18f, 0f), Vector3.one * 0.05f, materials.green, null);
+        Marker("GesturePointMarker", gesture, new Vector3(-0.1f, -0.18f, 0f), Vector3.one * 0.05f, materials.blue, null);
+
         var state = new GameObject("State").transform;
         state.SetParent(panel, false);
         Marker("VelocityBar", state, new Vector3(0.1f, 0f, 0f), new Vector3(0.05f, 0.02f, 0.05f), materials.green,
@@ -381,6 +404,225 @@ public static class VRC3CVRVerificationAvatar
         animConstraint.IsActive = false;
     }
 
+    // ---- VRC Contacts (senders + receivers) ----
+
+    static void BuildContactObjects(GameObject root, Materials materials)
+    {
+        var row = new GameObject("Contacts").transform;
+        row.SetParent(root.transform, false);
+        row.localPosition = new Vector3(0f, 1.5f, 0.8f);
+
+        // single-tag sender, Sphere shape
+        var senderSingle = Marker("SenderSingle", row, new Vector3(-0.6f, 0f, 0f), Vector3.one * 0.05f, materials.red,
+            "VRCContactSender (Sphere)\nsingle tag: vrc3cvr_single");
+        var sender1 = senderSingle.AddComponent<VRCContactSender>();
+        sender1.shapeType = ContactBase.ShapeType.Sphere;
+        sender1.radius = 0.05f;
+        sender1.collisionTags.Add("vrc3cvr_single");
+
+        // multi-tag sender, Capsule shape
+        var senderMulti = Marker("SenderMulti", row, new Vector3(-0.3f, 0f, 0f), Vector3.one * 0.05f, materials.yellow,
+            "VRCContactSender (Capsule)\ntags: vrc3cvr_multiA, vrc3cvr_multiB");
+        var sender2 = senderMulti.AddComponent<VRCContactSender>();
+        sender2.shapeType = ContactBase.ShapeType.Capsule;
+        sender2.radius = 0.03f;
+        sender2.height = 0.1f;
+        sender2.collisionTags.Add("vrc3cvr_multiA");
+        sender2.collisionTags.Add("vrc3cvr_multiB");
+
+        // Constant receiver, Sphere shape, default allowSelf/allowOthers
+        var receiverConstant = Marker("ReceiverConstant", row, new Vector3(0f, 0f, 0f), Vector3.one * 0.05f, materials.green,
+            "VRCContactReceiver Constant (Sphere)\nparam: ContactConstant (allowSelf/allowOthers default)");
+        var receiver1 = receiverConstant.AddComponent<VRCContactReceiver>();
+        receiver1.shapeType = ContactBase.ShapeType.Sphere;
+        receiver1.radius = 0.06f;
+        receiver1.receiverType = ContactReceiver.ReceiverType.Constant;
+        receiver1.parameter = "ContactConstant";
+        receiver1.collisionTags.Add("vrc3cvr_single");
+
+        // OnEnter receiver, Capsule shape, non-default allowSelf/allowOthers
+        var receiverOnEnter = Marker("ReceiverOnEnter", row, new Vector3(0.3f, 0f, 0f), Vector3.one * 0.05f, materials.blue,
+            "VRCContactReceiver OnEnter (Capsule)\nparam: ContactOnEnter, allowSelf=true allowOthers=false");
+        var receiver2 = receiverOnEnter.AddComponent<VRCContactReceiver>();
+        receiver2.shapeType = ContactBase.ShapeType.Capsule;
+        receiver2.radius = 0.03f;
+        receiver2.height = 0.12f;
+        receiver2.receiverType = ContactReceiver.ReceiverType.OnEnter;
+        receiver2.parameter = "ContactOnEnter";
+        receiver2.allowSelf = true;
+        receiver2.allowOthers = false;
+        receiver2.collisionTags.Add("vrc3cvr_multiA");
+
+        // Proximity receiver, Sphere shape, localOnly
+        var receiverProximity = Marker("ReceiverProximity", row, new Vector3(0.6f, 0f, 0f), Vector3.one * 0.05f, materials.white,
+            "VRCContactReceiver Proximity (Sphere)\nparam: ContactProximity, localOnly=true");
+        var receiver3 = receiverProximity.AddComponent<VRCContactReceiver>();
+        receiver3.shapeType = ContactBase.ShapeType.Sphere;
+        receiver3.radius = 0.08f;
+        receiver3.receiverType = ContactReceiver.ReceiverType.Proximity;
+        receiver3.parameter = "ContactProximity";
+        receiver3.localOnly = true;
+        receiver3.collisionTags.Add("vrc3cvr_multiB");
+    }
+
+    // ---- viseme / blink face mesh ----
+
+    // Builds a tiny skinned quad, rigidly bound to the head bone, with one blend shape per
+    // standard viseme plus a "Blink" shape for eyelids. Sits just in front of the head cube so
+    // viseme/blink playback is visible in-game (a SkinnedMeshRenderer's own transform is ignored
+    // for vertex placement, so the forward offset is baked into the mesh-space vertices instead).
+    static SkinnedMeshRenderer BuildFaceMesh(Transform headBone, string assetFolder, Materials materials, out string[] visemeBlendShapeNames, out int blinkBlendShapeIndex)
+    {
+        var go = new GameObject("FaceMesh");
+        go.transform.SetParent(headBone, false);
+        var renderer = go.AddComponent<SkinnedMeshRenderer>();
+
+        var vertices = new Vector3[]
+        {
+            new Vector3(-0.04f, -0.04f, 0.09f),
+            new Vector3(0.04f, -0.04f, 0.09f),
+            new Vector3(0.04f, 0.04f, 0.09f),
+            new Vector3(-0.04f, 0.04f, 0.09f),
+        };
+        var normals = new Vector3[] { Vector3.forward, Vector3.forward, Vector3.forward, Vector3.forward };
+        var triangles = new int[] { 0, 1, 2, 0, 2, 3 };
+
+        var mesh = new Mesh { name = "VerificationFaceMesh" };
+        mesh.vertices = vertices;
+        mesh.normals = normals;
+        mesh.triangles = triangles;
+
+        var boneWeights = new BoneWeight[vertices.Length];
+        for (var i = 0; i < boneWeights.Length; i++)
+        {
+            boneWeights[i] = new BoneWeight { boneIndex0 = 0, weight0 = 1f };
+        }
+        mesh.boneWeights = boneWeights;
+        mesh.bindposes = new Matrix4x4[] { Matrix4x4.identity };
+
+        visemeBlendShapeNames = new[] { "sil", "PP", "FF", "TH", "DD", "kk", "CH", "SS", "nn", "RR", "aa", "E", "ih", "oh", "ou" };
+        var deltaVertices = new Vector3[vertices.Length];
+        var deltaNormals = new Vector3[vertices.Length];
+        var deltaTangents = new Vector3[vertices.Length];
+        for (var i = 0; i < deltaVertices.Length; i++) deltaVertices[i] = Vector3.back * 0.015f;
+        foreach (var name in visemeBlendShapeNames)
+        {
+            mesh.AddBlendShapeFrame(name, 100f, deltaVertices, deltaNormals, deltaTangents);
+        }
+        const string blinkName = "Blink";
+        for (var i = 0; i < deltaVertices.Length; i++) deltaVertices[i] = Vector3.down * 0.02f;
+        mesh.AddBlendShapeFrame(blinkName, 100f, deltaVertices, deltaNormals, deltaTangents);
+        blinkBlendShapeIndex = mesh.GetBlendShapeIndex(blinkName);
+
+        mesh.RecalculateBounds();
+        AssetDatabase.CreateAsset(mesh, assetFolder + "/FaceMesh.asset");
+
+        renderer.sharedMesh = mesh;
+        renderer.bones = new[] { headBone };
+        renderer.rootBone = headBone;
+        renderer.sharedMaterial = materials.white;
+        return renderer;
+    }
+
+    // ---- gesture controller (dedicated, non-default Gesture layer) ----
+
+    static AvatarMask BuildHandMask(string assetFolder)
+    {
+        var mask = new AvatarMask { name = "VerificationGestureHandMask" };
+        for (var part = 0; part < (int)AvatarMaskBodyPart.LastBodyPart; part++)
+        {
+            mask.SetHumanoidBodyPartActive((AvatarMaskBodyPart)part, false);
+        }
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftArm, true);
+        mask.SetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm, true);
+        AssetDatabase.CreateAsset(mask, assetFolder + "/GestureHandMask.mask");
+        return mask;
+    }
+
+    static AnimatorController BuildGestureController(string assetFolder, AvatarMask handMask)
+    {
+        var gesture = AnimatorController.CreateAnimatorControllerAtPath(assetFolder + "/VerificationGesture.controller");
+        gesture.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
+
+        AnimationClip StateClip(string name, string activeMarkerPath)
+        {
+            var clip = new AnimationClip { name = name };
+            foreach (var markerPath in new[]
+                     {
+                         "Panel/Gesture/GestureFistMarker",
+                         "Panel/Gesture/GestureOpenMarker",
+                         "Panel/Gesture/GesturePointMarker",
+                     })
+            {
+                clip.SetCurve(markerPath, typeof(GameObject), "m_IsActive",
+                    AnimationCurve.Constant(0f, 1f / 60f, markerPath == activeMarkerPath ? 1f : 0f));
+            }
+            AssetDatabase.CreateAsset(clip, assetFolder + "/" + name + ".anim");
+            return clip;
+        }
+
+        var stateMachine = gesture.layers[0].stateMachine;
+        var neutral = stateMachine.AddState("Neutral");
+        neutral.motion = StateClip("Gesture_Neutral", null);
+        neutral.writeDefaultValues = true;
+        stateMachine.defaultState = neutral;
+
+        var fist = stateMachine.AddState("Fist");
+        fist.motion = StateClip("Gesture_Fist", "Panel/Gesture/GestureFistMarker");
+        fist.writeDefaultValues = true;
+
+        var open = stateMachine.AddState("Open");
+        open.motion = StateClip("Gesture_Open", "Panel/Gesture/GestureOpenMarker");
+        open.writeDefaultValues = true;
+
+        var point = stateMachine.AddState("Point");
+        point.motion = StateClip("Gesture_Point", "Panel/Gesture/GesturePointMarker");
+        point.writeDefaultValues = true;
+
+        void FromAnyState(AnimatorState state, float gestureValue)
+        {
+            var transition = stateMachine.AddAnyStateTransition(state);
+            transition.hasExitTime = false;
+            transition.duration = 0f;
+            transition.canTransitionToSelf = false;
+            transition.AddCondition(AnimatorConditionMode.Equals, gestureValue, "GestureLeft");
+        }
+        FromAnyState(fist, 1f);  // VRC Gesture.Fist
+        FromAnyState(open, 2f);  // VRC Gesture.HandOpen
+        FromAnyState(point, 3f); // VRC Gesture.FingerPointing
+
+        void BackToNeutral(AnimatorState state, float gestureValue)
+        {
+            var transition = state.AddTransition(neutral);
+            transition.hasExitTime = false;
+            transition.duration = 0f;
+            transition.AddCondition(AnimatorConditionMode.NotEqual, gestureValue, "GestureLeft");
+        }
+        BackToNeutral(fist, 1f);
+        BackToNeutral(open, 2f);
+        BackToNeutral(point, 3f);
+
+        var layers = gesture.layers;
+        layers[0].name = "Gesture";
+        layers[0].defaultWeight = 1f;
+        layers[0].avatarMask = handMask;
+        gesture.layers = layers;
+
+        // second layer: exercises the mask-combine (layerID > 0) branch of
+        // GetAvatarMaskForLayerAndVRCAnimator, which a single-layer controller cannot reach
+        gesture.AddLayer("Gesture Overlay");
+        var overlayLayers = gesture.layers;
+        var overlayState = overlayLayers[1].stateMachine.AddState("Idle");
+        var overlayClip = new AnimationClip { name = "Gesture_Overlay_Idle", hideFlags = HideFlags.HideInHierarchy };
+        AssetDatabase.AddObjectToAsset(overlayClip, gesture);
+        overlayState.motion = overlayClip;
+        overlayState.writeDefaultValues = true;
+        overlayLayers[1].defaultWeight = 1f;
+        gesture.layers = overlayLayers;
+
+        return gesture;
+    }
+
     // ---- FX controller ----
 
     static AnimatorController BuildFxController(string assetFolder)
@@ -396,6 +638,18 @@ public static class VRC3CVRVerificationAvatar
         fx.AddParameter("ShowGesture", AnimatorControllerParameterType.Bool);
         fx.AddParameter("ShowState", AnimatorControllerParameterType.Bool);
         fx.AddParameter("ShowConstraints", AnimatorControllerParameterType.Bool);
+        // VRCAvatarParameterDriver targets/sources (Set/Add/Random/Copy coverage)
+        fx.AddParameter("DriverSetInt", AnimatorControllerParameterType.Int);
+        fx.AddParameter("DriverAddFloat", AnimatorControllerParameterType.Float);
+        fx.AddParameter("DriverRandomInt", AnimatorControllerParameterType.Int);
+        fx.AddParameter("DriverRandomBool", AnimatorControllerParameterType.Bool);
+        fx.AddParameter("DriverCopySource", AnimatorControllerParameterType.Float);
+        fx.AddParameter("DriverCopyDest", AnimatorControllerParameterType.Float);
+        fx.AddParameter("DriverRangeDest", AnimatorControllerParameterType.Float);
+        // VRC Contacts receiver targets
+        fx.AddParameter("ContactConstant", AnimatorControllerParameterType.Bool);
+        fx.AddParameter("ContactOnEnter", AnimatorControllerParameterType.Bool);
+        fx.AddParameter("ContactProximity", AnimatorControllerParameterType.Float);
 
         AnimationClip Clip(string name, params (string path, System.Type type, string property, float value)[] curves)
         {
@@ -551,6 +805,34 @@ public static class VRC3CVRVerificationAvatar
                 ("Constraints/AnimC", typeof(VRCPositionConstraint), "Sources.source0.Weight", 1f)),
             new[] { Cond("AnimConstraint", AnimatorConditionMode.If, 0f) },
             new[] { new[] { Cond("AnimConstraint", AnimatorConditionMode.IfNot, 0f) } });
+
+        // BC: VRCAnimatorTrackingControl and VRCAnimatorLocomotionControl co-existing on one
+        // state, exercising the merge-into-a-single-BodyControl conversion path
+        fx.AddLayer("BC BodyControl");
+        var bodyControlState = fx.layers[fx.layers.Length - 1].stateMachine.AddState("BodyControl State");
+        bodyControlState.motion = Clip("BC_Idle");
+        bodyControlState.writeDefaultValues = true;
+        var trackingControl = bodyControlState.AddStateMachineBehaviour<VRCAnimatorTrackingControl>();
+        trackingControl.trackingHead = VRC_AnimatorTrackingControl.TrackingType.Animation;
+        trackingControl.trackingLeftHand = VRC_AnimatorTrackingControl.TrackingType.Tracking;
+        trackingControl.trackingRightHand = VRC_AnimatorTrackingControl.TrackingType.Animation;
+        trackingControl.trackingHip = VRC_AnimatorTrackingControl.TrackingType.Tracking;
+        var locomotionControl = bodyControlState.AddStateMachineBehaviour<VRCAnimatorLocomotionControl>();
+        locomotionControl.disableLocomotion = true;
+
+        // PD: VRCAvatarParameterDriver covering Set / Add / Random(Int) / Random(Bool) / Copy /
+        // Copy+convertRange, all on a single state
+        fx.AddLayer("PD ParameterDriver");
+        var driverState = fx.layers[fx.layers.Length - 1].stateMachine.AddState("Drive State");
+        driverState.motion = Clip("PD_Idle");
+        driverState.writeDefaultValues = true;
+        var parameterDriver = driverState.AddStateMachineBehaviour<VRCAvatarParameterDriver>();
+        parameterDriver.parameters.Add(new VRC_AvatarParameterDriver.Parameter { name = "DriverSetInt", type = VRC_AvatarParameterDriver.ChangeType.Set, value = 7f });
+        parameterDriver.parameters.Add(new VRC_AvatarParameterDriver.Parameter { name = "DriverAddFloat", type = VRC_AvatarParameterDriver.ChangeType.Add, value = 1.5f });
+        parameterDriver.parameters.Add(new VRC_AvatarParameterDriver.Parameter { name = "DriverRandomInt", type = VRC_AvatarParameterDriver.ChangeType.Random, valueMin = 1f, valueMax = 5f });
+        parameterDriver.parameters.Add(new VRC_AvatarParameterDriver.Parameter { name = "DriverRandomBool", type = VRC_AvatarParameterDriver.ChangeType.Random, chance = 0.5f });
+        parameterDriver.parameters.Add(new VRC_AvatarParameterDriver.Parameter { name = "DriverCopyDest", type = VRC_AvatarParameterDriver.ChangeType.Copy, source = "DriverCopySource" });
+        parameterDriver.parameters.Add(new VRC_AvatarParameterDriver.Parameter { name = "DriverRangeDest", type = VRC_AvatarParameterDriver.ChangeType.Copy, source = "GestureLeftWeight", convertRange = true, sourceMin = 0f, sourceMax = 1f, destMin = 0f, destMax = 10f });
 
         // AddLayer creates layers with weight 0; force every layer to full weight
         var layers = fx.layers;

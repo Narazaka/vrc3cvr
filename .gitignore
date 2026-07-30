@@ -1,1 +1,6 @@
 *.log
+
+# content ids of the uploaded verification avatars: they identify personal CVR content
+# (see Tests/README.md)
+Tests/VerificationAvatarIds.txt
+Tests/VerificationAvatarIds.txt.meta
