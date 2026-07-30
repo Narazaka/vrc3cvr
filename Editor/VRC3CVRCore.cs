@@ -500,7 +500,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     {
                         idTable = new Dictionary<float, MenuNameAndType>();
                     }
-                    if (!idTable.ContainsKey(control.value))
+                    // The "changing" indicator is a boolean flag that VRChat sets to true (1) while
+                    // the puppet is actively being manipulated; control.value is not meaningful here
+                    // (it only applies to Toggle/Button controls), so the guard must check the same
+                    // key (1) that is actually added below. Checking control.value instead let this
+                    // collide with a pre-existing key-1 entry (e.g. a Toggle at value 1 on the same
+                    // parameter) and throw ArgumentException from idTable.Add.
+                    if (!idTable.ContainsKey(1))
                     {
                         idTable.Add(1, new MenuNameAndType(control.type, $"{basePath}{control.name} Changing"));
                     }

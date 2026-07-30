@@ -327,14 +327,14 @@ public class VRC3CVRMenuConversionTests
     // ---- Bugs: boundary / exceptional cases ----
 
     [Test]
-    public void Bug_ToggleValueOneThenPuppetChangingSameParameter_ThrowsArgumentException()
+    public void ToggleValueOneThenPuppetChangingSameParameter_KeepsExistingToggleEntry()
     {
-        // REAL BUG in FindMenuButtonsAndToggles's local TreatChanging(): it checks
-        // `idTable.ContainsKey(control.value)` but then unconditionally does `idTable.Add(1, ...)`.
-        // If the same VRC parameter was already registered under key 1 by an earlier Toggle control,
-        // and a puppet's "changing" indicator (control.value != 1) references that same parameter,
-        // ContainsKey(control.value) is false (the dictionary only has key 1) so the guard passes,
-        // but Add(1, ...) then collides with the pre-existing key 1 entry and throws.
+        // A puppet's "changing" indicator (control.parameter) is a boolean that VRChat sets to true
+        // (key 1) while the puppet is being manipulated. Here that indicator shares its parameter
+        // ("Shared") with an earlier Toggle control that was already registered at value 1 ("Enable").
+        // The existing key-1 entry describes the parameter more usefully than a generic "Spin
+        // Changing" placeholder would, so it must win: the puppet's changing indicator is a no-op for
+        // an already-registered key, not a crash and not a silent overwrite.
         var puppet = new VRCExpressionsMenu.Control
         {
             name = "Spin",
@@ -350,7 +350,15 @@ public class VRC3CVRMenuConversionTests
             Param("Shared", VRCExpressionParameters.ValueType.Bool),
             Param("SpinAmount", VRCExpressionParameters.ValueType.Float));
 
-        Assert.Throws<ArgumentException>(Convert);
+        Convert();
+
+        Assert.AreEqual(2, Settings.Count);
+        var sharedEntry = Settings.Single(s => s.machineName == "Shared");
+        Assert.AreEqual("Enable", sharedEntry.name);
+        Assert.AreEqual(CVRAdvancedSettingsEntry.SettingsType.Toggle, sharedEntry.type);
+        var spinAmountEntry = Settings.Single(s => s.machineName == "SpinAmount");
+        Assert.AreEqual("Spin", spinAmountEntry.name);
+        Assert.AreEqual(CVRAdvancedSettingsEntry.SettingsType.Slider, spinAmountEntry.type);
     }
 
     [Test]
