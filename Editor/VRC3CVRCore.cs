@@ -871,14 +871,15 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     {
         if (preserveParameterSyncState)
         {
-            preserveParameters = vrcAvatarDescriptor.expressionParameters.parameters?.Where(p => p.networkSynced).Select(p => p.name).ToHashSet() ?? new HashSet<string>();
+            // avatars without an expression menu have no expression parameters at all
+            preserveParameters = vrcAvatarDescriptor.expressionParameters?.parameters?.Where(p => p.networkSynced).Select(p => p.name).ToHashSet() ?? new HashSet<string>();
             preserveParameters.UnionWith(PreDefinedParameterNames);
             preserveParameters.UnionWith(muscleNames);
         }
         else
         {
             // all
-            preserveParameters = vrcAvatarDescriptor.expressionParameters.parameters?.Select(p => p.name).ToHashSet() ?? new HashSet<string>();
+            preserveParameters = vrcAvatarDescriptor.expressionParameters?.parameters?.Select(p => p.name).ToHashSet() ?? new HashSet<string>();
             preserveParameters.UnionWith(chilloutAnimatorController.parameters.Select(p => p.name));
             preserveParameters.UnionWith(muscleNames);
         }
