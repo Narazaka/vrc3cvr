@@ -66,14 +66,19 @@ public static class VRC3CVRPanel
         var cloneProperty = convertConfigProperty.FindPropertyRelative(nameof(VRC3CVRConvertConfig.shouldCloneAvatar));
         var autoBakeProperty = convertConfigProperty.FindPropertyRelative(nameof(VRC3CVRConvertConfig.autoBake));
 
+        // Read before the field: PropertyField commits the new value during MouseDown, and a
+        // GUILayout entry that appears in the same event that the Layout pass did not count
+        // throws "Getting control N's position in a group with only N controls".
+        var autoBakeWasOn = autoBakeProperty.boolValue;
+
         EditorGUILayout.PropertyField(autoBakeProperty, T.AutoBake.GUIContent);
         CustomGUI.HelpLabel(T.AutoBakeDescription);
 
         // While baking the clone is made by VRC3CVRBaker, so this toggle has no effect.
-        EditorGUI.BeginDisabledGroup(autoBakeProperty.boolValue);
+        EditorGUI.BeginDisabledGroup(autoBakeWasOn);
         EditorGUILayout.PropertyField(cloneProperty, T.CloneAvatar.GUIContent);
         EditorGUI.EndDisabledGroup();
-        if (autoBakeProperty.boolValue)
+        if (autoBakeWasOn)
         {
             CustomGUI.HelpLabel(T.CloneForcedByBake);
         }
