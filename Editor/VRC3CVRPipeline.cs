@@ -95,10 +95,11 @@ public static class VRC3CVRPipeline
 
             workingConfig.vrcAvatarDescriptor = target;
 
-            var core = VRC3CVRCore.FromConfig(workingConfig);
+            VRC3CVRCore core = null;
             GameObject converted;
             try
             {
+                core = VRC3CVRCore.FromConfig(workingConfig);
                 core.Convert();
                 converted = core.chilloutAvatar;
             }
@@ -106,6 +107,14 @@ public static class VRC3CVRPipeline
             {
                 // Deliberately leaves the clone in the scene: a half-converted avatar is what the
                 // user needs to diagnose why the conversion threw. Only bake failures clean up.
+                // Tag it EditorOnly so it drops out of the CCK Control Panel listing
+                // (CCKAssetInfoManager.IsAssetInfoValid excludes EditorOnly) -- otherwise a failed
+                // run leaves something named like a success that is one click from being uploaded.
+                if (core != null && core.chilloutAvatar != null)
+                {
+                    core.chilloutAvatar.tag = "EditorOnly";
+                    core.chilloutAvatar.name += " (FAILED)";
+                }
                 return new Result { succeeded = false, errorMessage = exception.ToString() };
             }
 
