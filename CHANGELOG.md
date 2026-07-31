@@ -1,9 +1,9 @@
 # Unreleased
 
-- feat: 変換前に VRCFury / Modular Avatar / Avatar Optimizer などの非破壊ツールを自動ベイクするようになりました（`Auto bake`、既定ON）
-- feat: `VRC3CVR Avatar` コンポーネントのインスペクタからも変換できるようになりました。`Tools -> VRC3CVR` ウインドウとインスペクタは同じ設定を編集します
-- **BREAKING**: NDMF プラグイン経路を廃止しました。`Tools -> Modular Avatar -> Manual bake avatar` では変換されなくなります。`VRC3CVRNDMF` コンポーネントは `VRC3CVR Avatar` に置き換わります（設定は維持されます）
-- 旧バージョンから更新した場合、`Assets/PeanutTools/VRC3CVR/NDMF/` フォルダが残ることがあります。削除して構いません
+- feat: non-destructive tools (VRCFury, Modular Avatar, Avatar Optimizer, ...) are now baked automatically before the conversion (`Auto bake`, on by default)
+- feat: the avatar can now be converted from the `VRC3CVR Avatar` component inspector. The `Tools -> VRC3CVR` window and the inspector edit the same settings
+- **BREAKING**: the NDMF plugin path is gone. `Tools -> Modular Avatar -> Manual bake avatar` no longer converts. The `VRC3CVRNDMF` component becomes `VRC3CVR Avatar` and its settings are preserved
+- If you update over an older version an `Assets/PeanutTools/VRC3CVR/NDMF/` folder may be left behind. It is safe to delete
 
 # 3.0.0-rc.1
 
