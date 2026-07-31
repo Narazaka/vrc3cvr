@@ -60,8 +60,9 @@ public class VRC3CVRBuildProcessor : CCKBuildProcessor
         config.shouldCloneAvatar = false;
         VRC3CVRCore.FromConfig(config).Convert();
 
-        // AddComponent<CVRAvatar>() from code runs neither Reset nor OnValidate, so a CVRAvatar the
-        // conversion created leaves the type at 0 (invalid).
+        // Defensive: by this point CVRAvatar is required by VRC3CVRAvatar and the CCK already
+        // rejected anything whose type is not Avatar, so this is normally a no-op. It costs nothing
+        // and keeps the invariant explicit for a caller that reaches here another way.
         var assetInfo = avatar.GetComponent<CVRAssetInfo>();
         if (assetInfo != null) assetInfo.type = CVRAssetInfo.AssetType.Avatar;
     }
