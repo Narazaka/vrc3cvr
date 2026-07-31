@@ -24,6 +24,10 @@ public class VRC3CVRConvertConfig
     public VRCAvatarDescriptor vrcAvatarDescriptor;
     public string outputDirName = "VRC3CVR_Output";
     public bool shouldCloneAvatar = true;
+    // Run every VRChat SDK preprocess hook (VRCFury, NDMF/Modular Avatar, AAO, ...) on a clone
+    // before converting, so non-destructive tools are applied. The clone is made by
+    // VRC3CVRBaker, so VRC3CVRCore is told not to clone again.
+    public bool autoBake = true;
     public bool saveAssets = true;
 
     public bool convertLocomotionLayer = false;
@@ -60,6 +64,7 @@ public class VRC3CVRConvertConfig
         vrcAvatarDescriptor = other.vrcAvatarDescriptor;
         outputDirName = other.outputDirName;
         shouldCloneAvatar = other.shouldCloneAvatar;
+        autoBake = other.autoBake;
         saveAssets = other.saveAssets;
 
         convertLocomotionLayer = other.convertLocomotionLayer;
