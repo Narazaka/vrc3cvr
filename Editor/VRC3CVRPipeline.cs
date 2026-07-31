@@ -71,6 +71,9 @@ public static class VRC3CVRPipeline
 
             var target = descriptor;
             var usedBake = false;
+            // Read before the bake makes its clone: the baker names its result "<name> (Baked)",
+            // and this is what the normal (non-bake) path would have named the conversion output.
+            var originalName = descriptor.gameObject.name;
 
             if (workingConfig.autoBake)
             {
@@ -114,6 +117,9 @@ public static class VRC3CVRPipeline
             // the CCK would normally set is still 0 (invalid) here.
             var assetInfo = converted.GetComponent<CVRAssetInfo>();
             if (assetInfo != null) assetInfo.type = CVRAssetInfo.AssetType.Avatar;
+
+            // The baker's name is an intermediate step's label; the user ships this object.
+            if (usedBake) converted.name = originalName + " (ChilloutVR)";
 
             return new Result { succeeded = true, convertedAvatar = converted, usedBake = usedBake };
         }
