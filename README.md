@@ -74,20 +74,33 @@ To solve this, I created a tool called [ExcludeChildBones](https://github.com/Na
 
 ### 1. Convert
 
+There are two ways to convert. **Uploading from the CCK Control Panel converts automatically** — you do not need to convert by hand first. Convert manually only when you want to inspect the result in Unity.
+
+#### Automatic (recommended)
+
 1. Setup your VRChat avatars with Unity 2022.3.22f1 / VRChat SDK 3.x (use VCC)
 2. (optional) convert your PhysBones to DynamicBones by [PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone) etc.
-3. Import ChilloutVR CCK4 Preview to the VRChat avatar project.
+3. Import ChilloutVR CCK4 to the VRChat avatar project.
 4. Import the vrc3cvr `.unitypackage`
-5. Either add a **VRC3CVR Avatar** component to the avatar root and use its inspector, or open **Tools** -> **VRC3CVR** and pick the avatar there. Both edit the same settings.
-6. Click **Convert**
+5. Add a **VRC3CVR Avatar** component to the avatar root. A **CVRAvatar** component is added with it — leave it alone, the conversion fills it in.
+6. Upload from the CCK Control Panel as you normally would.
 
-**Auto bake** is on by default, so VRCFury, Modular Avatar, Avatar Optimizer and any other tool that hooks the VRChat SDK build is applied automatically before the conversion. You no longer need to bake the avatar yourself first.
+The conversion runs during the upload, the same way Modular Avatar and VRCFury run during a VRChat upload. Nothing is left behind in your scene.
 
-> The avatar a bake produces references generated assets that live in a temporary folder and are destroyed by the next build. Upload the result rather than keeping it in your project.
+#### Manual
+
+Use this when you want to look at the converted avatar in Unity before uploading.
+
+1. Steps 1-5 above
+2. Press **Convert** in the `VRC3CVR Avatar` inspector, or open **Tools** -> **VRC3CVR** and pick the avatar there. Both edit the same settings.
+
+**Auto bake** is on by default, so VRCFury, Modular Avatar, Avatar Optimizer and any other tool that hooks the VRChat SDK build is applied automatically before the conversion. You no longer need to bake the avatar yourself first. This applies to both ways of converting.
+
+> The avatar a **manual** conversion produces references generated assets that live in a temporary folder and are destroyed by the next build. Upload it rather than keeping it. Uploading from the CCK Control Panel is not affected — the bundle is built before anything is discarded.
 
 ### 2. Upload
 
-Upload the converted avatar normally.
+Upload from the CCK Control Panel. If the avatar still has a `VRC3CVR Avatar` component, it is converted automatically during the upload, so upload the VRChat avatar itself — there is no separate converted object to pick.
 
 ## Tips
 
