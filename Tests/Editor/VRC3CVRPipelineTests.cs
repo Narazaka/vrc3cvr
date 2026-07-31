@@ -81,9 +81,14 @@ public class VRC3CVRPipelineTests
 
         Assert.IsTrue(result.succeeded, result.errorMessage);
         Assert.IsNull(converted.GetComponent<VRC3CVRAvatar>(), "settings must not ship in the converted avatar");
-        var assetInfo = converted.GetComponent<CVRAssetInfo>();
-        Assert.IsNotNull(assetInfo);
-        Assert.AreEqual(CVRAssetInfo.AssetType.Avatar, assetInfo.type);
+        // shouldCloneAvatar makes `converted` a clone of `original`, and VRC3CVRAvatar's
+        // RequireComponent(CVRAvatar) plus OnValidate already gave `original` a CVRAvatar and a
+        // valid CVRAssetInfo before Convert() ran, so those would clone across regardless of
+        // whether the conversion did anything. Only the conversion sets up the override
+        // controller, so check that instead.
+        var cvrAvatar = converted.GetComponent<CVRAvatar>();
+        Assert.IsNotNull(cvrAvatar);
+        Assert.IsNotNull(cvrAvatar.overrides, "only the conversion sets up the override controller");
     }
 
     [Test]

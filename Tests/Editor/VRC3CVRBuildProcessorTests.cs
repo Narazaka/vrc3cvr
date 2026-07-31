@@ -41,10 +41,15 @@ public class VRC3CVRBuildProcessorTests
 
         new VRC3CVRBuildProcessor().OnPreProcessAvatar(avatar);
 
-        Assert.IsNotNull(avatar.GetComponent<CVRAvatar>(), "the avatar is converted in place");
         Assert.IsNull(avatar.GetComponent<VRCAvatarDescriptor>(), "the VRChat descriptor is gone");
         Assert.IsNull(avatar.GetComponent<VRC3CVRAvatar>(), "settings must not ship in the bundle");
-        Assert.AreEqual(CVRAssetInfo.AssetType.Avatar, avatar.GetComponent<CVRAssetInfo>().type);
+        // VRC3CVRAvatar's RequireComponent(CVRAvatar) plus OnValidate already attach a CVRAvatar
+        // (and a valid CVRAssetInfo) the moment the settings component is added, before the
+        // conversion runs. Only the conversion sets up the override controller, so check that
+        // instead of presence, which would be true either way.
+        var cvrAvatar = avatar.GetComponent<CVRAvatar>();
+        Assert.IsNotNull(cvrAvatar);
+        Assert.IsNotNull(cvrAvatar.overrides, "only the conversion sets up the override controller");
     }
 
     [Test]
@@ -98,8 +103,12 @@ public class VRC3CVRBuildProcessorTests
 
         new VRC3CVRBuildProcessor().OnPreProcessAvatar(avatar);
 
-        Assert.IsNotNull(avatar.GetComponent<CVRAvatar>());
         Assert.IsNull(avatar.GetComponent<VRCAvatarDescriptor>());
+        // See OnPreProcessAvatar_ConvertsInPlaceWhenTheSettingsComponentIsPresent: CVRAvatar's mere
+        // presence would be true even without a conversion, so check what only the conversion sets.
+        var cvrAvatar = avatar.GetComponent<CVRAvatar>();
+        Assert.IsNotNull(cvrAvatar);
+        Assert.IsNotNull(cvrAvatar.overrides, "only the conversion sets up the override controller");
     }
 }
 #endif
