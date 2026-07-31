@@ -4,6 +4,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using VRC.SDKBase.Editor.BuildPipeline;
+using PeanutTools_VRC3CVR.Localization;
 
 // Runs every VRChat SDK preprocess hook on a clone of the avatar, which is what applies
 // VRCFury, NDMF/Modular Avatar, Avatar Optimizer and every other non-destructive tool.
@@ -13,6 +14,15 @@ using VRC.SDKBase.Editor.BuildPipeline;
 // baked VRChat avatar. Components to strip before baking are passed in by the caller.
 public static class VRC3CVRBaker
 {
+    class T
+    {
+        public static istring HookRejected => new istring(
+            "A VRChat SDK preprocess hook rejected the avatar. "
+                + "Check the console for the tool that reported it.",
+            "VRChat SDK の preprocess フックがアバターを拒否しました。"
+                + "どのツールが報告したかはコンソールを確認してください。");
+    }
+
     public class Result
     {
         public bool succeeded;
@@ -30,22 +40,23 @@ public static class VRC3CVRBaker
         if (original == null) throw new ArgumentNullException(nameof(original));
 
         var clone = UnityEngine.Object.Instantiate(original);
-        clone.name = original.name + " (Baked)";
-        clone.SetActive(true);
-        if (clone.scene != original.scene)
-        {
-            SceneManager.MoveGameObjectToScene(clone, original.scene);
-        }
-        Undo.RegisterCreatedObjectUndo(clone, "VRC3CVR Bake");
-
-        foreach (var componentType in componentTypesToRemove)
-        {
-            var component = clone.GetComponent(componentType);
-            if (component != null) UnityEngine.Object.DestroyImmediate(component);
-        }
-
         try
         {
+            clone.name = original.name + " (Baked)";
+            clone.SetActive(true);
+            // A prefab asset has no valid scene, so only move when there is one to move to.
+            if (original.scene.IsValid() && clone.scene != original.scene)
+            {
+                SceneManager.MoveGameObjectToScene(clone, original.scene);
+            }
+            Undo.RegisterCreatedObjectUndo(clone, "VRC3CVR Bake");
+
+            foreach (var componentType in componentTypesToRemove)
+            {
+                var component = clone.GetComponent(componentType);
+                if (component != null) UnityEngine.Object.DestroyImmediate(component);
+            }
+
             // The only failure signals we trust: the documented false return and a thrown
             // exception. Scanning the log for error strings is unreliable and is not done.
             if (!preprocessRunner(clone))
@@ -54,8 +65,7 @@ public static class VRC3CVRBaker
                 return new Result
                 {
                     succeeded = false,
-                    errorMessage = "A VRChat SDK preprocess hook rejected the avatar. "
-                        + "Check the console for the tool that reported it.",
+                    errorMessage = T.HookRejected,
                 };
             }
         }
