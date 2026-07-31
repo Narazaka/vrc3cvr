@@ -5,7 +5,6 @@ using ABI.CCK.Components;
 using CVR.CCKEditor.ContentBuilder;
 using PeanutTools_VRC3CVR.Localization;
 using VRC.SDK3.Avatars.Components;
-using VRC.SDKBase.Editor.BuildPipeline;
 
 // Converts a VRChat avatar to ChilloutVR while the CCK is uploading it, so the user just presses
 // upload in the CCK Control Panel. This mirrors how Modular Avatar and VRCFury hook the VRChat
@@ -47,7 +46,7 @@ public class VRC3CVRBuildProcessor : CCKBuildProcessor
         {
             // The CCK build does not run VRChat's hooks, so ask for them explicitly. Unlike the
             // manual path there is no clone to make: the SDK contract is to rewrite what it is given.
-            if (!VRCBuildPipelineCallbacks.OnPreprocessAvatar(avatar))
+            if (!VRC3CVRBaker.BakeInPlace(avatar))
             {
                 throw new Exception(T.BakeFailed);
             }

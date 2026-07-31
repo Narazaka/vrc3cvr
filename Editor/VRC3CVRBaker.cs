@@ -77,5 +77,14 @@ public static class VRC3CVRBaker
 
         return new Result { succeeded = true, bakedAvatar = clone };
     }
+
+    // Runs the hooks on the object it is given, without cloning. For callers whose framework
+    // already made the clone and owns its lifetime — the CCK upload path. Goes through the same
+    // preprocessRunner seam as Bake(), so tests can drive its failure paths too.
+    public static bool BakeInPlace(GameObject avatar)
+    {
+        if (avatar == null) throw new ArgumentNullException(nameof(avatar));
+        return preprocessRunner(avatar);
+    }
 }
 #endif

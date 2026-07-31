@@ -1,9 +1,11 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
+using System;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
 using ABI.CCK.Components;
 using VRC.SDK3.Avatars.Components;
+using VRC.SDKBase.Editor.BuildPipeline;
 
 // The processor is normally driven by the CCK build pipeline, but OnPreProcessAvatar takes the
 // object to convert as its argument, so it can be exercised directly.
@@ -16,7 +18,9 @@ public class VRC3CVRBuildProcessorTests
     [TearDown]
     public void TearDown()
     {
-        if (avatar != null) Object.DestroyImmediate(avatar);
+        // Never leave a stubbed runner behind: it would silently disable baking for everyone else.
+        VRC3CVRBaker.preprocessRunner = VRCBuildPipelineCallbacks.OnPreprocessAvatar;
+        if (avatar != null) UnityEngine.Object.DestroyImmediate(avatar);
         AssetDatabase.DeleteAsset(TestFolder);
     }
 
@@ -60,12 +64,42 @@ public class VRC3CVRBuildProcessorTests
     {
         GenerateAvatar();
         Undo.AddComponent<VRC3CVRAvatar>(avatar);
-        Object.DestroyImmediate(avatar.GetComponent<VRCAvatarDescriptor>());
+        UnityEngine.Object.DestroyImmediate(avatar.GetComponent<VRCAvatarDescriptor>());
 
         new VRC3CVRBuildProcessor().OnPreProcessAvatar(avatar);
 
         Assert.IsNotNull(avatar.GetComponent<VRC3CVRAvatar>(),
             "with no VRChat descriptor there is nothing to convert, so nothing is touched");
+    }
+
+    [Test]
+    public void OnPreProcessAvatar_ThrowsWhenTheBakeIsRejected()
+    {
+        GenerateAvatar();
+        var settings = Undo.AddComponent<VRC3CVRAvatar>(avatar);
+        settings.convertConfig.autoBake = true;
+        settings.convertConfig.saveAssets = false;
+        VRC3CVRBaker.preprocessRunner = _ => false;
+
+        Assert.Throws<Exception>(() => new VRC3CVRBuildProcessor().OnPreProcessAvatar(avatar));
+        Assert.IsNotNull(avatar.GetComponent<VRCAvatarDescriptor>(),
+            "a rejected bake must not leave a half-converted avatar in the bundle");
+    }
+
+    [Test]
+    public void OnPreProcessAvatar_ConvertsAfterASuccessfulBake()
+    {
+        GenerateAvatar();
+        var settings = Undo.AddComponent<VRC3CVRAvatar>(avatar);
+        settings.convertConfig.autoBake = true;
+        settings.convertConfig.saveAssets = false;
+        // Stand in for the real hook chain: report success without modifying the avatar.
+        VRC3CVRBaker.preprocessRunner = _ => true;
+
+        new VRC3CVRBuildProcessor().OnPreProcessAvatar(avatar);
+
+        Assert.IsNotNull(avatar.GetComponent<CVRAvatar>());
+        Assert.IsNull(avatar.GetComponent<VRCAvatarDescriptor>());
     }
 }
 #endif
