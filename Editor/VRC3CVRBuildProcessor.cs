@@ -1,7 +1,6 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System;
 using UnityEngine;
-using ABI.CCK.Components;
 using CVR.CCKEditor.ContentBuilder;
 using PeanutTools_VRC3CVR.Localization;
 using VRC.SDK3.Avatars.Components;
@@ -68,9 +67,10 @@ public class VRC3CVRBuildProcessor : CCKBuildProcessor
 
         // Defensive: by this point CVRAvatar is required by VRC3CVRAvatar and the CCK already
         // rejected anything whose type is not Avatar, so this is normally a no-op. It costs nothing
-        // and keeps the invariant explicit for a caller that reaches here another way.
-        var assetInfo = avatar.GetComponent<CVRAssetInfo>();
-        if (assetInfo != null) assetInfo.type = CVRAssetInfo.AssetType.Avatar;
+        // and keeps the invariant explicit for a caller that reaches here another way. Also
+        // collapses duplicates: CVRAssetInfo is [DisallowMultipleComponent], but duplicates have
+        // been observed anyway, and picking the wrong one mid-upload would burn a content slot.
+        VRC3CVRCckComponents.EnsureSingleAssetInfo(avatar, recordUndo: false);
     }
 }
 #endif

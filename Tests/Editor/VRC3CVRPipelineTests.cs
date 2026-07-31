@@ -1,6 +1,7 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using NUnit.Framework;
 using UnityEditor;
+using UnityEditorInternal;
 using UnityEngine;
 using ABI.CCK.Components;
 using VRC.SDK3.Avatars.Components;
@@ -107,6 +108,163 @@ public class VRC3CVRPipelineTests
         Assert.IsNotNull(assetInfo, "CVRAvatar's OnValidate should attach CVRAssetInfo");
         Assert.AreEqual(CVRAssetInfo.AssetType.Avatar, assetInfo.type,
             "without a valid type the avatar is filtered out of the CCK Control Panel listing");
+    }
+
+    [Test]
+    public void AddingTheSettingsComponent_DoesNotDuplicateTheAssetInfo()
+    {
+        GenerateAvatar();
+
+        Undo.AddComponent<VRC3CVRAvatar>(original);
+
+        // CVRAvatar attaches CVRAssetInfo from its own OnValidate. If VRC3CVRAvatar also requires
+        // CVRAssetInfo directly, the dependency resolution can attach a second one.
+        Assert.AreEqual(1, original.GetComponents<CVRAssetInfo>().Length,
+            "exactly one CVRAssetInfo, no duplicates");
+        Assert.AreEqual(1, original.GetComponents<CVRAvatar>().Length,
+            "exactly one CVRAvatar, no duplicates");
+    }
+
+    [Test]
+    public void EnsureSingleAssetInfo_CreatesOneWhenAbsent()
+    {
+        var go = new GameObject("VRC3CVRCckComponentsTest_Bare");
+        try
+        {
+            var info = VRC3CVRCckComponents.EnsureSingleAssetInfo(go, recordUndo: false);
+
+            Assert.IsNotNull(info);
+            Assert.AreEqual(1, go.GetComponents<CVRAssetInfo>().Length);
+            Assert.AreEqual(CVRAssetInfo.AssetType.Avatar, info.type);
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void EnsureSingleAssetInfo_LeavesAnExistingValidOneAlone()
+    {
+        var go = new GameObject("VRC3CVRCckComponentsTest_Valid");
+        try
+        {
+            var info = go.AddComponent<CVRAssetInfo>();
+            info.type = CVRAssetInfo.AssetType.Avatar;
+            info.objectId = "keep-me";
+
+            var result = VRC3CVRCckComponents.EnsureSingleAssetInfo(go, recordUndo: false);
+
+            Assert.AreSame(info, result, "must not replace an already-valid CVRAssetInfo");
+            Assert.AreEqual("keep-me", result.objectId);
+            Assert.AreEqual(1, go.GetComponents<CVRAssetInfo>().Length);
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void EnsureSingleAssetInfo_FixesAnInvalidType()
+    {
+        var go = new GameObject("VRC3CVRCckComponentsTest_InvalidType");
+        try
+        {
+            var info = go.AddComponent<CVRAssetInfo>();
+            info.type = 0; // Enum starts at 1 ("Starting enums at 1 should be illegal"); 0 is invalid.
+
+            var result = VRC3CVRCckComponents.EnsureSingleAssetInfo(go, recordUndo: false);
+
+            Assert.AreSame(info, result);
+            Assert.AreEqual(CVRAssetInfo.AssetType.Avatar, result.type);
+            Assert.AreEqual(1, go.GetComponents<CVRAssetInfo>().Length);
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+        }
+    }
+
+    // Best-effort: attempts an AddComponent-family call that Unity may refuse for a
+    // [DisallowMultipleComponent] type. Measured on this Unity/CCK version: such refusals throw
+    // ArgumentException rather than silently no-op'ing, so this only exists to let the calling test
+    // try several techniques in a row without an uncaught exception failing the test outright.
+    static void TryAddDuplicate(System.Action attempt)
+    {
+        try
+        {
+            attempt();
+        }
+        catch (System.ArgumentException)
+        {
+            // Expected refusal; the caller checks GetComponents().Length and tries the next technique.
+        }
+    }
+
+    [Test]
+    public void EnsureSingleAssetInfo_CollapsesArtificialDuplicatesPreferringTheOneWithAContentId()
+    {
+        var go = new GameObject("VRC3CVRCckComponentsTest_Duplicate");
+        try
+        {
+            var first = go.AddComponent<CVRAssetInfo>();
+            first.type = CVRAssetInfo.AssetType.Avatar;
+            first.objectId = "existing-content-id";
+
+            // CVRAssetInfo carries [DisallowMultipleComponent]. Measured: a second AddComponent call
+            // -- whether via Undo.AddComponent, ObjectFactory.AddComponent, or CopyComponent/
+            // PasteComponentAsNew -- throws ArgumentException on this Unity/CCK version rather than
+            // silently failing. That is exactly what makes the real-world duplicate (built via
+            // VRC3CVRAvatar's now-removed RequireComponent(CVRAssetInfo) racing CVRAvatar's own
+            // OnValidate inside one dependency-resolution pass) surprising in the first place: no
+            // ordinary AddComponent call can reproduce it. If none of these work either, this
+            // degrades to Inconclusive rather than silently asserting nothing -- the important fact
+            // (could an artificial duplicate be produced at all, and how) is still reported.
+            if (go.GetComponents<CVRAssetInfo>().Length < 2)
+            {
+                TryAddDuplicate(() => Undo.AddComponent<CVRAssetInfo>(go));
+            }
+            if (go.GetComponents<CVRAssetInfo>().Length < 2)
+            {
+                TryAddDuplicate(() => ObjectFactory.AddComponent<CVRAssetInfo>(go));
+            }
+            if (go.GetComponents<CVRAssetInfo>().Length < 2)
+            {
+                TryAddDuplicate(() =>
+                {
+                    ComponentUtility.CopyComponent(first);
+                    ComponentUtility.PasteComponentAsNew(go);
+                });
+            }
+
+            var before = go.GetComponents<CVRAssetInfo>();
+            if (before.Length < 2)
+            {
+                Assert.Inconclusive(
+                    "Could not artificially create a duplicate CVRAssetInfo: Undo.AddComponent, "
+                        + "ObjectFactory.AddComponent, and CopyComponent/PasteComponentAsNew all "
+                        + "throw ArgumentException on this Unity/CCK version when one already "
+                        + "exists. EnsureSingleAssetInfo's duplicate-collapsing path is untested "
+                        + "here -- it remains a safety net for the real-world path (RequireComponent "
+                        + "racing CVRAvatar.OnValidate within one dependency-resolution pass), which "
+                        + "a single AddComponent call cannot reproduce.");
+            }
+
+            var second = before[1];
+            // The second component is freshly created; only the original carries the content id.
+            Assert.IsTrue(string.IsNullOrEmpty(second.objectId));
+
+            var kept = VRC3CVRCckComponents.EnsureSingleAssetInfo(go, recordUndo: false);
+
+            Assert.AreEqual(1, go.GetComponents<CVRAssetInfo>().Length, "duplicates must be collapsed to one");
+            Assert.AreEqual("existing-content-id", kept.objectId,
+                "the copy that carried the content id must survive, or the next upload would burn a content slot");
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+        }
     }
 
     [Test]

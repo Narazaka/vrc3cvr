@@ -35,18 +35,9 @@ public class VRC3CVRAvatarEditor : Editor
             // CVRAvatar's Reset/OnValidate, which attaches CVRAssetInfo with a valid type. This
             // stays as a safety net for the cases that do not go through that cascade -- a
             // component restored from a scene authored before these attributes existed, or one
-            // whose CVRAssetInfo was removed by hand. It is a no-op when everything is already set.
-            var assetInfo = avatar.GetComponent<CVRAssetInfo>();
-            if (assetInfo == null)
-            {
-                assetInfo = Undo.AddComponent<CVRAssetInfo>(avatar.gameObject);
-            }
-            if (assetInfo.type != CVRAssetInfo.AssetType.Avatar)
-            {
-                Undo.RecordObject(assetInfo, "Set CVR asset type");
-                assetInfo.type = CVRAssetInfo.AssetType.Avatar;
-                EditorUtility.SetDirty(assetInfo);
-            }
+            // whose CVRAssetInfo was removed by hand. It also collapses duplicates: CVRAssetInfo
+            // is [DisallowMultipleComponent], but duplicates have been observed anyway.
+            VRC3CVRCckComponents.EnsureSingleAssetInfo(avatar.gameObject, recordUndo: true);
         }
     }
 

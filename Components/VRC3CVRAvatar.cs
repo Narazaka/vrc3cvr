@@ -11,13 +11,15 @@ using ABI.CCK.Components;
 //
 // CVRAvatar is required because uploading from the CCK Control Panel is how the conversion runs,
 // and the CCK rejects a build with no CVRAvatar (ContentBuildPipeline.ValidateCommonParameters).
-// CVRAssetInfo is required separately because it -- not CVRAvatar -- is what decides whether the
-// avatar is listed in the panel at all (CCKAssetInfoManager.IsAssetInfoValid), and it holds the CVR
-// content id, so the id rides along on the source avatar without vrc3cvr managing it. Requiring
-// CVRAssetInfo explicitly rather than relying on CVRAvatar.OnValidate to attach it keeps the
-// dependency visible and independent of when Unity chooses to run Reset/OnValidate.
+// CVRAssetInfo -- not CVRAvatar -- is what decides whether the avatar is listed in the panel at all
+// (CCKAssetInfoManager.IsAssetInfoValid), and it holds the CVR content id, so the id rides along on
+// the source avatar without vrc3cvr managing it. It is deliberately not required here: CVRAvatar
+// already attaches it from its own OnValidate/Reset (measured), and requiring it a second time here
+// let Unity's RequireComponent dependency resolution race that OnValidate and attach a duplicate
+// CVRAssetInfo despite its own [DisallowMultipleComponent] (observed in practice). Anything that
+// still needs to guarantee CVRAssetInfo exists should go through VRC3CVRCckComponents, which also
+// collapses duplicates if Unity manages to create one anyway.
 [RequireComponent(typeof(CVRAvatar))]
-[RequireComponent(typeof(CVRAssetInfo))]
 [DisallowMultipleComponent]
 [AddComponentMenu("VRC3CVR/VRC3CVR Avatar")]
 public class VRC3CVRAvatar : MonoBehaviour

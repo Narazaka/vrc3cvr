@@ -2,7 +2,6 @@
 using System;
 using System.Linq;
 using UnityEngine;
-using ABI.CCK.Components;
 using VRC.SDK3.Avatars.Components;
 using PeanutTools_VRC3CVR.Localization;
 
@@ -127,10 +126,9 @@ public static class VRC3CVRPipeline
             // it from OnValidate. Adding VRC3CVRAvatar was measured to cascade into that, but the
             // path that gets here is different: VRC3CVRCore adds CVRAvatar directly for an avatar
             // that had no VRC3CVRAvatar component, and that path has not been measured. Establish
-            // the component rather than depend on the answer -- it is a no-op when it is already there.
-            var assetInfo = converted.GetComponent<CVRAssetInfo>();
-            if (assetInfo == null) assetInfo = converted.AddComponent<CVRAssetInfo>();
-            assetInfo.type = CVRAssetInfo.AssetType.Avatar;
+            // the component rather than depend on the answer -- it is a no-op when it is already
+            // there, and it collapses duplicates if more than one ended up on the converted avatar.
+            VRC3CVRCckComponents.EnsureSingleAssetInfo(converted, recordUndo: false);
 
             // The baker's name is an intermediate step's label; the user ships this object.
             if (usedBake) converted.name = originalName + " (ChilloutVR)";
