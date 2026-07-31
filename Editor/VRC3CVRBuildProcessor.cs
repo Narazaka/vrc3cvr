@@ -23,8 +23,10 @@ public class VRC3CVRBuildProcessor : CCKBuildProcessor
             "VRC3CVR のベイク中に VRChat SDK の preprocess フックがアバターを拒否しました。"
                 + "どのツールが報告したかはコンソールを確認してください。");
         public static istring NoDescriptorAfterBake => new istring(
-            "The bake result has no VRCAvatarDescriptor. A tool in the build chain removed it.",
-            "ベイク結果に VRCAvatarDescriptor がありません。ビルド途中のツールが削除しています。");
+            "The bake removed the VRCAvatarDescriptor, so there is nothing left to convert for "
+                + "this upload. A tool in the build chain is misconfigured.",
+            "ベイクによって VRCAvatarDescriptor が失われ、このアップロードで変換するものが"
+                + "なくなりました。ビルド途中のツールの設定に問題があります。");
     }
 
     public override void OnPreProcessAvatar(GameObject avatar)
