@@ -101,9 +101,8 @@ public static class VRC3CVRPipeline
             }
             catch (Exception exception)
             {
-                // The bake made a clone that nothing else owns yet; without this it is left
-                // orphaned in the user's scene. VRC3CVRCore does throw in practice.
-                if (usedBake && target != null) UnityEngine.Object.DestroyImmediate(target.gameObject);
+                // Deliberately leaves the clone in the scene: a half-converted avatar is what the
+                // user needs to diagnose why the conversion threw. Only bake failures clean up.
                 return new Result { succeeded = false, errorMessage = exception.ToString() };
             }
 
