@@ -17,6 +17,7 @@ using ABI.CCK.Components;
 // Code paths that add CVRAvatar themselves must attach CVRAssetInfo explicitly; OnValidate does
 // not run for them.
 [RequireComponent(typeof(CVRAvatar))]
+[DisallowMultipleComponent]
 [AddComponentMenu("VRC3CVR/VRC3CVR Avatar")]
 public class VRC3CVRAvatar : MonoBehaviour
 {
