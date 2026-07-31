@@ -34,9 +34,13 @@ public class VRC3CVRAvatarEditor : Editor
 
     public override void OnInspectorGUI()
     {
-        serializedObject.UpdateIfRequiredOrScript();
-        EditorGUILayout.PropertyField(convertConfigProperty);
-        serializedObject.ApplyModifiedProperties();
+        var avatar = (VRC3CVRAvatar)target;
+        var descriptor = avatar.GetComponent<VRCAvatarDescriptor>();
+
+        Localization.DrawLocaleSelector();
+        CustomGUI.SmallLineGap();
+
+        VRC3CVRPanel.Draw(serializedObject, convertConfigProperty, avatar.convertConfig, descriptor, avatar);
     }
 }
 #endif
