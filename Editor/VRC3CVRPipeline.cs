@@ -93,8 +93,19 @@ public static class VRC3CVRPipeline
             workingConfig.vrcAvatarDescriptor = target;
 
             var core = VRC3CVRCore.FromConfig(workingConfig);
-            core.Convert();
-            var converted = core.chilloutAvatar;
+            GameObject converted;
+            try
+            {
+                core.Convert();
+                converted = core.chilloutAvatar;
+            }
+            catch (Exception exception)
+            {
+                // The bake made a clone that nothing else owns yet; without this it is left
+                // orphaned in the user's scene. VRC3CVRCore does throw in practice.
+                if (usedBake && target != null) UnityEngine.Object.DestroyImmediate(target.gameObject);
+                return new Result { succeeded = false, errorMessage = exception.ToString() };
+            }
 
             // With autoBake the baker stripped this before the hooks ran; without it nothing has.
             var leftoverSettings = converted.GetComponent<VRC3CVRAvatar>();
