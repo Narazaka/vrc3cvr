@@ -123,10 +123,11 @@ public static class VRC3CVRPipeline
             if (leftoverSettings != null) UnityEngine.Object.DestroyImmediate(leftoverSettings);
 
             // The CCK Control Panel lists content by looking for a CVRAssetInfo with a valid type
-            // (CCKAssetInfoManager.IsAssetInfoValid). CVRAvatar does not require it -- it only adds
-            // one from OnValidate, which does not run when the conversion adds CVRAvatar from code.
-            // So establish it here rather than assuming it: without this the converted avatar never
-            // appears in the panel and cannot be uploaded.
+            // (CCKAssetInfoManager.IsAssetInfoValid). CVRAvatar does not require one -- it attaches
+            // it from OnValidate. Adding VRC3CVRAvatar was measured to cascade into that, but the
+            // path that gets here is different: VRC3CVRCore adds CVRAvatar directly for an avatar
+            // that had no VRC3CVRAvatar component, and that path has not been measured. Establish
+            // the component rather than depend on the answer -- it is a no-op when it is already there.
             var assetInfo = converted.GetComponent<CVRAssetInfo>();
             if (assetInfo == null) assetInfo = converted.AddComponent<CVRAssetInfo>();
             assetInfo.type = CVRAssetInfo.AssetType.Avatar;

@@ -71,7 +71,7 @@ public class VRC3CVRPipelineTests
     }
 
     [Test]
-    public void Convert_StripsTheSettingsComponentAndMarksTheAssetInfoAsAvatar()
+    public void Convert_StripsTheSettingsComponentAndSetsUpTheOverrideController()
     {
         var descriptor = GenerateAvatar();
         Undo.AddComponent<VRC3CVRAvatar>(original);
