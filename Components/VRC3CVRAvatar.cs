@@ -11,12 +11,15 @@ using ABI.CCK.Components;
 //
 // CVRAvatar is required because uploading from the CCK Control Panel is how the conversion runs,
 // and the CCK rejects a build with no CVRAvatar (ContentBuildPipeline.ValidateCommonParameters).
-// Adding it through the inspector also triggers CVRAvatar.OnValidate, which attaches the
-// CVRAssetInfo that actually decides whether the avatar is listed in the panel, and which holds
-// the CVR content id -- so the id rides along on the source avatar without vrc3cvr managing it.
-// Code paths that add CVRAvatar themselves must attach CVRAssetInfo explicitly; OnValidate does
-// not run for them.
+// CVRAssetInfo is required separately because it -- not CVRAvatar -- is what decides whether the
+// avatar is listed in the panel at all (CCKAssetInfoManager.IsAssetInfoValid), and it holds the CVR
+// content id, so the id rides along on the source avatar without vrc3cvr managing it. CVRAvatar
+// only attaches CVRAssetInfo from OnValidate, which does not run for code-driven AddComponent, so
+// requiring it here rather than relying on that is deliberate: AddComponent<VRC3CVRAvatar>() (from
+// the inspector or from code, e.g. Undo.AddComponent) recursively satisfies both RequireComponent
+// dependencies regardless of whether OnValidate runs.
 [RequireComponent(typeof(CVRAvatar))]
+[RequireComponent(typeof(CVRAssetInfo))]
 [DisallowMultipleComponent]
 [AddComponentMenu("VRC3CVR/VRC3CVR Avatar")]
 public class VRC3CVRAvatar : MonoBehaviour

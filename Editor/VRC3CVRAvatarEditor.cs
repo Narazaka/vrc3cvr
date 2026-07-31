@@ -9,23 +9,36 @@ using VRC.SDK3.Avatars.Components;
 [CustomEditor(typeof(VRC3CVRAvatar))]
 public class VRC3CVRAvatarEditor : Editor
 {
-    class T
-    {
-        public static istring MissingCvrAvatar => new istring(
-            "This avatar has no CVRAvatar component, so the CCK Control Panel will not list it "
-                + "and it cannot be uploaded. RequireComponent does not apply retroactively to a "
-                + "component restored from an older scene.",
-            "このアバターには CVRAvatar コンポーネントがないため、CCK Control Panel に表示されず"
-                + "アップロードできません。古いシーンから復元されたコンポーネントには RequireComponent が"
-                + "遡って適用されないためです。");
-        public static istring AddCvrAvatar => new istring("Add CVRAvatar", "CVRAvatar を追加");
-    }
-
     SerializedProperty convertConfigProperty;
 
     void OnEnable()
     {
         convertConfigProperty = serializedObject.FindProperty(nameof(VRC3CVRAvatar.convertConfig));
+        EnsureCckComponents();
+    }
+
+    // RequireComponent does not apply retroactively, so a VRC3CVRAvatar restored from a scene or
+    // prefab authored before those attributes existed has neither component. Without them the
+    // avatar is not listed in the CCK Control Panel and cannot be uploaded at all, so attach them
+    // rather than asking the user to. This only ever fires once per migrated avatar.
+    void EnsureCckComponents()
+    {
+        foreach (var singleTarget in targets)
+        {
+            var avatar = (VRC3CVRAvatar)singleTarget;
+            if (avatar == null) continue;
+            if (avatar.GetComponent<CVRAvatar>() == null)
+            {
+                Undo.AddComponent<CVRAvatar>(avatar.gameObject);
+            }
+            // CVRAvatar only attaches CVRAssetInfo from OnValidate, which Undo.AddComponent does
+            // not run, and CVRAssetInfo is what actually decides whether the avatar is listed
+            // (CCKAssetInfoManager.IsAssetInfoValid).
+            if (avatar.GetComponent<CVRAssetInfo>() == null)
+            {
+                Undo.AddComponent<CVRAssetInfo>(avatar.gameObject).type = CVRAssetInfo.AssetType.Avatar;
+            }
+        }
     }
 
     public override void OnInspectorGUI()
@@ -35,27 +48,6 @@ public class VRC3CVRAvatarEditor : Editor
 
         Localization.DrawLocaleSelector();
         CustomGUI.SmallLineGap();
-
-        if (avatar.GetComponent<CVRAvatar>() == null)
-        {
-            CustomGUI.RenderWarningMessage(T.MissingCvrAvatar);
-            if (GUILayout.Button(T.AddCvrAvatar))
-            {
-                foreach (var singleTarget in targets)
-                {
-                    var each = (VRC3CVRAvatar)singleTarget;
-                    if (each == null || each.GetComponent<CVRAvatar>() != null) continue;
-                    Undo.AddComponent<CVRAvatar>(each.gameObject);
-                    // Undo.AddComponent does not run OnValidate, so CVRAvatar does not bring its
-                    // CVRAssetInfo along here. Without it the avatar still would not be listed.
-                    if (each.GetComponent<CVRAssetInfo>() == null)
-                    {
-                        Undo.AddComponent<CVRAssetInfo>(each.gameObject).type = CVRAssetInfo.AssetType.Avatar;
-                    }
-                }
-            }
-            CustomGUI.SmallLineGap();
-        }
 
         VRC3CVRPanel.Draw(serializedObject, convertConfigProperty, avatar.convertConfig, descriptor, avatar);
     }
