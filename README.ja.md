@@ -72,24 +72,16 @@ CVRのDynamicBoneは古いバージョンであるためか、Root直下のボ�
 
 ### 1. 変換
 
-#### Modular Avatar導入済みの場合
-
 1. Unity 2022.3.22f1 / VRChat SDK 3.x（VCCを使用）でVRChatアバターをセットアップします。
 2. （任意）[PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone)などを使用してPhysBonesをDynamicBonesに変換しておきます。
 3. ChilloutVR CCK4 Preview をVRChatアバタープロジェクトにインポートします。
 4. VRC3CVRの`.unitypackage`をインポートします。
-5. アバター直下にVRC3CVRコンポーネントを付けて、Manual bakeします。（`Tools -> Modular Avatar -> Manual bake avatar`）
+5. アバター直下に **VRC3CVR Avatar** コンポーネントを付けてそのインスペクタを使うか、**Tools** -> **VRC3CVR** メニューでウインドウを出してアバターを選びます。どちらも同じ設定を編集します。
+6. 「Convert」をクリックします。
 
-#### Modular Avatarが無い場合
+**Auto bake**（自動ベイク）は既定でONなので、VRCFury・Modular Avatar・Avatar Optimizer など VRChat SDK のビルドフックを使うツールは変換前に自動で適用されます。事前に自分でベイクする必要はありません。
 
-1. Unity 2022.3.22f1 / VRChat SDK 3.x（VCCを使用）でVRChatアバターをセットアップします。
-2. （任意）[PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone)などを使用してPhysBonesをDynamicBonesに変換しておきます。
-3. ChilloutVR CCK4 Preview をVRChatアバタープロジェクトにインポートします。
-4. VRC3CVRの`.unitypackage`をインポートします。
-5. Tools -> VRC3CVR メニューでツールウインドウを出します。
-6. 変換したいVRCアバターを選択します。
-    - Modular Avatarやその他のアバタービルドツールを使っている場合は、先に「ベイク」を行ってください（例：`Tools -> Modular Avatar -> Manual bake avatar`）。
-7. 「Convert」をクリックします。
+> ベイクで生成されたアセットは一時フォルダにあり、次回ビルドで消えます。変換結果はプロジェクトに残さず、アップロードして使ってください。
 
 ### 2. アップロード
 

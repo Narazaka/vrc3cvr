@@ -74,24 +74,16 @@ To solve this, I created a tool called [ExcludeChildBones](https://github.com/Na
 
 ### 1. Convert
 
-#### With Modular Avatar
-
 1. Setup your VRChat avatars with Unity 2022.3.22f1 / VRChat SDK 3.x (use VCC)
 2. (optional) convert your PhysBones to DynamicBones by [PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone) etc.
 3. Import ChilloutVR CCK4 Preview to the VRChat avatar project.
 4. Import the vrc3cvr `.unitypackage`
-5. Add a VRC3CVR component to the avatar root, then Manual bake. (`Tools -> Modular Avatar -> Manual bake avatar`)
+5. Either add a **VRC3CVR Avatar** component to the avatar root and use its inspector, or open **Tools** -> **VRC3CVR** and pick the avatar there. Both edit the same settings.
+6. Click **Convert**
 
-#### Without Modular Avatar
+**Auto bake** is on by default, so VRCFury, Modular Avatar, Avatar Optimizer and any other tool that hooks the VRChat SDK build is applied automatically before the conversion. You no longer need to bake the avatar yourself first.
 
-1. Setup your VRChat avatars with Unity 2022.3.22f1 / VRChat SDK 3.x (use VCC)
-2. (optional) convert your PhysBones to DynamicBones by [PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone) etc.
-3. Import ChilloutVR CCK4 Preview to the VRChat avatar project.
-4. Import the vrc3cvr `.unitypackage`
-5. Click **Tools** -> VRC3CVR
-6. Select the VRC avatar you want to convert
-   - If you are using Modular Avatar or something non-destructive avatar build tool, try to "bake" avatar first (e.g. Tools -> Modular Avatar -> Manual bake avatar)
-7. Click Convert
+> The avatar a bake produces references generated assets that live in a temporary folder and are destroyed by the next build. Upload the result rather than keeping it in your project.
 
 ### 2. Upload
 
