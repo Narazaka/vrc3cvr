@@ -60,6 +60,10 @@ public class VRC3CVRBuildProcessor : CCKBuildProcessor
         config.vrcAvatarDescriptor = descriptor;
         // The CCK already owns this object; a clone here would be uploaded empty.
         config.shouldCloneAvatar = false;
+        // PrefabUtility.SaveAsPrefabAsset cannot serialize a reference to an AnimatorOverrideController
+        // that only lives in memory, so the animator has to be written to disk or the uploaded avatar
+        // has none at all. Not the user's choice on this path.
+        config.saveAssets = true;
         VRC3CVRCore.FromConfig(config).Convert();
 
         // Defensive: by this point CVRAvatar is required by VRC3CVRAvatar and the CCK already
