@@ -88,13 +88,15 @@ public static class VRC3CVRPanel
         if (component == null)
         {
             CustomGUI.SmallLineGap();
-            if (GUILayout.Button(T.SaveSettings) && descriptor != null)
+            EditorGUI.BeginDisabledGroup(descriptor == null);
+            if (GUILayout.Button(T.SaveSettings))
             {
                 var added = Undo.AddComponent<VRC3CVRAvatar>(descriptor.gameObject);
                 added.convertConfig.CopyFrom(config);
                 added.convertConfig.vrcAvatarDescriptor = null;
                 EditorUtility.SetDirty(added);
             }
+            EditorGUI.EndDisabledGroup();
             CustomGUI.HelpLabel(T.SaveSettingsDescription);
         }
 
