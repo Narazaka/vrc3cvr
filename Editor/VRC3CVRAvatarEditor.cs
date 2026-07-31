@@ -41,7 +41,14 @@ public class VRC3CVRAvatarEditor : Editor
             CustomGUI.RenderWarningMessage(T.MissingCvrAvatar);
             if (GUILayout.Button(T.AddCvrAvatar))
             {
-                Undo.AddComponent<CVRAvatar>(avatar.gameObject);
+                foreach (var singleTarget in targets)
+                {
+                    var each = (VRC3CVRAvatar)singleTarget;
+                    if (each != null && each.GetComponent<CVRAvatar>() == null)
+                    {
+                        Undo.AddComponent<CVRAvatar>(each.gameObject);
+                    }
+                }
             }
             CustomGUI.SmallLineGap();
         }
