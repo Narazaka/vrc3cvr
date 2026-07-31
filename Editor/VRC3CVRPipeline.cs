@@ -113,10 +113,14 @@ public static class VRC3CVRPipeline
             var leftoverSettings = converted.GetComponent<VRC3CVRAvatar>();
             if (leftoverSettings != null) UnityEngine.Object.DestroyImmediate(leftoverSettings);
 
-            // AddComponent<CVRAvatar>() from code runs neither Reset nor OnValidate, so the type
-            // the CCK would normally set is still 0 (invalid) here.
+            // The CCK Control Panel lists content by looking for a CVRAssetInfo with a valid type
+            // (CCKAssetInfoManager.IsAssetInfoValid). CVRAvatar does not require it -- it only adds
+            // one from OnValidate, which does not run when the conversion adds CVRAvatar from code.
+            // So establish it here rather than assuming it: without this the converted avatar never
+            // appears in the panel and cannot be uploaded.
             var assetInfo = converted.GetComponent<CVRAssetInfo>();
-            if (assetInfo != null) assetInfo.type = CVRAssetInfo.AssetType.Avatar;
+            if (assetInfo == null) assetInfo = converted.AddComponent<CVRAssetInfo>();
+            assetInfo.type = CVRAssetInfo.AssetType.Avatar;
 
             // The baker's name is an intermediate step's label; the user ships this object.
             if (usedBake) converted.name = originalName + " (ChilloutVR)";

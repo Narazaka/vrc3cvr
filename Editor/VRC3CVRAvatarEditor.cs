@@ -44,9 +44,13 @@ public class VRC3CVRAvatarEditor : Editor
                 foreach (var singleTarget in targets)
                 {
                     var each = (VRC3CVRAvatar)singleTarget;
-                    if (each != null && each.GetComponent<CVRAvatar>() == null)
+                    if (each == null || each.GetComponent<CVRAvatar>() != null) continue;
+                    Undo.AddComponent<CVRAvatar>(each.gameObject);
+                    // Undo.AddComponent does not run OnValidate, so CVRAvatar does not bring its
+                    // CVRAssetInfo along here. Without it the avatar still would not be listed.
+                    if (each.GetComponent<CVRAssetInfo>() == null)
                     {
-                        Undo.AddComponent<CVRAvatar>(each.gameObject);
+                        Undo.AddComponent<CVRAssetInfo>(each.gameObject).type = CVRAssetInfo.AssetType.Avatar;
                     }
                 }
             }

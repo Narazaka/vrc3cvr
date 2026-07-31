@@ -62,6 +62,12 @@ public class VRC3CVRPipelineTests
         Assert.IsFalse(result.usedBake);
         Assert.IsNotNull(converted.GetComponent<CVRAvatar>());
         Assert.AreNotSame(original, converted);
+
+        // Without a VRC3CVRAvatar component nothing brings CVRAssetInfo along, so the conversion
+        // has to establish it or the result cannot be uploaded.
+        var assetInfo = converted.GetComponent<CVRAssetInfo>();
+        Assert.IsNotNull(assetInfo, "the converted avatar must be listable in the CCK Control Panel");
+        Assert.AreEqual(CVRAssetInfo.AssetType.Avatar, assetInfo.type);
     }
 
     [Test]
