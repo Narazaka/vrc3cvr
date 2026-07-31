@@ -82,13 +82,31 @@ public class VRC3CVRPipelineTests
         Assert.IsTrue(result.succeeded, result.errorMessage);
         Assert.IsNull(converted.GetComponent<VRC3CVRAvatar>(), "settings must not ship in the converted avatar");
         // shouldCloneAvatar makes `converted` a clone of `original`, and VRC3CVRAvatar's
-        // RequireComponent(CVRAvatar) plus OnValidate already gave `original` a CVRAvatar and a
-        // valid CVRAssetInfo before Convert() ran, so those would clone across regardless of
-        // whether the conversion did anything. Only the conversion sets up the override
-        // controller, so check that instead.
+        // RequireComponent(CVRAvatar) already gave `original` a CVRAvatar and a valid CVRAssetInfo
+        // before Convert() ran (see AddingTheSettingsComponent_BringsTheCckComponentsWithIt), so
+        // those would clone across regardless of whether the conversion did anything. Only the
+        // conversion sets up the override controller, so check that instead.
         var cvrAvatar = converted.GetComponent<CVRAvatar>();
         Assert.IsNotNull(cvrAvatar);
         Assert.IsNotNull(cvrAvatar.overrides, "only the conversion sets up the override controller");
+    }
+
+    [Test]
+    public void AddingTheSettingsComponent_BringsTheCckComponentsWithIt()
+    {
+        GenerateAvatar();
+
+        Undo.AddComponent<VRC3CVRAvatar>(original);
+
+        // RequireComponent pulls in CVRAvatar, and adding it that way does run its Reset/OnValidate,
+        // which is what attaches CVRAssetInfo and sets the type. Measured, not assumed: the CCK
+        // Control Panel only lists content whose CVRAssetInfo has a valid type, so the whole
+        // upload-time conversion design rests on this holding.
+        Assert.IsNotNull(original.GetComponent<CVRAvatar>(), "RequireComponent should attach CVRAvatar");
+        var assetInfo = original.GetComponent<CVRAssetInfo>();
+        Assert.IsNotNull(assetInfo, "CVRAvatar's OnValidate should attach CVRAssetInfo");
+        Assert.AreEqual(CVRAssetInfo.AssetType.Avatar, assetInfo.type,
+            "without a valid type the avatar is filtered out of the CCK Control Panel listing");
     }
 
     [Test]

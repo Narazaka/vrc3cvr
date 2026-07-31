@@ -31,12 +31,21 @@ public class VRC3CVRAvatarEditor : Editor
             {
                 Undo.AddComponent<CVRAvatar>(avatar.gameObject);
             }
-            // CVRAvatar only attaches CVRAssetInfo from OnValidate, which Undo.AddComponent does
-            // not run, and CVRAssetInfo is what actually decides whether the avatar is listed
-            // (CCKAssetInfoManager.IsAssetInfoValid).
-            if (avatar.GetComponent<CVRAssetInfo>() == null)
+            // Measured: adding VRC3CVRAvatar does cascade through RequireComponent into
+            // CVRAvatar's Reset/OnValidate, which attaches CVRAssetInfo with a valid type. This
+            // stays as a safety net for the cases that do not go through that cascade -- a
+            // component restored from a scene authored before these attributes existed, or one
+            // whose CVRAssetInfo was removed by hand. It is a no-op when everything is already set.
+            var assetInfo = avatar.GetComponent<CVRAssetInfo>();
+            if (assetInfo == null)
             {
-                Undo.AddComponent<CVRAssetInfo>(avatar.gameObject).type = CVRAssetInfo.AssetType.Avatar;
+                assetInfo = Undo.AddComponent<CVRAssetInfo>(avatar.gameObject);
+            }
+            if (assetInfo.type != CVRAssetInfo.AssetType.Avatar)
+            {
+                Undo.RecordObject(assetInfo, "Set CVR asset type");
+                assetInfo.type = CVRAssetInfo.AssetType.Avatar;
+                EditorUtility.SetDirty(assetInfo);
             }
         }
     }

@@ -1,6 +1,7 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using UnityEditor;
 using UnityEngine;
+using ABI.CCK.Components;
 using PeanutTools_VRC3CVR;
 using PeanutTools_VRC3CVR.Localization;
 using VRC.SDK3.Avatars.Components;
@@ -99,6 +100,17 @@ public static class VRC3CVRPanel
                 added.convertConfig.CopyFrom(config);
                 added.convertConfig.vrcAvatarDescriptor = null;
                 EditorUtility.SetDirty(added);
+
+                // Measured to be unnecessary in the normal case -- the RequireComponent cascade
+                // does set this -- but kept so the button cannot leave an avatar that the CCK
+                // Control Panel silently refuses to list. No-op when the type is already Avatar.
+                var assetInfo = descriptor.GetComponent<CVRAssetInfo>();
+                if (assetInfo != null && assetInfo.type != CVRAssetInfo.AssetType.Avatar)
+                {
+                    Undo.RecordObject(assetInfo, "Set CVR asset type");
+                    assetInfo.type = CVRAssetInfo.AssetType.Avatar;
+                    EditorUtility.SetDirty(assetInfo);
+                }
             }
             EditorGUI.EndDisabledGroup();
             CustomGUI.HelpLabel(T.SaveSettingsDescription);

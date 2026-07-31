@@ -13,11 +13,9 @@ using ABI.CCK.Components;
 // and the CCK rejects a build with no CVRAvatar (ContentBuildPipeline.ValidateCommonParameters).
 // CVRAssetInfo is required separately because it -- not CVRAvatar -- is what decides whether the
 // avatar is listed in the panel at all (CCKAssetInfoManager.IsAssetInfoValid), and it holds the CVR
-// content id, so the id rides along on the source avatar without vrc3cvr managing it. CVRAvatar
-// only attaches CVRAssetInfo from OnValidate, which does not run for code-driven AddComponent, so
-// requiring it here rather than relying on that is deliberate: AddComponent<VRC3CVRAvatar>() (from
-// the inspector or from code, e.g. Undo.AddComponent) recursively satisfies both RequireComponent
-// dependencies regardless of whether OnValidate runs.
+// content id, so the id rides along on the source avatar without vrc3cvr managing it. Requiring
+// CVRAssetInfo explicitly rather than relying on CVRAvatar.OnValidate to attach it keeps the
+// dependency visible and independent of when Unity chooses to run Reset/OnValidate.
 [RequireComponent(typeof(CVRAvatar))]
 [RequireComponent(typeof(CVRAssetInfo))]
 [DisallowMultipleComponent]
