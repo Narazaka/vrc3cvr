@@ -4178,7 +4178,19 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             return;
         }
-        if (!chilloutAnimatorController.parameters.Any(p => p.name == "IsLocal"))
+        // The avatar may already declare IsLocal itself, and not necessarily as a Bool: a blend
+        // tree's blend parameter has to be a Float, so an avatar that drives anything off IsLocal
+        // through a blend tree declares it Float. CopyParametersTo keeps the first declaration it
+        // sees, so that type reaches here. Match the condition mode to whatever is actually there
+        // instead of assuming Bool -- assuming it produces
+        // "uses parameter 'IsLocal' which is not compatible with condition type" and a dead layer.
+        var existingIsLocal = chilloutAnimatorController.parameters.FirstOrDefault(p => p.name == "IsLocal");
+        AnimatorConditionMode localMode;
+        AnimatorConditionMode remoteMode;
+        float localThreshold;
+        float remoteThreshold;
+
+        if (existingIsLocal == null)
         {
             var parameters = chilloutAnimatorController.parameters;
             ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
@@ -4188,6 +4200,50 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 defaultBool = false,
             });
             chilloutAnimatorController.parameters = parameters;
+            localMode = AnimatorConditionMode.If;
+            remoteMode = AnimatorConditionMode.IfNot;
+            localThreshold = 1f;
+            remoteThreshold = 1f;
+        }
+        else
+        {
+            switch (existingIsLocal.type)
+            {
+                case AnimatorControllerParameterType.Bool:
+                    localMode = AnimatorConditionMode.If;
+                    remoteMode = AnimatorConditionMode.IfNot;
+                    localThreshold = 1f;
+                    remoteThreshold = 1f;
+                    break;
+                case AnimatorControllerParameterType.Float:
+                    localMode = AnimatorConditionMode.Greater;
+                    remoteMode = AnimatorConditionMode.Less;
+                    localThreshold = 0.5f;
+                    remoteThreshold = 0.5f;
+                    break;
+                case AnimatorControllerParameterType.Int:
+                    localMode = AnimatorConditionMode.Greater;
+                    remoteMode = AnimatorConditionMode.Less;
+                    localThreshold = 0f;
+                    remoteThreshold = 1f;
+                    break;
+                default:
+                    // A Trigger cannot express "not fired", so there is no pair of conditions that
+                    // would work. Skip the layer rather than emit a broken one.
+                    Debug.LogWarning(
+                        "VRC3CVR: the avatar declares IsLocal as " + existingIsLocal.type
+                            + ", which cannot drive the local-only contact layer. "
+                            + "Local-only contacts will stay enabled on remote copies.");
+                    return;
+            }
+
+            if (existingIsLocal.type != AnimatorControllerParameterType.Bool)
+            {
+                Debug.LogWarning(
+                    "VRC3CVR: the avatar declares IsLocal as " + existingIsLocal.type
+                        + " rather than Bool, so the local-only contact layer compares it numerically. "
+                        + "Check that ChilloutVR actually drives IsLocal in that type on your avatar.");
+            }
         }
 
         var remoteClip = new AnimationClip { name = "VRC3CVR_DisableLocalOnlyContactsOnRemote" };
@@ -4246,9 +4302,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     {
                         new AnimatorCondition
                         {
-                            mode = AnimatorConditionMode.If,
+                            mode = localMode,
                             parameter = "IsLocal",
-                            threshold = 1f,
+                            threshold = localThreshold,
                         },
                     },
                 },
@@ -4265,9 +4321,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     {
                         new AnimatorCondition
                         {
-                            mode = AnimatorConditionMode.IfNot,
+                            mode = remoteMode,
                             parameter = "IsLocal",
-                            threshold = 1f,
+                            threshold = remoteThreshold,
                         },
                     },
                 },
