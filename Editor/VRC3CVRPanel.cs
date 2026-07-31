@@ -32,8 +32,12 @@ public static class VRC3CVRPanel
             "元のアバターをクローンして変換します");
         public static istring SaveSettings => new istring("Save settings to the avatar", "設定をアバターに保存");
         public static istring SaveSettingsDescription => new istring(
-            "Adds a VRC3CVR Avatar component so these settings travel with the avatar",
-            "VRC3CVR Avatar コンポーネントを追加し、設定をアバターと一緒に持ち運べるようにします");
+            "Adds a VRC3CVR Avatar component so these settings travel with the avatar. "
+                + "A CVRAvatar is added with it, which is what makes the avatar uploadable "
+                + "from the CCK Control Panel.",
+            "VRC3CVR Avatar コンポーネントを追加し、設定をアバターと一緒に持ち運べるようにします。"
+                + "一緒に CVRAvatar が追加され、これにより CCK Control Panel から"
+                + "アップロードできるようになります。");
         public static istring VolatileBakeResult => new istring(
             "Bake generated assets live in a temporary folder and are destroyed by the next build. "
                 + "Upload this result rather than keeping it.",

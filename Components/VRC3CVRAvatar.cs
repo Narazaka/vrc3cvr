@@ -9,10 +9,13 @@ using ABI.CCK.Components;
 // and an asmdef assembly cannot reference the predefined Assembly-CSharp where the CCK lives.
 // Being outside any asmdef lets it see both the CCK and VRC3CVR.Runtime (autoReferenced).
 //
-// CVRAvatar is required because the CCK Control Panel only lists content that has one
-// (ContentBuildPipeline.ValidateCommonParameters throws when there is none), and uploading from
-// there is how the conversion runs. CVRAvatar in turn brings CVRAssetInfo, which is where the CVR
-// content id lives, so the id rides along on the source avatar without vrc3cvr managing it.
+// CVRAvatar is required because uploading from the CCK Control Panel is how the conversion runs,
+// and the CCK rejects a build with no CVRAvatar (ContentBuildPipeline.ValidateCommonParameters).
+// Adding it through the inspector also triggers CVRAvatar.OnValidate, which attaches the
+// CVRAssetInfo that actually decides whether the avatar is listed in the panel, and which holds
+// the CVR content id -- so the id rides along on the source avatar without vrc3cvr managing it.
+// Code paths that add CVRAvatar themselves must attach CVRAssetInfo explicitly; OnValidate does
+// not run for them.
 [RequireComponent(typeof(CVRAvatar))]
 [AddComponentMenu("VRC3CVR/VRC3CVR Avatar")]
 public class VRC3CVRAvatar : MonoBehaviour
