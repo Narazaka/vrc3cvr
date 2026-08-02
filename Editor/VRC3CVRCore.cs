@@ -178,6 +178,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             MakeGestureWeightFeedLayers();
             MakeVelocityMagnitudeFeedLayer();
             MakeGameStateParameterStreams();
+            AdaptTransitionConditionTypesToParameterTypes();
             InsertChilloutOverride();
 
             ConvertVrcComponents();
@@ -4170,6 +4171,117 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
         Debug.Log($"Remapped constraints: {clip}");
         return newClip;
+    }
+
+    // Final pass over every layer vrc3cvr ends up with (converted-from-VRC and vrc3cvr-generated
+    // alike), rewriting each transition condition's mode to match what its parameter is actually
+    // declared as on chilloutAnimatorController. This has to run after every layer exists --
+    // ProcessTransition runs along several different code paths while layers are being built, and
+    // vrc3cvr's own generated layers (gesture weight feed, velocity magnitude, game state streams)
+    // are added afterwards -- so a single pass at the very end is the only way not to miss any of
+    // them. See VRC3CVRConditionTypes for why the mismatch happens and why adapting instead of
+    // forcing the parameter back to Bool is correct (ChilloutVR type-casts on send).
+    void AdaptTransitionConditionTypesToParameterTypes()
+    {
+        var parameterTypes = chilloutAnimatorController.parameters.ToDictionary(p => p.name, p => p.type);
+        var adaptedCount = 0;
+        var droppedCount = 0;
+
+        foreach (var layer in chilloutAnimatorController.layers)
+        {
+            AdaptConditionTypesOnStateMachine(layer.stateMachine, layer.name, parameterTypes, ref adaptedCount, ref droppedCount);
+        }
+
+        if (adaptedCount > 0 || droppedCount > 0)
+        {
+            Debug.Log($"VRC3CVR: adapted {adaptedCount} transition condition(s) to match their parameter's actual type, dropped {droppedCount} that had no equivalent.");
+        }
+    }
+
+    void AdaptConditionTypesOnStateMachine(AnimatorStateMachine stateMachine, string layerName, Dictionary<string, AnimatorControllerParameterType> parameterTypes, ref int adaptedCount, ref int droppedCount)
+    {
+        var anyStateTransitions = stateMachine.anyStateTransitions;
+        if (AdaptConditionTypesOnTransitions(anyStateTransitions, layerName, "AnyState", parameterTypes, ref adaptedCount, ref droppedCount))
+        {
+            stateMachine.anyStateTransitions = anyStateTransitions;
+        }
+
+        var entryTransitions = stateMachine.entryTransitions;
+        if (AdaptConditionTypesOnTransitions(entryTransitions, layerName, "Entry", parameterTypes, ref adaptedCount, ref droppedCount))
+        {
+            stateMachine.entryTransitions = entryTransitions;
+        }
+
+        foreach (var childState in stateMachine.states)
+        {
+            var transitions = childState.state.transitions;
+            if (AdaptConditionTypesOnTransitions(transitions, layerName, $"state '{childState.state.name}'", parameterTypes, ref adaptedCount, ref droppedCount))
+            {
+                childState.state.transitions = transitions;
+            }
+        }
+
+        foreach (var subMachine in stateMachine.stateMachines)
+        {
+            var transitions = stateMachine.GetStateMachineTransitions(subMachine.stateMachine);
+            if (AdaptConditionTypesOnTransitions(transitions, layerName, $"transition into sub-state-machine '{subMachine.stateMachine.name}'", parameterTypes, ref adaptedCount, ref droppedCount))
+            {
+                stateMachine.SetStateMachineTransitions(subMachine.stateMachine, transitions);
+            }
+        }
+
+        foreach (var childStateMachine in stateMachine.stateMachines)
+        {
+            AdaptConditionTypesOnStateMachine(childStateMachine.stateMachine, layerName, parameterTypes, ref adaptedCount, ref droppedCount);
+        }
+    }
+
+    // Returns whether any condition on any of the given transitions changed (adapted or dropped),
+    // so the caller only has to write the transitions array back when something actually moved.
+    bool AdaptConditionTypesOnTransitions<T>(T[] transitions, string layerName, string context, Dictionary<string, AnimatorControllerParameterType> parameterTypes, ref int adaptedCount, ref int droppedCount) where T : AnimatorTransitionBase
+    {
+        var changedAny = false;
+
+        foreach (var transition in transitions)
+        {
+            var conditions = transition.conditions;
+            var changed = false;
+            var kept = new List<AnimatorCondition>(conditions.Length);
+
+            foreach (var condition in conditions)
+            {
+                if (!parameterTypes.TryGetValue(condition.parameter, out var parameterType))
+                {
+                    // Not a parameter we know about on this controller -- somebody else's problem.
+                    kept.Add(condition);
+                    continue;
+                }
+
+                if (VRC3CVRConditionTypes.TryAdapt(condition, parameterType, out var adapted))
+                {
+                    if (adapted.mode != condition.mode || !Mathf.Approximately(adapted.threshold, condition.threshold))
+                    {
+                        adaptedCount++;
+                        changed = true;
+                    }
+                    kept.Add(adapted);
+                }
+                else
+                {
+                    droppedCount++;
+                    changed = true;
+                    Debug.LogWarning($"VRC3CVR: dropped a transition condition on layer '{layerName}', {context} -- parameter '{condition.parameter}' is {parameterType} and has no equivalent for condition mode {condition.mode}. The transition may now behave differently than on VRChat.");
+                }
+            }
+
+            if (changed)
+            {
+                transition.conditions = kept.ToArray();
+                changedAny = true;
+            }
+        }
+
+        return changedAny;
     }
 
     void EnsureLocalOnlyContacts()
