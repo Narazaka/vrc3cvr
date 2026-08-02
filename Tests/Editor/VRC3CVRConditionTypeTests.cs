@@ -1,7 +1,6 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -23,15 +22,14 @@ using VRC.SDK3.Avatars.Components;
 // VRC3CVRConditionTypes.cs for why adapting the condition (rather than forcing the parameter back
 // to Bool) is correct: ChilloutVR's CVRAnimatorManager type-casts on send regardless.
 //
-// ProcessTransition now performs this adaptation itself, at the point each condition is generated,
-// using chilloutAnimatorController's already-merged parameter types (see VRC3CVRCore.cs). The
-// end-of-conversion AdaptTransitionConditionTypesToParameterTypes pass still exists as a safety net
-// for anything that reaches chilloutAnimatorController by some other route, but for this scenario it
-// should now have nothing left to do.
+// ProcessTransition performs this adaptation itself, at the point each condition is generated, using
+// chilloutAnimatorController's already-merged parameter types (see VRC3CVRCore.cs). There is no
+// corrective pass afterwards and there deliberately is not one: Unity logs the error the instant an
+// incompatible condition is live on a controller, so repairing it later fixes the result and leaves
+// the Console error standing. The end-to-end tests below are what keeps the generating traversal
+// honest -- they fail on the Console error, not just on a wrong result.
 public class VRC3CVRConditionTypeTests
 {
-    const BindingFlags Flags = BindingFlags.NonPublic | BindingFlags.Instance;
-
     static AnimatorCondition Cond(AnimatorConditionMode mode, float threshold) =>
         new AnimatorCondition { parameter = "P", mode = mode, threshold = threshold };
 
@@ -241,15 +239,6 @@ public class VRC3CVRConditionTypeTests
             converted = core.chilloutAvatar;
             Assert.IsNotNull(converted);
 
-            // The end-of-conversion safety net (AdaptTransitionConditionTypesToParameterTypes)
-            // should have had nothing left to adapt or drop: everything reachable through
-            // ProcessTransition -- which this scenario's Neutral -> Fist transition is -- gets fixed
-            // at generation time now, not as an afterthought.
-            var adaptedCount = (int)typeof(VRC3CVRCore).GetField("lastAdaptedConditionCount", Flags).GetValue(core);
-            var droppedCount = (int)typeof(VRC3CVRCore).GetField("lastDroppedConditionCount", Flags).GetValue(core);
-            Assert.AreEqual(0, adaptedCount, "ProcessTransition should have already adapted this condition when it was generated, leaving nothing for the end-of-conversion pass to do");
-            Assert.AreEqual(0, droppedCount, "nothing in this scenario should be unrecoverable");
-
             var cvrAvatar = converted.GetComponent<CVRAvatar>();
             var controller = (AnimatorController)cvrAvatar.avatarSettings.baseController;
 
@@ -285,10 +274,10 @@ public class VRC3CVRConditionTypeTests
     //   AnimatorStateMachine.entryTransitions         (AnimatorTransition[])
     //   AnimatorStateMachine.GetStateMachineTransitions(sub)  (AnimatorTransition[], stored on the PARENT)
     // The first is covered by the test above. These cover the other three, each with the same
-    // Float-declared IsLocal + Bool-shaped If condition, and each asserting the same three things:
-    // the converted condition is the numeric equivalent, no Console error was logged (the test
-    // framework fails on any unhandled LogType.Error), and the conversion produced that result
-    // without a corrective pass afterwards.
+    // Float-declared IsLocal + Bool-shaped If condition, and each asserting the same two things:
+    // the converted condition is the numeric equivalent, and no Console error was logged along the
+    // way (the test framework fails on any unhandled LogType.Error) -- which together mean the
+    // generating traversal reached that transition, since nothing downstream would fix it.
 
     static IEnumerable<AnimatorStateMachine> AllStateMachines(AnimatorStateMachine stateMachine)
     {
@@ -331,14 +320,6 @@ public class VRC3CVRConditionTypeTests
             core.Convert();
             converted = core.chilloutAvatar;
             Assert.IsNotNull(converted);
-
-            // The end-of-conversion safety net must find nothing left to do: the traversal that
-            // generates the conditions has to be complete on its own, because a corrective pass
-            // cannot un-log the Console error Unity already emitted.
-            var adaptedCount = (int)typeof(VRC3CVRCore).GetField("lastAdaptedConditionCount", Flags).GetValue(core);
-            var droppedCount = (int)typeof(VRC3CVRCore).GetField("lastDroppedConditionCount", Flags).GetValue(core);
-            Assert.AreEqual(0, adaptedCount, "ProcessTransition should have already adapted this condition when it was generated");
-            Assert.AreEqual(0, droppedCount, "nothing in this scenario should be unrecoverable");
 
             var cvrAvatar = converted.GetComponent<CVRAvatar>();
             var controller = (AnimatorController)cvrAvatar.avatarSettings.baseController;
