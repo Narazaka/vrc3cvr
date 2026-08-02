@@ -27,7 +27,12 @@ public class VRC3CVRGestureConversionTests
         {
             transition.AddCondition(condition.mode, condition.threshold, condition.parameter);
         }
-        return (AnimatorStateTransition[])method.Invoke(core, new object[] { new[] { transition } });
+        // layerName/context only feed a warning message when a condition has to be dropped (see
+        // VRC3CVRCore.ProcessTransition); these tests don't exercise that path, so placeholders are fine.
+        // MakeCore below never sets chilloutAnimatorController, so no parameter type is known for
+        // anything here -- every condition these tests write is expected to pass through unchanged
+        // except for the Gesture/GestureWeight-specific rewriting under test.
+        return (AnimatorStateTransition[])method.Invoke(core, new object[] { new[] { transition }, "TestLayer", "TestContext" });
     }
 
     static AnimatorCondition Cond(string parameter, AnimatorConditionMode mode, float threshold)

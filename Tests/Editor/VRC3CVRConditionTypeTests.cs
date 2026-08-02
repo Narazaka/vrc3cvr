@@ -1,15 +1,17 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.TestTools;
 using ABI.CCK.Components;
 using VRC.SDK3.Avatars.Components;
 
 // Unit tests for VRC3CVRConditionTypes.TryAdapt, plus one end-to-end test proving the pipeline
-// actually rewrites a transition condition whose parameter changed type during conversion.
+// actually rewrites a transition condition whose parameter changed type during conversion --
+// and does so early enough that Unity's own AnimatorController never logs the resulting Console
+// error even transiently.
 //
 // The scenario this whole file exists for: a VRChat avatar drives something off IsLocal through a
 // blend tree, which forces IsLocal to be declared Float (blend parameters must be Float). Every
@@ -19,8 +21,16 @@ using VRC.SDK3.Avatars.Components;
 // copied over, as "uses parameter 'IsLocal' which is not compatible with condition type". See
 // VRC3CVRConditionTypes.cs for why adapting the condition (rather than forcing the parameter back
 // to Bool) is correct: ChilloutVR's CVRAnimatorManager type-casts on send regardless.
+//
+// ProcessTransition now performs this adaptation itself, at the point each condition is generated,
+// using chilloutAnimatorController's already-merged parameter types (see VRC3CVRCore.cs). The
+// end-of-conversion AdaptTransitionConditionTypesToParameterTypes pass still exists as a safety net
+// for anything that reaches chilloutAnimatorController by some other route, but for this scenario it
+// should now have nothing left to do.
 public class VRC3CVRConditionTypeTests
 {
+    const BindingFlags Flags = BindingFlags.NonPublic | BindingFlags.Instance;
+
     static AnimatorCondition Cond(AnimatorConditionMode mode, float threshold) =>
         new AnimatorCondition { parameter = "P", mode = mode, threshold = threshold };
 
@@ -217,28 +227,27 @@ public class VRC3CVRConditionTypeTests
                 saveAssets = false,
             });
 
-            // The fix runs as a single pass at the very end of Convert() (see
-            // AdaptTransitionConditionTypesToParameterTypes), so for however long the merge takes,
-            // chilloutAnimatorController genuinely contains this same still-Bool-shaped condition
-            // against an already-Float IsLocal. Unity's own AnimatorController validates eagerly
-            // and logs exactly the Console error from the bug report the moment that combination
-            // exists on a live controller -- not just when someone opens the Animator window. That
-            // is expected noise inherent to fixing it at the end rather than per-transition during
-            // the merge (which is what ProcessTransition's multiple call sites and vrc3cvr's own
-            // layers being added afterwards made impractical); the assertions below are what prove
-            // the *result* is actually correct.
-            var previousIgnoreFailingMessages = LogAssert.ignoreFailingMessages;
-            LogAssert.ignoreFailingMessages = true;
-            try
-            {
-                core.Convert();
-            }
-            finally
-            {
-                LogAssert.ignoreFailingMessages = previousIgnoreFailingMessages;
-            }
+            // No LogAssert.ignoreFailingMessages here, deliberately: Unity Test Framework fails a
+            // test on any unhandled LogType.Error, and Unity's own AnimatorController logs exactly
+            // that (the Console error from the bug report) the instant a live controller has a
+            // condition that is not compatible with its parameter's declared type. ProcessTransition
+            // now adapts every condition it generates against chilloutAnimatorController's
+            // already-merged parameter types (see VRC3CVRCore.cs) before it is ever written onto a
+            // transition, so that combination should never exist on a live controller in the first
+            // place. If this call logs an error, the test fails right here -- that failure *is* the
+            // regression check for the original bug report.
+            core.Convert();
             converted = core.chilloutAvatar;
             Assert.IsNotNull(converted);
+
+            // The end-of-conversion safety net (AdaptTransitionConditionTypesToParameterTypes)
+            // should have had nothing left to adapt or drop: everything reachable through
+            // ProcessTransition -- which this scenario's Neutral -> Fist transition is -- gets fixed
+            // at generation time now, not as an afterthought.
+            var adaptedCount = (int)typeof(VRC3CVRCore).GetField("lastAdaptedConditionCount", Flags).GetValue(core);
+            var droppedCount = (int)typeof(VRC3CVRCore).GetField("lastDroppedConditionCount", Flags).GetValue(core);
+            Assert.AreEqual(0, adaptedCount, "ProcessTransition should have already adapted this condition when it was generated, leaving nothing for the end-of-conversion pass to do");
+            Assert.AreEqual(0, droppedCount, "nothing in this scenario should be unrecoverable");
 
             var cvrAvatar = converted.GetComponent<CVRAvatar>();
             var controller = (AnimatorController)cvrAvatar.avatarSettings.baseController;
