@@ -2261,6 +2261,26 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         stateMachine.anyStateTransitions = ProcessTransitions(stateMachine.anyStateTransitions, layerName, "AnyState");
         stateMachine.entryTransitions = ProcessTransitions(stateMachine.entryTransitions, layerName, "Entry");
 
+        // A sub-state-machine's own outgoing transitions (to a sibling state, to another
+        // sub-state-machine, or to Exit) are not stored on that sub-state-machine: Unity keeps them
+        // on its *parent*, reachable only through GetStateMachineTransitions/SetStateMachineTransitions.
+        // The recursion below descends into the child, which never sees them, so without this loop
+        // they were the one kind of transition whose conditions no code path converted -- neither the
+        // gesture rewrite nor the condition-type adaptation. AdjustParameterNamesOnStateMachine and
+        // AdaptConditionTypesOnStateMachine both already walk them; this makes the set match.
+        foreach (ChildAnimatorStateMachine childStateMachine in stateMachine.stateMachines)
+        {
+            var subMachine = childStateMachine.stateMachine;
+            var subMachineTransitions = stateMachine.GetStateMachineTransitions(subMachine);
+            if (subMachineTransitions.Length == 0)
+            {
+                continue;
+            }
+            stateMachine.SetStateMachineTransitions(
+                subMachine,
+                ProcessTransitions(subMachineTransitions, layerName, $"sub-state-machine '{subMachine.name}'"));
+        }
+
         if (stateMachine.stateMachines.Length > 0)
         {
             // Debug.Log("Found " + stateMachine.stateMachines.Length + " child state machines");
