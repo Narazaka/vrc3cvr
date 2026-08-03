@@ -279,5 +279,35 @@ public class VRC3CVRPipelineTests
         var descriptor = GenerateAvatar();
         Assert.IsNull(VRC3CVRPipeline.GetConvertBlocker(descriptor));
     }
+
+    // With autoBake off and shouldCloneAvatar off, VRC3CVRCore.CreateChilloutAvatar hands back
+    // vrcAvatarDescriptor.gameObject itself instead of a clone -- so core.chilloutAvatar IS the
+    // user's own scene object. A bare descriptor with no Animator makes SetAnimator throw
+    // (GetComponent<Animator>() returns null, then the null is dereferenced), which used to make
+    // the catch block tag that same object EditorOnly and rename it: the user's avatar would drop
+    // out of the CCK Control Panel and get destroyed by the next VRChat/CCK build, with no Undo
+    // record to recover it.
+    [Test]
+    public void Convert_WhenConvertingInPlaceFails_DoesNotTagOrRenameTheOriginalAvatar()
+    {
+        var go = new GameObject("VRC3CVRPipelineTest_BareDescriptor");
+        original = go;
+        var descriptor = go.AddComponent<VRCAvatarDescriptor>();
+
+        var config = new VRC3CVRConvertConfig
+        {
+            autoBake = false,
+            shouldCloneAvatar = false,
+            saveAssets = false,
+        };
+
+        var result = VRC3CVRPipeline.Convert(descriptor, config);
+
+        Assert.IsFalse(result.succeeded, "a descriptor with no Animator must fail SetAnimator");
+        Assert.AreEqual("VRC3CVRPipelineTest_BareDescriptor", go.name,
+            "the user's own avatar must not be renamed when there is no clone to fall back to");
+        Assert.AreNotEqual("EditorOnly", go.tag,
+            "the user's own avatar must not be tagged EditorOnly -- that gets it destroyed by the next build");
+    }
 }
 #endif

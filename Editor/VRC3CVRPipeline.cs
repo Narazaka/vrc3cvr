@@ -106,10 +106,13 @@ public static class VRC3CVRPipeline
             {
                 // Deliberately leaves the clone in the scene: a half-converted avatar is what the
                 // user needs to diagnose why the conversion threw. Only bake failures clean up.
-                // Tag it EditorOnly so it drops out of the CCK Control Panel listing
-                // (CCKAssetInfoManager.IsAssetInfoValid excludes EditorOnly) -- otherwise a failed
-                // run leaves something named like a success that is one click from being uploaded.
-                if (core != null && core.chilloutAvatar != null)
+                // Tag it EditorOnly so it drops out of the CCK Control Panel listing -- otherwise a
+                // failed run leaves something named like a success that is one click from being
+                // uploaded. Guarded on there actually being a clone: with autoBake off and
+                // shouldCloneAvatar off, VRC3CVRCore converts the user's own avatar in place, and
+                // tagging that EditorOnly would get it deleted by the next VRChat or CCK build.
+                var convertedInPlace = !usedBake && !workingConfig.shouldCloneAvatar;
+                if (!convertedInPlace && core != null && core.chilloutAvatar != null)
                 {
                     core.chilloutAvatar.tag = "EditorOnly";
                     core.chilloutAvatar.name += " (FAILED)";
