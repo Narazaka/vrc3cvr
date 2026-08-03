@@ -1,3 +1,5 @@
+**[日本語](CHANGELOG.ja.md)**
+
 # Unreleased
 
 - **BREAKING**: CCK4 is now required. CCK3 is no longer supported
