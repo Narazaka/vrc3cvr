@@ -1,8 +1,10 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
+using UnityEngine.TestTools;
 using ABI.CCK.Components;
 using VRC.SDK3.Avatars.Components;
 
@@ -202,8 +204,47 @@ public class VRC3CVRPipelineTests
         }
     }
 
+    // CVRAssetInfo carries [DisallowMultipleComponent]. Measured: a second AddComponent call --
+    // whether via Undo.AddComponent, ObjectFactory.AddComponent, or CopyComponent/
+    // PasteComponentAsNew -- throws ArgumentException on this Unity/CCK version rather than
+    // silently failing. That is exactly what makes the real-world duplicate (built via
+    // VRC3CVRAvatar's now-removed RequireComponent(CVRAssetInfo) racing CVRAvatar's own OnValidate
+    // inside one dependency-resolution pass) surprising in the first place: no ordinary
+    // AddComponent call can reproduce it. Callers must fall back to Assert.Inconclusive when this
+    // returns only one component -- the important fact (could an artificial duplicate be produced
+    // at all, and how) is still reported rather than silently asserting nothing.
+    static CVRAssetInfo[] TryCreateArtificialDuplicate(GameObject go, CVRAssetInfo first)
+    {
+        if (go.GetComponents<CVRAssetInfo>().Length < 2)
+        {
+            TryAddDuplicate(() => Undo.AddComponent<CVRAssetInfo>(go));
+        }
+        if (go.GetComponents<CVRAssetInfo>().Length < 2)
+        {
+            TryAddDuplicate(() => ObjectFactory.AddComponent<CVRAssetInfo>(go));
+        }
+        if (go.GetComponents<CVRAssetInfo>().Length < 2)
+        {
+            TryAddDuplicate(() =>
+            {
+                ComponentUtility.CopyComponent(first);
+                ComponentUtility.PasteComponentAsNew(go);
+            });
+        }
+        return go.GetComponents<CVRAssetInfo>();
+    }
+
+    const string InconclusiveDuplicateMessage =
+        "Could not artificially create a duplicate CVRAssetInfo: Undo.AddComponent, "
+            + "ObjectFactory.AddComponent, and CopyComponent/PasteComponentAsNew all "
+            + "throw ArgumentException on this Unity/CCK version when one already "
+            + "exists. EnsureSingleAssetInfo's duplicate-collapsing path is untested "
+            + "here -- it remains a safety net for the real-world path (RequireComponent "
+            + "racing CVRAvatar.OnValidate within one dependency-resolution pass), which "
+            + "a single AddComponent call cannot reproduce.";
+
     [Test]
-    public void EnsureSingleAssetInfo_CollapsesArtificialDuplicatesPreferringTheOneWithAContentId()
+    public void EnsureSingleAssetInfo_CollapsesArtificialDuplicates_KeepsTheFirstComponent()
     {
         var go = new GameObject("VRC3CVRCckComponentsTest_Duplicate");
         try
@@ -212,54 +253,93 @@ public class VRC3CVRPipelineTests
             first.type = CVRAssetInfo.AssetType.Avatar;
             first.objectId = "existing-content-id";
 
-            // CVRAssetInfo carries [DisallowMultipleComponent]. Measured: a second AddComponent call
-            // -- whether via Undo.AddComponent, ObjectFactory.AddComponent, or CopyComponent/
-            // PasteComponentAsNew -- throws ArgumentException on this Unity/CCK version rather than
-            // silently failing. That is exactly what makes the real-world duplicate (built via
-            // VRC3CVRAvatar's now-removed RequireComponent(CVRAssetInfo) racing CVRAvatar's own
-            // OnValidate inside one dependency-resolution pass) surprising in the first place: no
-            // ordinary AddComponent call can reproduce it. If none of these work either, this
-            // degrades to Inconclusive rather than silently asserting nothing -- the important fact
-            // (could an artificial duplicate be produced at all, and how) is still reported.
-            if (go.GetComponents<CVRAssetInfo>().Length < 2)
-            {
-                TryAddDuplicate(() => Undo.AddComponent<CVRAssetInfo>(go));
-            }
-            if (go.GetComponents<CVRAssetInfo>().Length < 2)
-            {
-                TryAddDuplicate(() => ObjectFactory.AddComponent<CVRAssetInfo>(go));
-            }
-            if (go.GetComponents<CVRAssetInfo>().Length < 2)
-            {
-                TryAddDuplicate(() =>
-                {
-                    ComponentUtility.CopyComponent(first);
-                    ComponentUtility.PasteComponentAsNew(go);
-                });
-            }
-
-            var before = go.GetComponents<CVRAssetInfo>();
+            var before = TryCreateArtificialDuplicate(go, first);
             if (before.Length < 2)
             {
-                Assert.Inconclusive(
-                    "Could not artificially create a duplicate CVRAssetInfo: Undo.AddComponent, "
-                        + "ObjectFactory.AddComponent, and CopyComponent/PasteComponentAsNew all "
-                        + "throw ArgumentException on this Unity/CCK version when one already "
-                        + "exists. EnsureSingleAssetInfo's duplicate-collapsing path is untested "
-                        + "here -- it remains a safety net for the real-world path (RequireComponent "
-                        + "racing CVRAvatar.OnValidate within one dependency-resolution pass), which "
-                        + "a single AddComponent call cannot reproduce.");
+                Assert.Inconclusive(InconclusiveDuplicateMessage);
             }
 
-            var second = before[1];
-            // The second component is freshly created; only the original carries the content id.
-            Assert.IsTrue(string.IsNullOrEmpty(second.objectId));
+            Assert.AreSame(first, before[0], "the component under test must stay first in component order");
 
             var kept = VRC3CVRCckComponents.EnsureSingleAssetInfo(go, recordUndo: false);
 
+            Assert.AreSame(first, kept,
+                "the CCK caches GetComponent<CVRAssetInfo>() -- the first one -- so that is the one that must survive");
             Assert.AreEqual(1, go.GetComponents<CVRAssetInfo>().Length, "duplicates must be collapsed to one");
             Assert.AreEqual("existing-content-id", kept.objectId,
-                "the copy that carried the content id must survive, or the next upload would burn a content slot");
+                "the first component already carried the content id and must keep it");
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void EnsureSingleAssetInfo_FoldsAContentIdKnownOnlyToTheDuplicateIntoTheFirstComponent()
+    {
+        var go = new GameObject("VRC3CVRCckComponentsTest_DuplicateWithIdOnSecond");
+        try
+        {
+            var first = go.AddComponent<CVRAssetInfo>();
+            first.type = CVRAssetInfo.AssetType.Avatar;
+            // Deliberately left empty here, and only set on the duplicate after it exists (below):
+            // CopyComponent/PasteComponentAsNew would otherwise clone whatever id "first" has at
+            // copy time, defeating the point of this test.
+
+            var before = TryCreateArtificialDuplicate(go, first);
+            if (before.Length < 2)
+            {
+                Assert.Inconclusive(InconclusiveDuplicateMessage);
+            }
+
+            Assert.AreSame(first, before[0], "the component under test must stay first in component order");
+            before[1].objectId = "id-known-only-to-the-duplicate";
+
+            var kept = VRC3CVRCckComponents.EnsureSingleAssetInfo(go, recordUndo: false);
+
+            Assert.AreSame(first, kept,
+                "the CCK caches GetComponent<CVRAssetInfo>() -- the first one -- so that is the one that must survive");
+            Assert.AreEqual(1, go.GetComponents<CVRAssetInfo>().Length, "duplicates must be collapsed to one");
+            Assert.AreEqual("id-known-only-to-the-duplicate", kept.objectId,
+                "a content id known only to the removed duplicate must be folded into the survivor, "
+                    + "or the next upload would burn a content slot");
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+        }
+    }
+
+    [Test]
+    public void EnsureSingleAssetInfo_ReportsAndDoesNothingWhenDuplicatesDisagreeOnContentId()
+    {
+        var go = new GameObject("VRC3CVRCckComponentsTest_ConflictingIds");
+        try
+        {
+            var first = go.AddComponent<CVRAssetInfo>();
+            first.type = CVRAssetInfo.AssetType.Avatar;
+            first.objectId = "id-a";
+
+            var before = TryCreateArtificialDuplicate(go, first);
+            if (before.Length < 2)
+            {
+                Assert.Inconclusive(InconclusiveDuplicateMessage);
+            }
+
+            Assert.AreSame(first, before[0], "the component under test must stay first in component order");
+            // A different, equally real content id -- there is no way to tell from here which of
+            // the two is the one the CCK/backend actually knows about.
+            before[1].objectId = "id-b";
+
+            LogAssert.Expect(LogType.Error, new Regex(Regex.Escape(go.name)));
+            var kept = VRC3CVRCckComponents.EnsureSingleAssetInfo(go, recordUndo: false);
+
+            Assert.AreSame(first, kept);
+            Assert.AreEqual(2, go.GetComponents<CVRAssetInfo>().Length,
+                "an unresolvable conflict must not destroy anything -- guessing wrong burns a content slot");
+            Assert.AreEqual("id-a", first.objectId, "must not be overwritten when the correct id is unknown");
+            Assert.AreEqual("id-b", before[1].objectId, "must not be overwritten when the correct id is unknown");
         }
         finally
         {

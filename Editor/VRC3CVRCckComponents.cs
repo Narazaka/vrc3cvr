@@ -13,7 +13,7 @@ using ABI.CCK.Components;
 public static class VRC3CVRCckComponents
 {
     // Returns the one CVRAssetInfo the avatar should have, creating it when absent and collapsing
-    // duplicates into the one that carries a content id.
+    // duplicates down to the first one.
     public static CVRAssetInfo EnsureSingleAssetInfo(GameObject target, bool recordUndo)
     {
         var all = target.GetComponents<CVRAssetInfo>();
@@ -27,19 +27,53 @@ public static class VRC3CVRCckComponents
             return created;
         }
 
-        // Prefer whichever one already knows the content id; losing it means the next upload
-        // creates a new avatar instead of updating the existing one.
-        var keep = all.FirstOrDefault(info => !string.IsNullOrEmpty(info.objectId)) ?? all[0];
+        // The CCK caches GetComponent<CVRAssetInfo>() -- the first one -- and reads it after the
+        // build processors run, so destroying that particular component makes the upload throw and
+        // skips the CCK's own cleanup. Always keep the first and fold anything the others carry
+        // into it, rather than picking by content id.
+        var keep = all[0];
 
-        foreach (var extra in all)
+        if (all.Length > 1)
         {
-            if (extra == keep) continue;
-            Debug.LogWarning(
-                "VRC3CVR: removed a duplicate CVRAssetInfo from " + target.name
-                    + ". Only one can be used, and the wrong one would have uploaded as a new avatar.",
-                target);
-            if (recordUndo) Undo.DestroyObjectImmediate(extra);
-            else Object.DestroyImmediate(extra);
+            var distinctIds = all
+                .Select(info => info.objectId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Distinct()
+                .ToArray();
+            if (distinctIds.Length > 1)
+            {
+                // Every candidate id is real and different -- there is no way to tell which one is
+                // correct from here, and picking wrong burns a content slot on the next upload.
+                // Leave everything alone rather than guess.
+                Debug.LogError(
+                    "VRC3CVR: " + target.name + " has multiple CVRAssetInfo components with different "
+                        + "content ids (" + string.Join(", ", distinctIds) + "). Not sure which one is "
+                        + "correct, so none were changed or removed -- resolve this manually.",
+                    target);
+                return keep;
+            }
+
+            foreach (var extra in all)
+            {
+                if (extra == keep) continue;
+
+                // Do not lose a content id that only the duplicate knows: without it the next
+                // upload creates a brand new avatar and burns a content slot.
+                if (string.IsNullOrEmpty(keep.objectId) && !string.IsNullOrEmpty(extra.objectId))
+                {
+                    if (recordUndo) Undo.RecordObject(keep, "Keep CVR content id");
+                    keep.objectId = extra.objectId;
+                    EditorUtility.SetDirty(keep);
+                }
+
+                Debug.LogWarning(
+                    "VRC3CVR: removed a duplicate CVRAssetInfo from " + target.name
+                        + ". The CCK always reads the first CVRAssetInfo component, so that one is kept "
+                        + "and the extra is removed.",
+                    target);
+                if (recordUndo) Undo.DestroyObjectImmediate(extra);
+                else Object.DestroyImmediate(extra);
+            }
         }
 
         if (keep.type != CVRAssetInfo.AssetType.Avatar)
