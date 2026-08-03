@@ -63,8 +63,20 @@ public class VRC3CVR : EditorWindow
 
         CustomGUI.BoldLabel(T.Step1);
         CustomGUI.SmallLineGap();
-        selectedAvatar = (VRCAvatarDescriptor)EditorGUILayout.ObjectField(
+        var pickedAvatar = (VRCAvatarDescriptor)EditorGUILayout.ObjectField(
             T.Avatar, selectedAvatar, typeof(VRCAvatarDescriptor), true);
+        if (pickedAvatar != selectedAvatar)
+        {
+            selectedAvatar = pickedAvatar;
+            // The object picker and drag-and-drop both commit during an event that has no Layout
+            // pass of its own (ExecuteCommand / DragPerform). Switching avatars changes how many
+            // GUILayout entries the rest of this window wants (the component-bound panel below
+            // draws different controls than the fallback one), which throws "Getting control N's
+            // position in a group with only N controls" if we keep drawing in this same event.
+            // Bail out and let the next event lay the window out from scratch.
+            EditorGUILayout.EndScrollView();
+            GUIUtility.ExitGUI();
+        }
         CustomGUI.SmallLineGap();
 
         var component = selectedAvatar != null ? selectedAvatar.GetComponent<VRC3CVRAvatar>() : null;
