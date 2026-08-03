@@ -87,6 +87,11 @@ public static class VRC3CVRPipeline
                     UnityEngine.Object.DestroyImmediate(bakeResult.bakedAvatar);
                     return new Result { succeeded = false, errorMessage = T.NoDescriptorAfterBake };
                 }
+                // Rename before Convert() runs: VRC3CVRCore reads the GameObject's name *during*
+                // the conversion to build asset names and file paths (e.g. "<name>_ChilloutVR_
+                // Gestures.controller"). Renaming after Convert() only changes what the scene shows
+                // -- the assets on disk keep the baker's intermediate "<name> (Baked)" label forever.
+                bakeResult.bakedAvatar.name = originalName + " (ChilloutVR)";
                 usedBake = true;
                 // The baker already made the clone; converting in place avoids a second one.
                 workingConfig.shouldCloneAvatar = false;
@@ -132,9 +137,6 @@ public static class VRC3CVRPipeline
             // the component rather than depend on the answer -- it is a no-op when it is already
             // there, and it collapses duplicates if more than one ended up on the converted avatar.
             VRC3CVRCckComponents.EnsureSingleAssetInfo(converted, recordUndo: false);
-
-            // The baker's name is an intermediate step's label; the user ships this object.
-            if (usedBake) converted.name = originalName + " (ChilloutVR)";
 
             return new Result { succeeded = true, convertedAvatar = converted, usedBake = usedBake };
         }

@@ -51,6 +51,11 @@ public class VRC3CVRPipelineTests
         Assert.AreNotSame(original, converted);
         Assert.IsNotNull(original.GetComponent<VRCAvatarDescriptor>(), "the original avatar is untouched");
         Assert.IsTrue(original.activeSelf, "the original avatar is not hidden");
+        // Must be renamed before VRC3CVRCore.Convert() runs, not after: Convert() reads the
+        // GameObject's name mid-conversion to build asset names and file paths, so a rename that
+        // happens afterward leaves disk assets permanently named after the baker's intermediate
+        // "(Baked)" step while the scene shows "(ChilloutVR)".
+        Assert.AreEqual(original.name + " (ChilloutVR)", converted.name);
     }
 
     [Test]
