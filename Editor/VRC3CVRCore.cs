@@ -2521,14 +2521,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         var newAnimatorController = new CopyAnimatorController(originalAnimatorController).CopyController();
 
-        // Register this animator's own parameters on chilloutAnimatorController before processing
-        // its transitions below. Without this, a parameter this very animator is the first to
-        // declare (e.g. IsLocal used only on this one animator) would not show up in
-        // chilloutAnimatorController.parameters until CopyControllerTo merges this whole animator in
-        // further down -- by which point its still-unadapted conditions would already be attached to
-        // chilloutAnimatorController, which is exactly the transient "not compatible with condition
-        // type" Console error this whole change exists to avoid. CopyParametersTo is idempotent, so
-        // the later call inside CopyControllerTo is a no-op for every name already added here.
+        // Register this animator's own parameters before processing its transitions below;
+        // otherwise a parameter only this animator declares (e.g. IsLocal) is unknown until
+        // CopyControllerTo merges it in later, and its conditions go out unadapted. Idempotent.
         new CopyAnimatorController(newAnimatorController).CopyParametersTo(chilloutAnimatorController);
 
         var controllerLayers = newAnimatorController.layers;
