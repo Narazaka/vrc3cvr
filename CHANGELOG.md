@@ -1,5 +1,6 @@
 # Unreleased
 
+- **BREAKING**: CCK4 is now required. CCK3 is no longer supported
 - feat: uploading from the CCK Control Panel now converts the avatar automatically, the same way Modular Avatar and VRCFury run during a VRChat upload. Add a `VRC3CVR Avatar` component and upload — no separate conversion step
 - feat: `VRC3CVR Avatar` now requires a `CVRAvatar` component, which is what makes the avatar show up in the CCK Control Panel
 - feat: non-destructive tools (VRCFury, Modular Avatar, Avatar Optimizer, ...) are now baked automatically before the conversion (`Auto bake`, on by default)

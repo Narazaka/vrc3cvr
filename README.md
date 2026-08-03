@@ -48,7 +48,7 @@ lilToon and other major shaders should work fine, but less common shaders may ha
 ### Tools
 
 - VRC3CVR: Go to [Releases](https://github.com/Narazaka/vrc3cvr/releases/latest) and expand "Assets" and download the `.unitypackage`.
-- CCK4: [ChilloutVR CCK](https://docs.abinteractive.net/cck/setup/)
+- CCK4: [ChilloutVR CCK](https://docs.abinteractive.net/cck/setup/) -- **CCK4 is required. This does not work with CCK3.**
 - Modular Avatar (optional): https://modular-avatar.nadena.dev/
 - PhysBone to DynamicBone converter (optional): https://github.com/FACS01-01/PhysBone-to-DynamicBone
 - DynamicBone stub if you haven't purchased it (optional): https://github.com/VRLabs/Dynamic-Bones-Stub

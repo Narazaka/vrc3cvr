@@ -46,7 +46,7 @@ lilToon等は問題ないですが、マイナーなシェーダーは問題に�
 ### ツール
 
 - VRC3CVR: [Releases](https://github.com/Narazaka/vrc3cvr/releases/latest)にアクセスし、「Assets」を展開して`.unitypackage`をダウンロードします。
-- CCK4: [ChilloutVR CCK](https://docs.abinteractive.net/cck/setup/)
+- CCK4: [ChilloutVR CCK](https://docs.abinteractive.net/cck/setup/) -- **CCK4が必須です。CCK3では動作しません。**
 - Modular Avatar（任意）: https://modular-avatar.nadena.dev/
 - PhysBone→DynamicBone変換（任意）: https://github.com/FACS01-01/PhysBone-to-DynamicBone
 - DynamicBoneを買ってないけど変換したい場合（任意）: https://github.com/VRLabs/Dynamic-Bones-Stub
