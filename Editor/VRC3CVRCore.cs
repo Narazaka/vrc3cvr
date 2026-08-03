@@ -1405,13 +1405,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     }
 
     // layerName/context/parameterTypes exist purely to adapt each generated condition's mode to
-    // the type its parameter actually has on chilloutAnimatorController before it is ever written
-    // onto a transition -- see VRC3CVRConditionTypes for why the mismatch happens. It has to happen
-    // here, at generation time, and nowhere else: Unity's own AnimatorController logs "uses
-    // parameter 'X' which is not compatible with condition type" the moment an incompatible
-    // condition is live on it, so a corrective pass afterwards would fix the result but leave the
-    // Console error standing. That is why ProcessStateMachine walks every kind of transition a
-    // state machine can hold rather than relying on anything downstream to catch the rest.
+    // the type its parameter actually has on chilloutAnimatorController, and to warn when that
+    // adaptation is not possible -- see VRC3CVRConditionTypes for why the mismatch happens.
     void ProcessTransition<AnimatorTranstitionType>(AnimatorTranstitionType transition, List<AnimatorTranstitionType> transitionsToAdd, List<AnimatorCondition> conditionsToAdd, string layerName, string context, Dictionary<string, AnimatorControllerParameterType> parameterTypes, bool isDuplicate = false) where AnimatorTranstitionType : AnimatorTransitionBase, new()
     {
         // Convert GestureLeft/GestureRight to ChilloutVR
@@ -1742,27 +1737,25 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         // right before it is committed to the transition -- conditionsToAdd is mutated in place (not
         // just used to set transition.conditions here) because callers of the recursive
         // ProcessTransition calls above re-read the same list object afterwards.
-        var adaptedConditions = new List<AnimatorCondition>(conditionsToAdd.Count);
-        foreach (var conditionToAdd in conditionsToAdd)
+        for (int i = conditionsToAdd.Count - 1; i >= 0; i--)
         {
+            var conditionToAdd = conditionsToAdd[i];
             if (!parameterTypes.TryGetValue(conditionToAdd.parameter, out var parameterType))
             {
                 // Not a parameter chilloutAnimatorController knows about yet -- somebody else's problem.
-                adaptedConditions.Add(conditionToAdd);
                 continue;
             }
 
             if (VRC3CVRConditionTypes.TryAdapt(conditionToAdd, parameterType, out var adaptedCondition))
             {
-                adaptedConditions.Add(adaptedCondition);
+                conditionsToAdd[i] = adaptedCondition;
             }
             else
             {
                 Debug.LogWarning($"VRC3CVR: dropped a transition condition on layer '{layerName}', {context} -- parameter '{conditionToAdd.parameter}' is {parameterType} and has no equivalent for condition mode {conditionToAdd.mode}. The transition may now behave differently than on VRChat.");
+                conditionsToAdd.RemoveAt(i);
             }
         }
-        conditionsToAdd.Clear();
-        conditionsToAdd.AddRange(adaptedConditions);
 
         transition.conditions = conditionsToAdd.ToArray();
     }
@@ -2256,12 +2249,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         stateMachine.entryTransitions = ProcessTransitions(stateMachine.entryTransitions, layerName, "Entry");
 
         // A sub-state-machine's own outgoing transitions (to a sibling state, to another
-        // sub-state-machine, or to Exit) are not stored on that sub-state-machine: Unity keeps them
-        // on its *parent*, reachable only through GetStateMachineTransitions/SetStateMachineTransitions.
-        // The recursion below descends into the child, which never sees them, so without this loop
-        // they were the one kind of transition whose conditions no code path converted -- neither the
-        // gesture rewrite nor the condition-type adaptation. AdjustParameterNamesOnStateMachine
-        // already walks all four kinds; this makes the set match.
+        // sub-state-machine, or to Exit) are stored on its *parent*, not on the sub-state-machine
+        // itself -- reachable only through GetStateMachineTransitions/SetStateMachineTransitions.
+        // The recursion below descends into the child, which never sees them, so they have to be
+        // picked up here.
         foreach (ChildAnimatorStateMachine childStateMachine in stateMachine.stateMachines)
         {
             var subMachine = childStateMachine.stateMachine;
@@ -4263,10 +4254,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         // instead of assuming Bool -- assuming it produces
         // "uses parameter 'IsLocal' which is not compatible with condition type" and a dead layer.
         var existingIsLocal = chilloutAnimatorController.parameters.FirstOrDefault(p => p.name == "IsLocal");
-        AnimatorConditionMode localMode;
-        AnimatorConditionMode remoteMode;
-        float localThreshold;
-        float remoteThreshold;
+        AnimatorCondition localCondition;
+        AnimatorCondition remoteCondition;
 
         if (existingIsLocal == null)
         {
@@ -4278,41 +4267,23 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 defaultBool = false,
             });
             chilloutAnimatorController.parameters = parameters;
-            localMode = AnimatorConditionMode.If;
-            remoteMode = AnimatorConditionMode.IfNot;
-            localThreshold = 1f;
-            remoteThreshold = 1f;
+            localCondition = new AnimatorCondition { mode = AnimatorConditionMode.If, parameter = "IsLocal", threshold = 1f };
+            remoteCondition = new AnimatorCondition { mode = AnimatorConditionMode.IfNot, parameter = "IsLocal", threshold = 1f };
         }
         else
         {
-            switch (existingIsLocal.type)
+            var rawLocal = new AnimatorCondition { mode = AnimatorConditionMode.If, parameter = "IsLocal", threshold = 1f };
+            var rawRemote = new AnimatorCondition { mode = AnimatorConditionMode.IfNot, parameter = "IsLocal", threshold = 1f };
+            if (!VRC3CVRConditionTypes.TryAdapt(rawLocal, existingIsLocal.type, out localCondition)
+                || !VRC3CVRConditionTypes.TryAdapt(rawRemote, existingIsLocal.type, out remoteCondition))
             {
-                case AnimatorControllerParameterType.Bool:
-                    localMode = AnimatorConditionMode.If;
-                    remoteMode = AnimatorConditionMode.IfNot;
-                    localThreshold = 1f;
-                    remoteThreshold = 1f;
-                    break;
-                case AnimatorControllerParameterType.Float:
-                    localMode = AnimatorConditionMode.Greater;
-                    remoteMode = AnimatorConditionMode.Less;
-                    localThreshold = 0.5f;
-                    remoteThreshold = 0.5f;
-                    break;
-                case AnimatorControllerParameterType.Int:
-                    localMode = AnimatorConditionMode.Greater;
-                    remoteMode = AnimatorConditionMode.Less;
-                    localThreshold = 0f;
-                    remoteThreshold = 1f;
-                    break;
-                default:
-                    // A Trigger cannot express "not fired", so there is no pair of conditions that
-                    // would work. Skip the layer rather than emit a broken one.
-                    Debug.LogWarning(
-                        "VRC3CVR: the avatar declares IsLocal as " + existingIsLocal.type
-                            + ", which cannot drive the local-only contact layer. "
-                            + "Local-only contacts will stay enabled on remote copies.");
-                    return;
+                // A Trigger cannot express "not fired", so there is no pair of conditions that
+                // would work. Skip the layer rather than emit a broken one.
+                Debug.LogWarning(
+                    "VRC3CVR: the avatar declares IsLocal as " + existingIsLocal.type
+                        + ", which cannot drive the local-only contact layer. "
+                        + "Local-only contacts will stay enabled on remote copies.");
+                return;
             }
 
             if (existingIsLocal.type != AnimatorControllerParameterType.Bool)
@@ -4376,15 +4347,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     duration = 0f,
                     offset = 0f,
                     destinationState = localState,
-                    conditions = new AnimatorCondition[]
-                    {
-                        new AnimatorCondition
-                        {
-                            mode = localMode,
-                            parameter = "IsLocal",
-                            threshold = localThreshold,
-                        },
-                    },
+                    conditions = new AnimatorCondition[] { localCondition },
                 },
                 new AnimatorStateTransition
                 {
@@ -4395,15 +4358,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     duration = 0f,
                     offset = 0f,
                     destinationState = remoteState,
-                    conditions = new AnimatorCondition[]
-                    {
-                        new AnimatorCondition
-                        {
-                            mode = remoteMode,
-                            parameter = "IsLocal",
-                            threshold = remoteThreshold,
-                        },
-                    },
+                    conditions = new AnimatorCondition[] { remoteCondition },
                 },
             },
         };
