@@ -1,3 +1,13 @@
+# Unreleased
+
+- **BREAKING**: CCK4 is now required. CCK3 is no longer supported
+- feat: uploading from the CCK Control Panel now converts the avatar automatically, the same way Modular Avatar and VRCFury run during a VRChat upload. Add a `VRC3CVR Avatar` component and upload — no separate conversion step
+- feat: `VRC3CVR Avatar` now requires a `CVRAvatar` component, which is what makes the avatar show up in the CCK Control Panel
+- feat: non-destructive tools (VRCFury, Modular Avatar, Avatar Optimizer, ...) are now baked automatically before the conversion (`Auto bake`, on by default)
+- feat: the avatar can now be converted from the `VRC3CVR Avatar` component inspector. The `Tools -> VRC3CVR` window and the inspector edit the same settings
+- **BREAKING**: the NDMF plugin path is gone. `Tools -> Modular Avatar -> Manual bake avatar` no longer converts. The `VRC3CVRNDMF` component becomes `VRC3CVR Avatar` and its settings are preserved
+- If you update over an older version an `Assets/PeanutTools/VRC3CVR/NDMF/` folder may be left behind. It is safe to delete
+
 # 3.0.0-rc.1
 
 - fix: null checks / minor bugs

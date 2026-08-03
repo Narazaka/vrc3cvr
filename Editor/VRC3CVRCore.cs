@@ -1930,11 +1930,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return newTransition;
     }
 
-#if CVR_CCK_4_OR_NEWER
     static readonly string LocomotionAnimationPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Locomotion";
-#else
-    static readonly string LocomotionAnimationPath = "Assets/ABI.CCK/Animations";
-#endif
 
     Dictionary<string, Func<AnimationClip>> BuildProxyHandClipMap() => new Dictionary<string, Func<AnimationClip>>
     {
@@ -2338,11 +2334,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return animationClipCombined;
     }
 
-#if CVR_CCK_4_OR_NEWER
     static readonly string HandAnimationPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Hands";
-#else
-    static readonly string HandAnimationPath = "Assets/ABI.CCK/Animations";
-#endif
 
     AnimationClip LoadCombinedHandAnimation(string gestureName)
     {
@@ -2595,11 +2587,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         new SaveAnimatorController(chilloutAnimatorController).Save(pathToCreatedAnimator);
     }
 
-#if CVR_CCK_4_OR_NEWER
     static readonly string AnimatorPath = "Assets/CVR.CCK/Assets/Avatar/Animations";
-#else
-    static readonly string AnimatorPath = "Assets/ABI.CCK/Animations";
-#endif
 
     void CreateEmptyChilloutAnimator()
     {

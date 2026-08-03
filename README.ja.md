@@ -46,7 +46,7 @@ lilToon等は問題ないですが、マイナーなシェーダーは問題に�
 ### ツール
 
 - VRC3CVR: [Releases](https://github.com/Narazaka/vrc3cvr/releases/latest)にアクセスし、「Assets」を展開して`.unitypackage`をダウンロードします。
-- CCK4: [ChilloutVR CCK](https://docs.abinteractive.net/cck/setup/)
+- CCK4: [ChilloutVR CCK](https://docs.abinteractive.net/cck/setup/) -- **CCK4が必須です。CCK3では動作しません。**
 - Modular Avatar（任意）: https://modular-avatar.nadena.dev/
 - PhysBone→DynamicBone変換（任意）: https://github.com/FACS01-01/PhysBone-to-DynamicBone
 - DynamicBoneを買ってないけど変換したい場合（任意）: https://github.com/VRLabs/Dynamic-Bones-Stub
@@ -72,28 +72,33 @@ CVRのDynamicBoneは古いバージョンであるためか、Root直下のボ�
 
 ### 1. 変換
 
-#### Modular Avatar導入済みの場合
+変換には2通りのやり方があります。**CCK Control Panel からアップロードすれば自動で変換される**ので、事前に手動で変換する必要はありません。Unity 上で変換結果を確認したいときだけ手動変換を使ってください。
+
+#### 自動（推奨）
 
 1. Unity 2022.3.22f1 / VRChat SDK 3.x（VCCを使用）でVRChatアバターをセットアップします。
 2. （任意）[PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone)などを使用してPhysBonesをDynamicBonesに変換しておきます。
-3. ChilloutVR CCK4 Preview をVRChatアバタープロジェクトにインポートします。
+3. ChilloutVR CCK4 をVRChatアバタープロジェクトにインポートします。
 4. VRC3CVRの`.unitypackage`をインポートします。
-5. アバター直下にVRC3CVRコンポーネントを付けて、Manual bakeします。（`Tools -> Modular Avatar -> Manual bake avatar`）
+5. アバター直下に **VRC3CVR Avatar** コンポーネントを付けます。一緒に **CVRAvatar** コンポーネントが付きますが、中身は変換時に設定されるので触らなくて構いません。
+6. CCK Control Panel からいつも通りアップロードします。
 
-#### Modular Avatarが無い場合
+アップロードの途中で変換が走ります。VRChatへのアップロード時に Modular Avatar や VRCFury が動くのと同じ仕組みです。シーンには何も残りません。
 
-1. Unity 2022.3.22f1 / VRChat SDK 3.x（VCCを使用）でVRChatアバターをセットアップします。
-2. （任意）[PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone)などを使用してPhysBonesをDynamicBonesに変換しておきます。
-3. ChilloutVR CCK4 Preview をVRChatアバタープロジェクトにインポートします。
-4. VRC3CVRの`.unitypackage`をインポートします。
-5. Tools -> VRC3CVR メニューでツールウインドウを出します。
-6. 変換したいVRCアバターを選択します。
-    - Modular Avatarやその他のアバタービルドツールを使っている場合は、先に「ベイク」を行ってください（例：`Tools -> Modular Avatar -> Manual bake avatar`）。
-7. 「Convert」をクリックします。
+#### 手動
+
+アップロード前に変換結果をUnity上で確認したい場合に使います。
+
+1. 上の手順1〜5
+2. `VRC3CVR Avatar` のインスペクタで「Convert」を押すか、**Tools** -> **VRC3CVR** メニューでウインドウを出してアバターを選びます。どちらも同じ設定を編集します。
+
+**Auto bake**（自動ベイク）は既定でONなので、VRCFury・Modular Avatar・Avatar Optimizer など VRChat SDK のビルドフックを使うツールは変換前に自動で適用されます。事前に自分でベイクする必要はありません。これは自動・手動どちらの変換にも適用されます。
+
+> **手動**変換で生成されたアバターは、一時フォルダにある生成アセットを参照しており、次回ビルドで消えます。プロジェクトに残さずアップロードして使ってください。CCK Control Panel からのアップロードはこの影響を受けません（何かが破棄される前にバンドルが作られるため）。
 
 ### 2. アップロード
 
-変換後のアバターを普通にアップロード。
+CCK Control Panel からアップロードします。アバターに `VRC3CVR Avatar` コンポーネントが付いていれば、アップロードの途中で自動的に変換されるので、VRChatアバターそのものをアップロードしてください。別途変換済みオブジェクトを選ぶ必要はありません。
 
 ## Tips
 
