@@ -26,13 +26,27 @@ public class VRC3CVRBuildProcessor : CCKBuildProcessor
                 + "this upload. A tool in the build chain is misconfigured.",
             "ベイクによって VRCAvatarDescriptor が失われ、このアップロードで変換するものが"
                 + "なくなりました。ビルド途中のツールの設定に問題があります。");
+        public static istring UploadingUnconverted => new istring(
+            "This avatar has no VRC3CVR Avatar component, so it will be uploaded unconverted -- "
+                + "as the VRChat avatar it already is, not as ChilloutVR.",
+            "このアバターには VRC3CVR Avatar が付いていないため、変換されずにアップロードされます。"
+                + "VRChat アバターのまま ChilloutVR にアップロードされます。");
     }
 
     public override void OnPreProcessAvatar(GameObject avatar)
     {
         var settings = avatar.GetComponent<VRC3CVRAvatar>();
-        // Not managed by vrc3cvr: an already-converted ChilloutVR avatar being re-uploaded.
-        if (settings == null) return;
+        if (settings == null)
+        {
+            // CVRAvatar/CVRAssetInfo do not require VRC3CVRAvatar back, so removing this component
+            // (or never adding it) still leaves the avatar listed in the CCK Control Panel. Without
+            // this warning that silently uploads the untouched VRChat avatar as a ChilloutVR one.
+            if (avatar.GetComponent<VRCAvatarDescriptor>() != null)
+            {
+                Debug.LogWarning("VRC3CVR: " + (string)T.UploadingUnconverted, avatar);
+            }
+            return;
+        }
         // No VRChat side left to convert.
         if (avatar.GetComponent<VRCAvatarDescriptor>() == null) return;
 
