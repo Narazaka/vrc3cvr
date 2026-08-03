@@ -10,7 +10,7 @@
 - feat: only one `VRC3CVR Avatar` can be added per object
 - feat: uploading an avatar that has no `VRC3CVR Avatar` component now fails with an error instead of publishing it unconverted as the VRChat avatar it still is
 - feat: VRC Constraints are converted to Unity Constraints. Prefabulous is no longer needed for this
-- feat: `GestureLeftWeight` / `GestureRightWeight` are converted, in either of two modes: rewritten into their consumers (default, no latency) or fed from a generated weight parameter (covers every usage, one frame of latency)
+- feat: `GestureLeftWeight` / `GestureRightWeight` are converted, in either of two modes: no latency (default — only a weight-driven motion time state or 2D blend tree that also runs outside Fist is incompatible) or covers every usage, at the cost of one frame of latency
 - feat: `Greater` / `Less` gesture conditions are converted instead of being silently dropped. VRChat and ChilloutVR number gestures differently, so each comparison expands into one transition per matching gesture
 - feat: `VelocityMagnitude` is now fed, recomputed per client from `VelocityX/Y/Z` so it costs no sync bits, along with `MuteSelf`, `VRMode` and `Upright`
 - feat: VRC state machine behaviours are removed after conversion. They would otherwise ship as missing scripts in the uploaded controller, since the VRC SDK assemblies do not exist in the ChilloutVR client
