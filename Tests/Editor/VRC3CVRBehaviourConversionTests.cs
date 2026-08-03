@@ -35,13 +35,15 @@ public class VRC3CVRBehaviourConversionTests
         new AnimatorControllerParameter { name = name, type = type };
 
     // Runs ProcessStateMachine and returns the (possibly grown, e.g. by a Random(Bool) scratch
-    // parameter) parameter array threaded through the `ref` argument.
+    // parameter) parameter array threaded through the `ref` argument. layerName only feeds the
+    // condition-type-adaptation warning message (see VRC3CVRCore.ProcessTransition), so a fixed
+    // placeholder is fine here -- none of these tests assert on it.
     static AnimatorControllerParameter[] RunProcessStateMachine(VRC3CVRCore core, AnimatorStateMachine machine, AnimatorControllerParameter[] parameters)
     {
         var method = typeof(VRC3CVRCore).GetMethod("ProcessStateMachine", Flags);
-        var args = new object[] { machine, parameters };
+        var args = new object[] { machine, "TestLayer", parameters };
         method.Invoke(core, args);
-        return (AnimatorControllerParameter[])args[1];
+        return (AnimatorControllerParameter[])args[2];
     }
 
     static AvatarMask InvokeGetCombinedAvatarMask(VRC3CVRCore core, AvatarMask baseMask, AvatarMask layerMask) =>

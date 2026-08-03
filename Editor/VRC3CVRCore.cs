@@ -1361,18 +1361,29 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return finalParams.ToArray();
     }
 
-    AnimatorTransition[] ProcessTransitions(AnimatorTransition[] transitions)
+    AnimatorTransition[] ProcessTransitions(AnimatorTransition[] transitions, string layerName, string context)
     {
-        return ProcessTransitions<AnimatorTransition>(transitions);
+        return ProcessTransitions<AnimatorTransition>(transitions, layerName, context);
     }
 
-    AnimatorStateTransition[] ProcessTransitions(AnimatorStateTransition[] transitions)
+    AnimatorStateTransition[] ProcessTransitions(AnimatorStateTransition[] transitions, string layerName, string context)
     {
-        return ProcessTransitions<AnimatorStateTransition>(transitions);
+        return ProcessTransitions<AnimatorStateTransition>(transitions, layerName, context);
     }
 
-    AnimatorTranstitionType[] ProcessTransitions<AnimatorTranstitionType>(AnimatorTranstitionType[] transitions) where AnimatorTranstitionType : AnimatorTransitionBase, new()
+    AnimatorTranstitionType[] ProcessTransitions<AnimatorTranstitionType>(AnimatorTranstitionType[] transitions, string layerName, string context) where AnimatorTranstitionType : AnimatorTransitionBase, new()
     {
+        // Built once per batch rather than once per condition -- chilloutAnimatorController.parameters
+        // returns a fresh copy array on every access. By now it already holds the merged (first-wins)
+        // type for every parameter this animator could reference, including ones this very animator
+        // introduces (see the early CopyParametersTo call in MergeVrcAnimatorIntoChilloutAnimator).
+        // chilloutAnimatorController itself is only null in tests that exercise this method in
+        // isolation (see VRC3CVRGestureConversionTests); nothing is known about any parameter's type
+        // there, so every condition simply passes through TryAdapt's "not found" branch unchanged.
+        var parameterTypes = chilloutAnimatorController != null
+            ? chilloutAnimatorController.parameters.ToDictionary(p => p.name, p => p.type)
+            : new Dictionary<string, AnimatorControllerParameterType>();
+
         List<AnimatorTranstitionType> transitionsToAdd = new List<AnimatorTranstitionType>();
 
         for (int t = 0; t < transitions.Length; t++)
@@ -1382,7 +1393,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
             // Debug.Log(transitions[t].conditions.Length + " conditions");
 
-            ProcessTransition(transition, transitionsToAdd, conditionsToAdd);
+            ProcessTransition(transition, transitionsToAdd, conditionsToAdd, layerName, context, parameterTypes);
         }
 
         AnimatorTranstitionType[] newTransitions = new AnimatorTranstitionType[transitions.Length + transitionsToAdd.Count];
@@ -1393,7 +1404,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return newTransitions;
     }
 
-    void ProcessTransition<AnimatorTranstitionType>(AnimatorTranstitionType transition, List<AnimatorTranstitionType> transitionsToAdd, List<AnimatorCondition> conditionsToAdd, bool isDuplicate = false) where AnimatorTranstitionType : AnimatorTransitionBase, new()
+    // layerName/context/parameterTypes exist purely to adapt each generated condition's mode to
+    // the type its parameter actually has on chilloutAnimatorController, and to warn when that
+    // adaptation is not possible -- see VRC3CVRConditionTypes for why the mismatch happens.
+    void ProcessTransition<AnimatorTranstitionType>(AnimatorTranstitionType transition, List<AnimatorTranstitionType> transitionsToAdd, List<AnimatorCondition> conditionsToAdd, string layerName, string context, Dictionary<string, AnimatorControllerParameterType> parameterTypes, bool isDuplicate = false) where AnimatorTranstitionType : AnimatorTransitionBase, new()
     {
         // Convert GestureLeft/GestureRight to ChilloutVR
         for (int c = 0; c < transition.conditions.Length; c++)
@@ -1435,7 +1449,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         List<AnimatorTranstitionType> transitionsToAdd2 = new List<AnimatorTranstitionType>();
                         List<AnimatorCondition> conditionsToAdd2 = new List<AnimatorCondition>();
 
-                        ProcessTransition(newTransition, transitionsToAdd2, conditionsToAdd2, isDuplicate);
+                        ProcessTransition(newTransition, transitionsToAdd2, conditionsToAdd2, layerName, context, parameterTypes, isDuplicate);
                         newTransition.conditions = conditionsToAdd2.ToArray();
 
                         transitionsToAdd.Add(newTransition);
@@ -1590,7 +1604,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         List<AnimatorTranstitionType> transitionsToAdd2 = new List<AnimatorTranstitionType>();
                         List<AnimatorCondition> conditionsToAdd2 = new List<AnimatorCondition>();
 
-                        ProcessTransition(newTransition, transitionsToAdd2, conditionsToAdd2, true);
+                        ProcessTransition(newTransition, transitionsToAdd2, conditionsToAdd2, layerName, context, parameterTypes, true);
                         newTransition.conditions = conditionsToAdd2.ToArray();
 
                         transitionsToAdd.Add(newTransition);
@@ -1708,7 +1722,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                             conditionsToAdd.Add(newConditionGreaterThan);
 
                             // ...or any non-Neutral non-Fist gesture, whose weight is fixed 1
-                            AddGestureWeightRunDuplicates(transition, c, parameterName, transitionsToAdd);
+                            AddGestureWeightRunDuplicates(transition, c, parameterName, transitionsToAdd, layerName, context, parameterTypes);
                         }
                     }
                 }
@@ -1716,6 +1730,30 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             else
             {
                 conditionsToAdd.Add(condition);
+            }
+        }
+
+        // Adapt every condition to the type its parameter actually has on chilloutAnimatorController
+        // right before it is committed to the transition -- conditionsToAdd is mutated in place (not
+        // just used to set transition.conditions here) because callers of the recursive
+        // ProcessTransition calls above re-read the same list object afterwards.
+        for (int i = conditionsToAdd.Count - 1; i >= 0; i--)
+        {
+            var conditionToAdd = conditionsToAdd[i];
+            if (!parameterTypes.TryGetValue(conditionToAdd.parameter, out var parameterType))
+            {
+                // Not a parameter chilloutAnimatorController knows about yet -- somebody else's problem.
+                continue;
+            }
+
+            if (VRC3CVRConditionTypes.TryAdapt(conditionToAdd, parameterType, out var adaptedCondition))
+            {
+                conditionsToAdd[i] = adaptedCondition;
+            }
+            else
+            {
+                Debug.LogWarning($"VRC3CVR: dropped a transition condition on layer '{layerName}', {context} -- parameter '{conditionToAdd.parameter}' is {parameterType} and has no equivalent for condition mode {conditionToAdd.mode}. The transition may now behave differently than on VRChat.");
+                conditionsToAdd.RemoveAt(i);
             }
         }
 
@@ -1822,8 +1860,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // Fold mode: a standalone weight condition is also satisfied by every non-Neutral
     // non-Fist gesture (their weight is fixed 1 in VRChat). Those gestures sit at
     // -1 (open hand) and 2..6 in ChilloutVR, so add one OR transition per range.
-    void AddGestureWeightRunDuplicates<AnimatorTranstitionType>(AnimatorTranstitionType transition, int conditionIndex, string gestureParameterName, List<AnimatorTranstitionType> transitionsToAdd) where AnimatorTranstitionType : AnimatorTransitionBase, new()
+    void AddGestureWeightRunDuplicates<AnimatorTranstitionType>(AnimatorTranstitionType transition, int conditionIndex, string gestureParameterName, List<AnimatorTranstitionType> transitionsToAdd, string layerName, string context, Dictionary<string, AnimatorControllerParameterType> parameterTypes) where AnimatorTranstitionType : AnimatorTransitionBase, new()
     {
+        // GestureLeft/GestureRight are always Float in ChilloutVR (declared as such on the template
+        // AvatarAnimator.controller before any VRC layer is merged in), so these Greater/Less
+        // conditions never need TryAdapt -- they are added straight onto the already-adapted list below.
         var runConditions = new AnimatorCondition[]
         {
             new AnimatorCondition { parameter = gestureParameterName, mode = AnimatorConditionMode.Less, threshold = -0.9f },
@@ -1836,7 +1877,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             List<AnimatorTranstitionType> transitionsToAdd2 = new List<AnimatorTranstitionType>();
             List<AnimatorCondition> conditionsToAdd2 = new List<AnimatorCondition>();
 
-            ProcessTransition(newTransition, transitionsToAdd2, conditionsToAdd2);
+            ProcessTransition(newTransition, transitionsToAdd2, conditionsToAdd2, layerName, context, parameterTypes);
             conditionsToAdd2.Add(runCondition);
             newTransition.conditions = conditionsToAdd2.ToArray();
 
@@ -1937,7 +1978,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return clip;
     }
 
-    void ProcessStateMachine(AnimatorStateMachine stateMachine, ref AnimatorControllerParameter[] parameters)
+    void ProcessStateMachine(AnimatorStateMachine stateMachine, string layerName, ref AnimatorControllerParameter[] parameters)
     {
         for (int s = 0; s < stateMachine.states.Length; s++)
         {
@@ -2188,7 +2229,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 }
             }
 
-            AnimatorStateTransition[] newTransitions = ProcessTransitions(state.transitions);
+            AnimatorStateTransition[] newTransitions = ProcessTransitions(state.transitions, layerName, $"state '{state.name}'");
             state.transitions = newTransitions;
         }
 
@@ -2204,8 +2245,26 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             }
         }
 
-        stateMachine.anyStateTransitions = ProcessTransitions(stateMachine.anyStateTransitions);
-        stateMachine.entryTransitions = ProcessTransitions(stateMachine.entryTransitions);
+        stateMachine.anyStateTransitions = ProcessTransitions(stateMachine.anyStateTransitions, layerName, "AnyState");
+        stateMachine.entryTransitions = ProcessTransitions(stateMachine.entryTransitions, layerName, "Entry");
+
+        // A sub-state-machine's own outgoing transitions (to a sibling state, to another
+        // sub-state-machine, or to Exit) are stored on its *parent*, not on the sub-state-machine
+        // itself -- reachable only through GetStateMachineTransitions/SetStateMachineTransitions.
+        // The recursion below descends into the child, which never sees them, so they have to be
+        // picked up here.
+        foreach (ChildAnimatorStateMachine childStateMachine in stateMachine.stateMachines)
+        {
+            var subMachine = childStateMachine.stateMachine;
+            var subMachineTransitions = stateMachine.GetStateMachineTransitions(subMachine);
+            if (subMachineTransitions.Length == 0)
+            {
+                continue;
+            }
+            stateMachine.SetStateMachineTransitions(
+                subMachine,
+                ProcessTransitions(subMachineTransitions, layerName, $"sub-state-machine '{subMachine.name}'"));
+        }
 
         if (stateMachine.stateMachines.Length > 0)
         {
@@ -2214,7 +2273,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         foreach (ChildAnimatorStateMachine childStateMachine in stateMachine.stateMachines)
         {
-            ProcessStateMachine(childStateMachine.stateMachine, ref parameters);
+            ProcessStateMachine(childStateMachine.stateMachine, layerName, ref parameters);
         }
     }
 
@@ -2462,6 +2521,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         var newAnimatorController = new CopyAnimatorController(originalAnimatorController).CopyController();
 
+        // Register this animator's own parameters before processing its transitions below;
+        // otherwise a parameter only this animator declares (e.g. IsLocal) is unknown until
+        // CopyControllerTo merges it in later, and its conditions go out unadapted. Idempotent.
+        new CopyAnimatorController(newAnimatorController).CopyParametersTo(chilloutAnimatorController);
+
         var controllerLayers = newAnimatorController.layers;
         var layersModified = false;
         // Unity forces the first layer's runtime weight to 1 regardless of its serialized value
@@ -2481,7 +2545,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 Debug.Log("Layer \"" + layer.name + "\" with " + layer.stateMachine.states.Length + " states");
 
                 var parameters = newAnimatorController.parameters;
-                ProcessStateMachine(layer.stateMachine, ref parameters);
+                ProcessStateMachine(layer.stateMachine, layer.name, ref parameters);
                 newAnimatorController.parameters = parameters;
 
                 layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(animatorID, i, layer.avatarMask);
@@ -4178,7 +4242,17 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             return;
         }
-        if (!chilloutAnimatorController.parameters.Any(p => p.name == "IsLocal"))
+        // The avatar may already declare IsLocal itself, and not necessarily as a Bool: a blend
+        // tree's blend parameter has to be a Float, so an avatar that drives anything off IsLocal
+        // through a blend tree declares it Float. CopyParametersTo keeps the first declaration it
+        // sees, so that type reaches here. Match the condition mode to whatever is actually there
+        // instead of assuming Bool -- assuming it produces
+        // "uses parameter 'IsLocal' which is not compatible with condition type" and a dead layer.
+        var existingIsLocal = chilloutAnimatorController.parameters.FirstOrDefault(p => p.name == "IsLocal");
+        AnimatorCondition localCondition;
+        AnimatorCondition remoteCondition;
+
+        if (existingIsLocal == null)
         {
             var parameters = chilloutAnimatorController.parameters;
             ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
@@ -4188,6 +4262,32 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 defaultBool = false,
             });
             chilloutAnimatorController.parameters = parameters;
+            localCondition = new AnimatorCondition { mode = AnimatorConditionMode.If, parameter = "IsLocal", threshold = 1f };
+            remoteCondition = new AnimatorCondition { mode = AnimatorConditionMode.IfNot, parameter = "IsLocal", threshold = 1f };
+        }
+        else
+        {
+            var rawLocal = new AnimatorCondition { mode = AnimatorConditionMode.If, parameter = "IsLocal", threshold = 1f };
+            var rawRemote = new AnimatorCondition { mode = AnimatorConditionMode.IfNot, parameter = "IsLocal", threshold = 1f };
+            if (!VRC3CVRConditionTypes.TryAdapt(rawLocal, existingIsLocal.type, out localCondition)
+                || !VRC3CVRConditionTypes.TryAdapt(rawRemote, existingIsLocal.type, out remoteCondition))
+            {
+                // A Trigger cannot express "not fired", so there is no pair of conditions that
+                // would work. Skip the layer rather than emit a broken one.
+                Debug.LogWarning(
+                    "VRC3CVR: the avatar declares IsLocal as " + existingIsLocal.type
+                        + ", which cannot drive the local-only contact layer. "
+                        + "Local-only contacts will stay enabled on remote copies.");
+                return;
+            }
+
+            if (existingIsLocal.type != AnimatorControllerParameterType.Bool)
+            {
+                Debug.LogWarning(
+                    "VRC3CVR: the avatar declares IsLocal as " + existingIsLocal.type
+                        + " rather than Bool, so the local-only contact layer compares it numerically. "
+                        + "Check that ChilloutVR actually drives IsLocal in that type on your avatar.");
+            }
         }
 
         var remoteClip = new AnimationClip { name = "VRC3CVR_DisableLocalOnlyContactsOnRemote" };
@@ -4242,15 +4342,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     duration = 0f,
                     offset = 0f,
                     destinationState = localState,
-                    conditions = new AnimatorCondition[]
-                    {
-                        new AnimatorCondition
-                        {
-                            mode = AnimatorConditionMode.If,
-                            parameter = "IsLocal",
-                            threshold = 1f,
-                        },
-                    },
+                    conditions = new AnimatorCondition[] { localCondition },
                 },
                 new AnimatorStateTransition
                 {
@@ -4261,15 +4353,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     duration = 0f,
                     offset = 0f,
                     destinationState = remoteState,
-                    conditions = new AnimatorCondition[]
-                    {
-                        new AnimatorCondition
-                        {
-                            mode = AnimatorConditionMode.IfNot,
-                            parameter = "IsLocal",
-                            threshold = 1f,
-                        },
-                    },
+                    conditions = new AnimatorCondition[] { remoteCondition },
                 },
             },
         };
