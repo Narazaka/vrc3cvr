@@ -368,12 +368,13 @@ public class VRC3CVRPipelineTests
     // With autoBake off and shouldCloneAvatar off, VRC3CVRCore.CreateChilloutAvatar hands back
     // vrcAvatarDescriptor.gameObject itself instead of a clone -- so core.chilloutAvatar IS the
     // user's own scene object. A bare descriptor with no Animator makes SetAnimator throw
-    // (GetComponent<Animator>() returns null, then the null is dereferenced), which used to make
-    // the catch block tag that same object EditorOnly and rename it: the user's avatar would drop
+    // (GetComponent<Animator>() returns null, then the null is dereferenced). The catch block used
+    // to tag that same object EditorOnly and rename it on failure: the user's own avatar would drop
     // out of the CCK Control Panel and get destroyed by the next VRChat/CCK build, with no Undo
-    // record to recover it.
+    // record to recover it. The catch block no longer touches the object at all on failure; this
+    // guards the invariant that a failed conversion never modifies the original avatar.
     [Test]
-    public void Convert_WhenConvertingInPlaceFails_DoesNotTagOrRenameTheOriginalAvatar()
+    public void Convert_WhenConvertingInPlaceFails_DoesNotModifyTheOriginalAvatar()
     {
         var go = new GameObject("VRC3CVRPipelineTest_BareDescriptor");
         original = go;

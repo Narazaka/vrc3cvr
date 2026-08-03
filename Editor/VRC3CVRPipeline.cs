@@ -99,11 +99,10 @@ public static class VRC3CVRPipeline
 
             workingConfig.vrcAvatarDescriptor = target;
 
-            VRC3CVRCore core = null;
             GameObject converted;
             try
             {
-                core = VRC3CVRCore.FromConfig(workingConfig);
+                var core = VRC3CVRCore.FromConfig(workingConfig);
                 core.Convert();
                 converted = core.chilloutAvatar;
             }
@@ -111,17 +110,9 @@ public static class VRC3CVRPipeline
             {
                 // Deliberately leaves the clone in the scene: a half-converted avatar is what the
                 // user needs to diagnose why the conversion threw. Only bake failures clean up.
-                // Tag it EditorOnly so it drops out of the CCK Control Panel listing -- otherwise a
-                // failed run leaves something named like a success that is one click from being
-                // uploaded. Guarded on there actually being a clone: with autoBake off and
-                // shouldCloneAvatar off, VRC3CVRCore converts the user's own avatar in place, and
-                // tagging that EditorOnly would get it deleted by the next VRChat or CCK build.
-                var convertedInPlace = !usedBake && !workingConfig.shouldCloneAvatar;
-                if (!convertedInPlace && core != null && core.chilloutAvatar != null)
-                {
-                    core.chilloutAvatar.tag = "EditorOnly";
-                    core.chilloutAvatar.name += " (FAILED)";
-                }
+                // Nothing is done to mark it -- tagging it EditorOnly would hand it to the next
+                // VRChat or CCK build to delete, which defeats the point of keeping it, and the
+                // Console error already tells the user the conversion failed.
                 return new Result { succeeded = false, errorMessage = exception.ToString() };
             }
 
