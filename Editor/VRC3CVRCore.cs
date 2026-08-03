@@ -93,7 +93,6 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     void SetAnimator()
     {
         // this is not necessary for VRC or CVR but it helps people test their controller
-        // and lets us query for Toe bones for our GUI
         animator = chilloutAvatarGameObject.GetComponent<Animator>();
         animator.runtimeAnimatorController = chilloutAnimatorController;
     }

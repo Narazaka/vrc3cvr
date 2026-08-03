@@ -43,12 +43,6 @@ public static class VRC3CVRPanel
                 + "Upload this result rather than keeping it.",
             "ベイクで生成されたアセットは一時フォルダにあり、次回ビルドで消えます。"
                 + "この結果は保存用ではなく、アップロードして使ってください。");
-        public static istring ToeError(bool left) => new istring(
-            "You do not have a " + (left ? "left" : "right") + " toe bone configured",
-            $"{(left ? "左足" : "右足")}のつま先のボーンが設定されていません");
-        public static istring ToeErrorDescription => new istring(
-            "You must configure this before you upload your avatar",
-            "アバターをアップロードする前に設定してください");
     }
 
     public static void Draw(
@@ -127,8 +121,6 @@ public static class VRC3CVRPanel
         }
         EditorGUI.EndDisabledGroup();
         CustomGUI.HelpLabel(T.ConvertDescription);
-
-        DrawToeWarnings(descriptor);
     }
 
     static void RunConvert(VRCAvatarDescriptor descriptor, VRC3CVRConvertConfig config)
@@ -145,22 +137,6 @@ public static class VRC3CVRPanel
             // No asset rehoming is done, so say plainly that this output is not for keeping.
             Debug.LogWarning("VRC3CVR: " + (string)T.VolatileBakeResult);
         }
-    }
-
-    static void DrawToeWarnings(VRCAvatarDescriptor descriptor)
-    {
-        if (descriptor == null) return;
-        var animator = descriptor.GetComponent<Animator>();
-        if (animator == null || !animator.isHuman) return;
-
-        var leftToes = animator.GetBoneTransform(HumanBodyBones.LeftToes);
-        var rightToes = animator.GetBoneTransform(HumanBodyBones.RightToes);
-        if (leftToes != null && rightToes != null) return;
-
-        CustomGUI.SmallLineGap();
-        if (leftToes == null) CustomGUI.RenderErrorMessage(T.ToeError(true));
-        if (rightToes == null) CustomGUI.RenderErrorMessage(T.ToeError(false));
-        CustomGUI.RenderWarningMessage(T.ToeErrorDescription);
     }
 }
 #endif
