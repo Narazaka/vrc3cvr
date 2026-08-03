@@ -1,10 +1,8 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System;
-using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.TestTools;
 using ABI.CCK.Components;
 using VRC.SDK3.Avatars.Components;
 using VRC.SDKBase.Editor.BuildPipeline;
@@ -55,27 +53,16 @@ public class VRC3CVRBuildProcessorTests
     }
 
     [Test]
-    public void OnPreProcessAvatar_DoesNothingWithoutTheSettingsComponent()
+    public void OnPreProcessAvatar_StopsTheUploadWithoutTheSettingsComponent()
     {
         var descriptor = GenerateAvatar();
 
         // CVRAvatar/CVRAssetInfo do not require VRC3CVRAvatar back (RequireComponent only
         // constrains the other direction), so an avatar can keep a valid CVRAssetInfo -- and stay
-        // listed in the CCK Control Panel -- after VRC3CVRAvatar is removed or never added. Without
-        // a warning here, that avatar would upload as-is: still a VRChat avatar, silently never
-        // converted to ChilloutVR.
-        //
-        // The warning text is an istring, so its rendered content depends on Localization.
-        // CurrentLocale (which defaults from CultureInfo.CurrentCulture.Name -- this test must pass
-        // under either locale, not just whichever one happens to be active on a given machine).
-        // istring also replaces spaces with U+200B inside the Japanese text (for CJK line-wrapping),
-        // so a phrase like "VRC3CVR Avatar" with an ordinary space would not match the ja rendering
-        // even though the same words appear in it. Match only substrings that are identical in both
-        // languages: "VRC3CVR:" is a literal prefix added outside the istring in the source, and
-        // "ChilloutVR" is a proper noun that is never translated or word-split.
-        LogAssert.Expect(LogType.Warning, new Regex(
-            Regex.Escape("VRC3CVR:") + ".*" + Regex.Escape("ChilloutVR")));
-        new VRC3CVRBuildProcessor().OnPreProcessAvatar(avatar);
+        // listed in the CCK Control Panel -- after VRC3CVRAvatar is removed or never added.
+        // Uploading from there would publish a still-VRChat avatar to ChilloutVR and spend a content
+        // slot on it, so the build has to stop rather than warn and continue.
+        Assert.Throws<Exception>(() => new VRC3CVRBuildProcessor().OnPreProcessAvatar(avatar));
 
         Assert.IsNotNull(avatar.GetComponent<VRCAvatarDescriptor>(),
             "an avatar that is not managed by vrc3cvr must be left completely alone");

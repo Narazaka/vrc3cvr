@@ -26,11 +26,13 @@ public class VRC3CVRBuildProcessor : CCKBuildProcessor
                 + "this upload. A tool in the build chain is misconfigured.",
             "ベイクによって VRCAvatarDescriptor が失われ、このアップロードで変換するものが"
                 + "なくなりました。ビルド途中のツールの設定に問題があります。");
-        public static istring UploadingUnconverted => new istring(
-            "This avatar has no VRC3CVR Avatar component, so it will be uploaded unconverted -- "
-                + "as the VRChat avatar it already is, not as ChilloutVR.",
-            "このアバターには VRC3CVR Avatar が付いていないため、変換されずにアップロードされます。"
-                + "VRChat アバターのまま ChilloutVR にアップロードされます。");
+        public static istring NotConverted => new istring(
+            "This avatar has no VRC3CVR Avatar component, so nothing would convert it and the "
+                + "upload would publish it as the VRChat avatar it still is. Add a VRC3CVR Avatar "
+                + "component to convert it on upload.",
+            "このアバターには VRC3CVR Avatar が付いていないため変換されず、"
+                + "VRChat アバターのままアップロードされてしまいます。"
+                + "アップロード時に変換するなら VRC3CVR Avatar を付けてください。");
     }
 
     public override void OnPreProcessAvatar(GameObject avatar)
@@ -39,12 +41,10 @@ public class VRC3CVRBuildProcessor : CCKBuildProcessor
         if (settings == null)
         {
             // CVRAvatar/CVRAssetInfo do not require VRC3CVRAvatar back, so removing this component
-            // (or never adding it) still leaves the avatar listed in the CCK Control Panel. Without
-            // this warning that silently uploads the untouched VRChat avatar as a ChilloutVR one.
-            if (avatar.GetComponent<VRCAvatarDescriptor>() != null)
-            {
-                Debug.LogWarning("VRC3CVR: " + (string)T.UploadingUnconverted, avatar);
-            }
+            // (or never adding it) still leaves the avatar listed in the CCK Control Panel, and
+            // uploading from there would publish the untouched VRChat avatar as a ChilloutVR one.
+            // That result is never wanted and it costs a content slot, so stop the build.
+            if (avatar.GetComponent<VRCAvatarDescriptor>() != null) throw new Exception(T.NotConverted);
             return;
         }
         // No VRChat side left to convert.
