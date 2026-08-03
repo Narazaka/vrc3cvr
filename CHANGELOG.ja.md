@@ -3,30 +3,25 @@
 - **BREAKING**: CCK4が必須になりました。CCK3はサポートされなくなりました
 - **BREAKING**: NDMFプラグイン経路は廃止されました。`Tools -> Modular Avatar -> Manual bake avatar` では変換されなくなりました。`VRC3CVRNDMF` コンポーネントは `VRC3CVR Avatar` になり、設定は引き継がれます
 - 古いバージョンから更新すると `Assets/PeanutTools/VRC3CVR/NDMF/` フォルダが残ることがあります。削除して問題ありません
-- feat: CCK Control Panel からのアップロードでアバターが自動的に変換されるようになりました。VRChatアップロード時にModular AvatarやVRCFuryが動くのと同じ仕組みです。`VRC3CVR Avatar` コンポーネントを付けてアップロードするだけで、別途変換手順は不要です
-- feat: 非破壊系ツール（VRCFury、Modular Avatar、Avatar Optimizerなど）は変換前に自動でベイクされるようになりました（`Auto bake`、既定でON）
-- feat: `VRC3CVR Avatar` コンポーネントのインスペクタからもアバターを変換できるようになりました。`Tools -> VRC3CVR` ウインドウとインスペクタは同じ設定を編集します
-- feat: `VRC3CVR Avatar` は `CVRAvatar` コンポーネントを必須とするようになりました。これがアバターをCCK Control Panelに表示させるものです。アップロードに必要な `CVRAvatar` と `CVRAssetInfo` は、アバターを選択した際に自動で付与されるようになり、手動で追加する必要はなくなりました
-- feat: 1つのオブジェクトに追加できる `VRC3CVR Avatar` は1つだけになりました
-- feat: `VRC3CVR Avatar` コンポーネントの無いアバターをアップロードすると、未変換のままVRChatアバターとして公開されるのではなく、エラーで失敗するようになりました
-- feat: VRC ConstraintsがUnity Constraintsに変換されるようになりました。これにはもうPrefabulousは不要です
-- feat: `GestureLeftWeight` / `GestureRightWeight` が変換されるようになりました。2つのモードから選べます: 遅延なし（既定 — Fist以外でも動くweight駆動のmotion timeステートや2D blend treeにのみ非対応）、または全用途をカバーするが1フレームの遅延が生じるモード
-- feat: `Greater` / `Less` のジェスチャー条件が、黙って破棄されるのではなく変換されるようになりました。VRChatとChilloutVRではジェスチャーの番号付けが異なるため、各比較は該当するジェスチャーごとに1つのtransitionへ展開されます
-- feat: `VelocityMagnitude` が供給されるようになりました。`VelocityX/Y/Z` からクライアントごとに再計算されるため同期ビットを消費しません。`MuteSelf`、`VRMode`、`Upright` も同様です
-- feat: VRCのstate machine behaviourは変換後に削除されるようになりました。そのままだとChilloutVRクライアントにはVRC SDKのアセンブリが存在しないため、アップロードされたコントローラ内でmissing scriptとして出荷されてしまいます
-- fix: transitionの条件がパラメータの実際の型に一致するようになりました。`IsLocal` のような組み込みのboolをblend treeが強制的にFloatとして宣言しているアバターでは `uses parameter '...' which is not compatible with condition type` が発生し、そのレイヤーが動作しなくなっていました
+- feat: CCK Control Panel でのアップロード時に、アバターが変換されるようになりました。`VRC3CVR Avatar` コンポーネント（CCKが必要とする `CVRAvatar` と `CVRAssetInfo` も一緒に付きます）を付けてアップロードを押すだけです。VRChatのアップロード時にModular AvatarやVRCFuryが動くのと同じで、変換の手順を別に踏む必要はもうありません
+- feat: 非破壊系ツール（VRCFury、Modular Avatar、Avatar Optimizerなど）が変換前にベイクされるようになり、自分で先にベイクする必要が無くなりました（`Auto bake`、既定でON）
+- feat: `VRC3CVR Avatar` のインスペクタからもアバターを変換できるようになりました。`Tools -> VRC3CVR` ウインドウとインスペクタは同じ設定を編集するので、1つのアバターに設定が2つ存在することはありません
+- feat: VRC ConstraintsをUnity Constraintsに変換するようになりました（`Convert VRC Constraints`、既定でON）。Constraintの変換にPrefabulousは不要になりました
+- feat: `MuteSelf`・`VRMode`・`Upright` をゲームから供給するようになりました（`Feed MuteSelf / VRMode / Upright`、既定でON）。`VelocityMagnitude` は `VelocityX/Y/Z` から再計算するため同期コストはかかりません
+- feat: `GestureLeftWeight` / `GestureRightWeight` の変換方式を選べるようになりました（`GestureLeftWeight/GestureRightWeightの変換方式`）。`GestureLeft` / `GestureRight` への書き換えが引き続き既定で、weight条件とweight駆動の1Dブレンドツリーについては、VRChatの「Fist以外では1固定」という挙動も再現するようになりました。新しい方式はweightパラメータを残して `GestureLeft` から供給するもので、motion timeステートや2Dブレンドツリーにも対応しますが、1フレームの遅延が生じます
+- feat: `GestureLeft` / `GestureRight` に対する `Greater` / `Less` 条件が、破棄されるのではなく変換されるようになりました。VRChatとChilloutVRではジェスチャーの番号付けが異なるため、各比較は該当するジェスチャーごとに1つのtransitionへ展開されます
+- fix: transitionの条件がパラメータの実際の型に一致するようになりました。`IsLocal` のような組み込みのboolをblend treeの都合でFloatとして宣言しているアバターでは `uses parameter '...' which is not compatible with condition type` が発生し、そのレイヤーが動作しなくなっていました
 - fix: サブステートマシンから出ていくtransitionも変換されるようになりました。これらは親のステートマシン側に保存されているため、見落とされていました
 - fix: マージされたVRC animatorの最初のレイヤーが無効化されなくなりました。Unityはシリアライズされたweightに関わらずlayer 0を常にweight 1で実行するため、マージによってそのレイヤーが最初の位置から動く前に、そのweightを焼き込むようになりました
-- fix: 組み込みのアバターマスクが、ディレクトリの実際の大文字小文字を使って読み込まれるようになりました。大文字小文字を区別するファイルシステムでは、すべてのマスクがnullとして読み込まれ、何もログに出ないままレイヤーがヒューマノイドリグ全体に対してマスク無しで実行されていました
 - fix: expression parametersの無いアバターが、変換途中で例外を投げて中途半端なアバターを残すのではなく、正常に変換されるようになりました
 - fix: アバターマスクの結合で、特定の非ヒューマノイドtransformに対する制限が失われなくなりました。レイヤーから除外されていたpropやボーンが、変換後に再びアニメーションしてしまう問題でした
 - fix: 負のトグル値がintドロップダウンから消えなくなりました
 - fix: ルートのexpression menu直下にあるintドロップダウンの選択肢が、名前の先頭1文字を失わなくなりました
 - fix: puppetのサブパラメータとしてのみ使われるIntパラメータの変換で `InvalidOperationException` が発生して変換が中断することがなくなりました。animatorパラメータ自体は引き続き変換され、CVRメニューの項目のみが警告付きで省略されます
 - fix: puppetの「changing」パラメータが値1のトグルにも使われている場合に `ArgumentException` が発生して変換が中断することがなくなりました
-- fix: 重複した `CVRAssetInfo` があっても、アップロードがcontent idの無い方を選んでしまう危険が無くなりました
-- fix: 変換が失敗した場合に、対象のアバターの名前やタグが変更されなくなりました
-- fix: つま先ボーンが無い場合のエラーを削除しました。アップロード前に直すべきものとして表示されていましたが、ChilloutVRはつま先ボーンを必要とせず、アップロードが妨げられることは元々ありませんでした
+- fix: VRCのstate machine behaviourを変換後に削除するようになり、変換後のコントローラに壊れたスクリプト参照が残らなくなりました
+- fix: 組み込みのアバターマスクが、ディレクトリの実際の大文字小文字を使って読み込まれるようになりました。大文字小文字を区別するファイルシステムでは、すべてのマスクがnullとして読み込まれ、何もログに出ないままレイヤーがヒューマノイドリグ全体に対してマスク無しで実行されていました
+- fix: つま先ボーンが無い場合のエラーを削除しました。アップロード前に直すべきものとして表示されていましたが、ChilloutVRはつま先ボーンを必要としません
 
 # 3.0.0-rc.1
 

@@ -5,30 +5,25 @@
 - **BREAKING**: CCK4 is now required. CCK3 is no longer supported
 - **BREAKING**: the NDMF plugin path is gone. `Tools -> Modular Avatar -> Manual bake avatar` no longer converts. The `VRC3CVRNDMF` component becomes `VRC3CVR Avatar` and its settings are preserved
 - If you update over an older version an `Assets/PeanutTools/VRC3CVR/NDMF/` folder may be left behind. It is safe to delete
-- feat: uploading from the CCK Control Panel now converts the avatar automatically, the same way Modular Avatar and VRCFury run during a VRChat upload. Add a `VRC3CVR Avatar` component and upload — no separate conversion step
-- feat: non-destructive tools (VRCFury, Modular Avatar, Avatar Optimizer, ...) are now baked automatically before the conversion (`Auto bake`, on by default)
-- feat: the avatar can now be converted from the `VRC3CVR Avatar` component inspector. The `Tools -> VRC3CVR` window and the inspector edit the same settings
-- feat: `VRC3CVR Avatar` now requires a `CVRAvatar` component, which is what makes the avatar show up in the CCK Control Panel. The `CVRAvatar` and `CVRAssetInfo` an upload needs are now attached for you when you select the avatar, instead of having to add them by hand
-- feat: only one `VRC3CVR Avatar` can be added per object
-- feat: uploading an avatar that has no `VRC3CVR Avatar` component now fails with an error instead of publishing it unconverted as the VRChat avatar it still is
-- feat: VRC Constraints are converted to Unity Constraints. Prefabulous is no longer needed for this
-- feat: `GestureLeftWeight` / `GestureRightWeight` are converted, in either of two modes: no latency (default — only a weight-driven motion time state or 2D blend tree that also runs outside Fist is incompatible) or covers every usage, at the cost of one frame of latency
-- feat: `Greater` / `Less` gesture conditions are converted instead of being silently dropped. VRChat and ChilloutVR number gestures differently, so each comparison expands into one transition per matching gesture
-- feat: `VelocityMagnitude` is now fed, recomputed per client from `VelocityX/Y/Z` so it costs no sync bits, along with `MuteSelf`, `VRMode` and `Upright`
-- feat: VRC state machine behaviours are removed after conversion. They would otherwise ship as missing scripts in the uploaded controller, since the VRC SDK assemblies do not exist in the ChilloutVR client
+- feat: the CCK Control Panel now converts the avatar for you as it uploads. Add a `VRC3CVR Avatar` component — it brings the `CVRAvatar` and `CVRAssetInfo` the CCK needs with it — and press upload. There is no separate conversion step any more, the same way Modular Avatar and VRCFury run during a VRChat upload
+- feat: non-destructive tools (VRCFury, Modular Avatar, Avatar Optimizer, ...) are baked before the conversion, so you no longer have to bake them yourself first (`Auto bake`, on by default)
+- feat: the avatar can also be converted from the `VRC3CVR Avatar` inspector. The `Tools -> VRC3CVR` window and the inspector edit the same settings, so an avatar never has two sets of them
+- feat: VRC Constraints are converted to Unity Constraints (`Convert VRC Constraints`, on by default). Prefabulous is no longer needed for constraint conversion
+- feat: `MuteSelf`, `VRMode` and `Upright` are fed from the game (`Feed MuteSelf / VRMode / Upright`, on by default), and `VelocityMagnitude` is recomputed from `VelocityX/Y/Z` at no sync cost
+- feat: how `GestureLeftWeight` / `GestureRightWeight` are converted can now be chosen (`GestureLeftWeight/GestureRightWeight conversion`). Rewriting them onto `GestureLeft` / `GestureRight` stays the default and now also reproduces VRChat's "fixed 1 outside Fist" rule in weight conditions and weight-driven 1D blend trees. The new mode keeps the weight parameters and feeds them from `GestureLeft` instead, which covers motion time states and 2D blend trees as well, at the cost of one frame of latency
+- feat: `Greater` / `Less` conditions on `GestureLeft` / `GestureRight` are converted instead of being dropped. VRChat and ChilloutVR number gestures differently, so each comparison expands into one transition per matching gesture
 - fix: transition conditions now match the type the parameter actually has. An avatar that declares a built-in bool such as `IsLocal` as a Float — which a blend tree forces it to do — produced `uses parameter '...' which is not compatible with condition type` and that layer stopped working
 - fix: the transitions leaving a sub-state-machine are converted too. They are stored on the parent state machine, so they were missed
 - fix: the first layer of a merged VRC animator is no longer disabled. Unity forces layer 0 to run at weight 1 regardless of its serialized weight, so that weight is now baked in before merging moves the layer out of first place
-- fix: the built-in avatar masks are loaded from the directory's real casing. On a case-sensitive filesystem every mask loaded as null and the layers ran unmasked over the whole humanoid rig, without anything being logged
 - fix: an avatar with no expression parameters converts instead of throwing partway through and leaving a half-built avatar behind
 - fix: combining avatar masks no longer drops restrictions on specific non-humanoid transforms. Props and bones excluded from a layer would animate again after conversion
 - fix: negative toggle values no longer disappear from int dropdowns
 - fix: int dropdown options that live directly in the root expression menu no longer lose the first character of their name
 - fix: converting an Int parameter used only as a puppet sub-parameter no longer throws `InvalidOperationException` and aborts the conversion. The animator parameter is still converted; only the CVR menu entry is omitted, with a warning
 - fix: a puppet's "changing" parameter that is also used by a toggle at value 1 no longer throws `ArgumentException` and aborts the conversion
-- fix: a duplicate `CVRAssetInfo` no longer risks the upload picking the one without your content id
-- fix: a conversion that fails no longer renames or retags the avatar it was working on
-- fix: removed the missing toe bone error. It was presented as something to fix before uploading, but ChilloutVR does not require toe bones and the upload was never blocked
+- fix: VRC state machine behaviours are removed after conversion, so the converted controller no longer carries missing script references
+- fix: the built-in avatar masks are loaded from the directory's real casing. On a case-sensitive filesystem they all loaded as null and every layer ran unmasked over the whole humanoid rig, with nothing logged
+- fix: the missing toe bone error is gone. It told you to fix something before uploading, but ChilloutVR does not require toe bones
 
 # 3.0.0-rc.1
 
