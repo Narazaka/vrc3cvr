@@ -1,6 +1,6 @@
 **[日本語](CHANGELOG.ja.md)**
 
-# Unreleased
+# 3.0.0-rc.2
 
 - **BREAKING**: the NDMF plugin path is gone. `Tools -> Modular Avatar -> Manual bake avatar` no longer converts. The `VRC3CVRNDMF` component becomes `VRC3CVR Avatar` and its settings are preserved
 - If you update over an older version an `Assets/PeanutTools/VRC3CVR/NDMF/` folder may be left behind. It is safe to delete
