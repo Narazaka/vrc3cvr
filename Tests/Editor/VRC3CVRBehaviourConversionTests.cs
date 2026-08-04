@@ -622,8 +622,6 @@ public class VRC3CVRBehaviourConversionTests
         var target = new AnimatorController { name = "target" };
         SetPrivateField(core, "chilloutAnimatorController", target);
 
-        // an author's Additive controller normally leaves its layers on Override — the platform,
-        // not the controller, is what makes the playable additive
         var source = new AnimatorController { name = "source" };
         source.AddLayer("L0");
         source.AddLayer("L1");
