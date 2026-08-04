@@ -866,6 +866,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     HashSet<string> preserveParameters;
 
+    // A humanoid clip's muscle, IK-goal and root-motion curves are bound exactly like a curve that
+    // writes an animator parameter -- typeof(Animator), empty path -- and Unity hands some of them
+    // back under names it cannot resolve ("unknown_*"), which no allow-list can enumerate. Whether
+    // the animator declares a parameter of that name is the only thing that tells the two apart.
+    // Snapshotted before the declarations are renamed, since the curves still carry the old names.
+    HashSet<string> declaredParameterNames = new HashSet<string>();
+
     static HashSet<string> _muscleNames;
     static HashSet<string> muscleNames
     {
@@ -934,6 +941,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     void AdjustParameterNamesOnAnimator()
     {
         var parameters = chilloutAnimatorController.parameters;
+        declaredParameterNames = parameters.Select(p => p.name).ToHashSet();
         for (var i = 0; i < parameters.Length; ++i)
         {
             var t = GetRenameParameterType(parameters[i].name);
@@ -1153,7 +1161,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var j = 0;
         foreach (var binding in bindings)
         {
-            if (binding.type == typeof(Animator))
+            if (binding.type == typeof(Animator) && declaredParameterNames.Contains(binding.propertyName))
             {
                 var t = GetRenameParameterType(binding.propertyName);
                 if (t != RenameParameterType.None)
@@ -1291,6 +1299,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     void WalkParameterNames(System.Func<string, string> renamer)
     {
         parameterRenamer = renamer;
+        declaredParameterNames = chilloutAnimatorController.parameters.Select(p => p.name).ToHashSet();
         try
         {
             foreach (var layer in chilloutAnimatorController.layers)

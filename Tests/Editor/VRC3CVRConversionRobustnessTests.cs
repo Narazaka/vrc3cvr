@@ -111,5 +111,37 @@ public class VRC3CVRConversionRobustnessTests
         Assert.AreEqual(1f, mergedLayer.defaultWeight,
             "the first source layer kept its serialized weight of 0 and would never run after merging");
     }
+
+    // The parameter-rename pass deletes the curve it rewrites and re-adds it under the new name, so
+    // mistaking a humanoid curve for a parameter write destroys the animation rather than aliasing
+    // it. The Gesture*Weight tests cover the declared side; this is the other half.
+    [Test]
+    public void AdjustParameterNames_LeavesACurveAloneWhenNoParameterOfThatNameIsDeclared()
+    {
+        var controller = new AnimatorController { name = "humanoidCurveTest" };
+        controller.AddParameter("Declared", AnimatorControllerParameterType.Float);
+        controller.AddLayer("L");
+        var clip = new AnimationClip { name = "Walk" };
+        // how Unity hands back a humanoid curve whose name it cannot resolve
+        clip.SetCurve("", typeof(Animator), "unknown_2", AnimationCurve.Constant(0f, 1f, 1f));
+        controller.layers[0].stateMachine.AddState("S").motion = clip;
+
+        var core = new VRC3CVRCore();
+        typeof(VRC3CVRCore).GetField("chilloutAnimatorController", Flags).SetValue(core, controller);
+        typeof(VRC3CVRCore).GetField("preserveParameters", Flags).SetValue(core, new System.Collections.Generic.HashSet<string>());
+        typeof(VRC3CVRCore).GetField("impulseParameters", Flags).SetValue(core, new System.Collections.Generic.HashSet<string>());
+        typeof(VRC3CVRCore).GetMethod("AdjustParameterNamesOnAnimator", Flags).Invoke(core, null);
+
+        Assert.AreSame(clip, controller.layers[0].stateMachine.states.Single().state.motion,
+            "the clip was replaced by a rewritten copy");
+        Assert.AreEqual("Walk", clip.name);
+        CollectionAssert.AreEqual(new[] { "unknown_2" },
+            AnimationUtility.GetCurveBindings(clip).Select(binding => binding.propertyName).ToArray());
+        Assert.AreEqual("#Declared", controller.parameters.Single().name,
+            "the fixture no longer renames anything, so it cannot show that curves are spared");
+
+        Object.DestroyImmediate(clip);
+        Object.DestroyImmediate(controller);
+    }
 }
 #endif
