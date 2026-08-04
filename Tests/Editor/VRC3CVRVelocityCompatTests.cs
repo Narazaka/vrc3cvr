@@ -200,5 +200,31 @@ public class VRC3CVRVelocityCompatTests
 
         Object.DestroyImmediate(controller);
     }
+
+    [Test]
+    public void RemapVelocity_RewritesASourceLayerWhoseNameCollidesWithTheGeneratedPrefix()
+    {
+        var controller = new AnimatorController { name = "collisionTest" };
+        controller.AddParameter("VelocityX", AnimatorControllerParameterType.Float);
+        controller.AddParameter("VelocityZ", AnimatorControllerParameterType.Float);
+        // An original VRC avatar layer can legally be named anything in Unity's Animator window,
+        // including something that collides with vrc3cvr's own "VRC3CVR_" generated-layer naming
+        // convention. It was never routed through AddGeneratedLayer, so it must still be walked.
+        controller.AddLayer("VRC3CVR_MyCoolLayer");
+        var machine = controller.layers[0].stateMachine;
+        var state = machine.AddState("S");
+        var transition = machine.AddAnyStateTransition(state);
+        transition.AddCondition(AnimatorConditionMode.Greater, 0.5f, "VelocityX");
+        var core = MakeCore(controller);
+
+        typeof(VRC3CVRCore).GetMethod("RemapVelocityToAvatarLocal", Flags).Invoke(core, null);
+
+        Assert.AreEqual("#VelocityXLocal",
+            controller.layers[0].stateMachine.anyStateTransitions[0].conditions[0].parameter,
+            "生成レイヤーの命名規則と偶然衝突しただけの元アバターレイヤーも書き換え対象");
+        Assert.AreEqual(1, controller.layers.Count(l => l.name.StartsWith("VRC3CVR_LocomotionVelocity")));
+
+        Object.DestroyImmediate(controller);
+    }
 }
 #endif

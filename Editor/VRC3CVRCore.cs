@@ -60,6 +60,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // This stores generated extra avatar masks based on the VRC hardcoded animator masks combined with individual layer masks.
     Dictionary<(AvatarMask, AvatarMask), AvatarMask> avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
 
+    // Layers this conversion generated (feed layers, contact proxy layers, etc.), keyed by the name
+    // they actually ended up with — MakeUniqueLayerName may suffix it. NOT inferred from the
+    // "VRC3CVR_" naming convention: an original VRC avatar layer can legally be named anything,
+    // including something that happens to start with that prefix, so name-sniffing would silently
+    // skip real avatar content. Populated only through AddGeneratedLayer so no call site can forget.
+    HashSet<string> generatedLayerNames = new HashSet<string>();
+
     // This mask will mask all other layer masks from the gesture animator, and is derived from the
     // *first* layer.
     AvatarMask gestureMask;
@@ -140,6 +147,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             // Clear the cache
             avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
             gestureMask = null;
+            generatedLayerNames = new HashSet<string>();
 
             // Load masks
             emptyMask = LoadMask("vrc3cvrEmptyMask.mask");
@@ -179,8 +187,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             // After AdjustParameterNames, like the feed layers above, so the names it rewrites are
             // the final ones. Running after MakeVelocityMagnitudeFeedLayer does NOT require that
             // layer's literal "VelocityX"/"VelocityZ" reads to survive by luck of ordering —
-            // WalkParameterNames skips vrc3cvr's own "VRC3CVR_"-prefixed layers outright, so this
-            // pass structurally cannot see (and previously did corrupt) a feed layer's own reads.
+            // WalkParameterNames skips every layer recorded in generatedLayerNames (see
+            // AddGeneratedLayer), so this pass structurally cannot see, let alone corrupt, a feed
+            // layer's own reads, regardless of what order Convert() calls things in.
             RemapVelocityToAvatarLocal();
             MakeGameStateParameterStreams();
             InsertChilloutOverride();
@@ -205,6 +214,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             // Clear the cache
             avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
             gestureMask = null;
+            generatedLayerNames = new HashSet<string>();
 
             Debug.Log("Conversion complete!");
         }
@@ -1287,16 +1297,17 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // a targeted pass wants the references pointed elsewhere while the original parameter stays
     // declared — VelocityX is still the client-fed input the derived value is computed from.
     //
-    // Layers vrc3cvr itself generated are skipped, identified by the "VRC3CVR_" prefix every
-    // feed/proxy layer this codebase creates uses (MakeVelocityMagnitudeFeedLayer,
-    // MakeGestureWeightFeedLayers, MakeLocomotionVelocityFeedLayer, the contact proxy/local-only
-    // layers — see the AddLayer call sites). Their parameter references are exactly what their own
-    // generator chose on purpose (e.g. the magnitude layer's literal "VelocityX"/"VelocityZ" reads
-    // are deliberately world-space); a second, narrower rename pass has no business rewriting
-    // content this same Convert() call just produced, only content carried over from the original
-    // avatar. Without this, a targeted pass whose mapping happens to match a generated layer's own
-    // reads corrupts that layer — and can manufacture a false "this parameter is used" signal from
-    // its own output, independent of what order Convert() happens to call things in.
+    // Layers vrc3cvr itself generated are skipped, via generatedLayerNames rather than by sniffing
+    // the "VRC3CVR_" name prefix: an original VRC avatar layer can legally be named anything,
+    // including something that happens to start with that prefix, and skipping it on name alone
+    // would silently drop real avatar content from the walk. Generated layers' parameter references
+    // are exactly what their own generator chose on purpose (e.g. the magnitude layer's literal
+    // "VelocityX"/"VelocityZ" reads are deliberately world-space); a second, narrower rename pass
+    // has no business rewriting content this same Convert() call just produced, only content
+    // carried over from the original avatar. Without this, a targeted pass whose mapping happens to
+    // match a generated layer's own reads corrupts that layer — and can manufacture a false "this
+    // parameter is used" signal from its own output, independent of what order Convert() happens to
+    // call things in.
     void WalkParameterNames(System.Func<string, string> renamer)
     {
         parameterRenamer = renamer;
@@ -1304,7 +1315,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             foreach (var layer in chilloutAnimatorController.layers)
             {
-                if (layer.name.StartsWith("VRC3CVR_"))
+                if (generatedLayerNames.Contains(layer.name))
                 {
                     continue;
                 }
@@ -1315,6 +1326,16 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             parameterRenamer = null;
         }
+    }
+
+    // The single choke point every generated layer must go through, so generatedLayerNames (see
+    // WalkParameterNames) can never miss one — a call site that used chilloutAnimatorController
+    // .AddLayer directly would silently reintroduce the corruption this exists to prevent. Keyed on
+    // layer.name as actually assigned, since MakeUniqueLayerName may have suffixed it.
+    void AddGeneratedLayer(AnimatorControllerLayer layer)
+    {
+        chilloutAnimatorController.AddLayer(layer);
+        generatedLayerNames.Add(layer.name);
     }
 
     void RenameParameterNameIfNeeded(ref string name)
@@ -3617,7 +3638,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     },
                 },
             };
-            chilloutAnimatorController.AddLayer(layer);
+            AddGeneratedLayer(layer);
         }
         chilloutAnimatorController.parameters = parameters;
     }
@@ -3714,7 +3735,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 },
             },
         };
-        chilloutAnimatorController.AddLayer(layer);
+        AddGeneratedLayer(layer);
     }
 
     // VRChat supplies VelocityMagnitude; ChilloutVR does not, so recompute it from the
@@ -3836,7 +3857,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 },
             },
         };
-        chilloutAnimatorController.AddLayer(layer);
+        AddGeneratedLayer(layer);
     }
 
     // VelocityY is deliberately untouched: the player only ever rotates about Y, so the vertical
@@ -4007,7 +4028,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             },
         };
         var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_LocomotionVelocity");
-        chilloutAnimatorController.AddLayer(new AnimatorControllerLayer
+        AddGeneratedLayer(new AnimatorControllerLayer
         {
             name = layerName,
             defaultWeight = 1f,
@@ -4597,7 +4618,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             },
         };
         var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_LocalOnlyContacts");
-        chilloutAnimatorController.AddLayer(new AnimatorControllerLayer
+        AddGeneratedLayer(new AnimatorControllerLayer
         {
             name = layerName,
             avatarMask = emptyMask,
