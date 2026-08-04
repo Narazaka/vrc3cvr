@@ -17,6 +17,9 @@ using VRC.SDKBase;
 //   (forward vs strafe at an off-axis heading) / S1 MuteSelf / S2 VRMode / S3 Upright
 //   C1..C6 the six constraint types / C7 Target Transform redirect
 //   C8 same-type merge / C9 animated constraint properties (menu toggle)
+//   L1 the Base layer's own idle clip still drives the body after the graft
+//   L2 its proxy_walk_forward stands in for ChilloutVR's own walk clip
+//   L3 flight, salvaged out of the replaced CVR locomotion layer, is still reachable
 // Each group can be shown/hidden from the expressions menu so items can be checked one at a
 // time. Labels carry the expected behavior (in English: the built-in font has no CJK glyphs).
 // Lives in Tests/ so it ships with the repository but not with the distributed unitypackage.
@@ -54,6 +57,7 @@ public static class VRC3CVRVerificationAvatar
         var fx = BuildFxController(assetFolder);
         var handMask = BuildHandMask(assetFolder);
         var gesture = BuildGestureController(assetFolder, handMask);
+        var baseLocomotion = BuildBaseController(assetFolder);
         var descriptor = root.AddComponent<VRCAvatarDescriptor>();
         descriptor.ViewPosition = new Vector3(0f, 1.45f, 0.1f);
         descriptor.lipSync = VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape;
@@ -65,7 +69,9 @@ public static class VRC3CVRVerificationAvatar
         descriptor.customizeAnimationLayers = true;
         descriptor.baseAnimationLayers = new VRCAvatarDescriptor.CustomAnimLayer[]
         {
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Base, isDefault = true },
+            // locomotion of the avatar's own: the conversion replaces ChilloutVR's locomotion
+            // layer with it, which a stock (isDefault) Base layer would never reach
+            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Base, isDefault = false, animatorController = baseLocomotion },
             new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Additive, isDefault = true },
             // dedicated (non-default) gesture controller: exercises the GESTURE avatar mask
             // branch and the CVR default hand layer deletion branch, both unreachable while
@@ -295,6 +301,10 @@ public static class VRC3CVRVerificationAvatar
         // VelocityMagnitude, which is frame-invariant and cannot tell forward from strafe)
         Marker("VelocityBar", state, new Vector3(0.9f, 0f, 0f), new Vector3(0.05f, 0.02f, 0.05f), materials.white,
             "walking forward raises this bar\nstrafing leaves it low, whatever heading you face");
+        // starts hidden so the Base layer's idle clip is what turns it on: it is the only thing
+        // that animates it, and a marker already visible would prove nothing
+        Marker("BaseIdleMarker", state, new Vector3(1.1f, 0f, 0f), Vector3.one * 0.06f, materials.yellow,
+            "ON standing still, OFF walking forward\ndriven by the avatar's own Base locomotion").SetActive(false);
     }
 
     // ---- constraint objects ----
@@ -626,6 +636,46 @@ public static class VRC3CVRVerificationAvatar
         gesture.layers = overlayLayers;
 
         return gesture;
+    }
+
+    // ---- base controller (the avatar's own locomotion) ----
+
+    static AnimatorController BuildBaseController(string assetFolder)
+    {
+        var baseController = AnimatorController.CreateAnimatorControllerAtPath(assetFolder + "/VerificationBase.controller");
+        baseController.AddParameter("VelocityX", AnimatorControllerParameterType.Float);
+        baseController.AddParameter("VelocityZ", AnimatorControllerParameterType.Float);
+
+        var idle = new AnimationClip { name = "Base_CustomIdle" };
+        idle.SetCurve("Panel/State/BaseIdleMarker", typeof(GameObject), "m_IsActive", AnimationCurve.Constant(0f, 1f / 60f, 1f));
+        AssetDatabase.CreateAsset(idle, assetFolder + "/Base_CustomIdle.anim");
+
+        // Both the placeholder test and the substitution table key on the clip NAME, so an empty
+        // clip named like VRChat's own placeholder exercises the swap without depending on the SDK
+        // shipping that asset.
+        var walkForward = new AnimationClip { name = "proxy_walk_forward" };
+        AssetDatabase.CreateAsset(walkForward, assetFolder + "/proxy_walk_forward.anim");
+
+        var tree = new BlendTree
+        {
+            name = "Locomotion Tree",
+            blendType = BlendTreeType.FreeformDirectional2D,
+            blendParameter = "VelocityX",
+            blendParameterY = "VelocityZ",
+            hideFlags = HideFlags.HideInHierarchy,
+        };
+        tree.AddChild(idle, Vector2.zero);
+        // ChilloutVR walks at 2.00 m/s, so walking straight forward puts the blend right here
+        tree.AddChild(walkForward, new Vector2(0f, 2f));
+        AssetDatabase.AddObjectToAsset(tree, baseController);
+
+        var stateMachine = baseController.layers[0].stateMachine;
+        var locomotion = stateMachine.AddState("Locomotion");
+        locomotion.motion = tree;
+        locomotion.writeDefaultValues = true;
+        stateMachine.defaultState = locomotion;
+
+        return baseController;
     }
 
     // ---- FX controller ----

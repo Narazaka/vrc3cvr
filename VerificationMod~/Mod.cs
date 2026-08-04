@@ -842,6 +842,82 @@ namespace VRC3CVRVerification
             Run("toggle on check", () => CheckObject(avatar, "Panel/Gesture", target =>
                 Check(target.gameObject.activeSelf, "Show Gesture ON shows the gesture group")));
 
+            // ---- L1/L2/L3: the avatar's own Base locomotion, grafted onto CVR's own layer ----
+            // The conversion drops ChilloutVR's locomotion layer, puts the VRChat Base layer in its
+            // place under the same name, swaps the proxy_* placeholders for the CCK's real clips and
+            // reconnects the movement modes it salvaged. Which clip is actually playing is the only
+            // thing that says all three of those survived into the running game.
+            Step("  L1..L3 grafted locomotion");
+            var locomotionLayer = LayerIndex(animator, "Locomotion/Emotes");
+            if (locomotionLayer < 0)
+            {
+                Check(false, "L no \"Locomotion/Emotes\" layer on the converted animator (layers: " +
+                    string.Join(", ", Enumerable.Range(0, animator.layerCount).Select(animator.GetLayerName).ToArray()) +
+                    ") — was the avatar converted with the locomotion layer enabled?");
+            }
+            else
+            {
+                Run("L1", () =>
+                {
+                    var idleClip = DominantClip(animator, locomotionLayer, out var idleWeight);
+                    Check(idleClip == "Base_CustomIdle",
+                        "L1 standing still plays the avatar's own idle clip (\"" + idleClip +
+                        "\" at weight " + idleWeight.ToString("0.00") + ")");
+                });
+
+                var walkClip = "(not sampled)";
+                var walkWeight = 0f;
+                InjectMovement = true;
+                // out and back, so the player ends up roughly where it started
+                for (var i = 0; i < 120; i++)
+                {
+                    MovementOverride = new Vector3(0f, 0f, i < 60 ? 1f : -1f);
+                    yield return null;
+                    var sample = i;
+                    Run("L2 sample", () =>
+                    {
+                        // past the acceleration ramp, where the idle child still holds the blend
+                        if (sample < 30 || sample >= 60)
+                        {
+                            return;
+                        }
+                        var clip = DominantClip(animator, locomotionLayer, out var weight);
+                        if (weight >= walkWeight)
+                        {
+                            walkWeight = weight;
+                            walkClip = clip;
+                        }
+                    });
+                }
+                InjectMovement = false;
+                MovementOverride = Vector3.zero;
+                // StartsWith, because the parameter-rename pass may hand the clip over as a
+                // "LocWalkingForward_Remapped" copy of itself
+                Run("L2", () => Check(walkClip.StartsWith("LocWalkingForward"),
+                    "L2 walking forward plays ChilloutVR's own walk clip, so the placeholder was substituted and the " +
+                    "velocity conversion drives the blend tree (\"" + walkClip + "\" at weight " + walkWeight.ToString("0.00") + ")"));
+                yield return new WaitForSeconds(1f);
+
+                var flightInjected = false;
+                Run("L3 flight on", () => flightInjected = TryChangeFlight(characterController, true));
+                yield return new WaitForSeconds(1.5f);
+                if (!flightInjected)
+                {
+                    Run("L3", () => Note("L3 not measured: no usable flight control on the character controller"));
+                }
+                else
+                {
+                    Run("L3 flying", () => Check(
+                        animator.GetCurrentAnimatorStateInfo(locomotionLayer).shortNameHash == Animator.StringToHash("LocFlying"),
+                        "L3 flying enters the LocFlying state salvaged out of the replaced layer"));
+                    Run("L3 flight off", () => TryChangeFlight(characterController, false));
+                    yield return new WaitForSeconds(1.5f);
+                    Run("L3 landed", () => Check(
+                        animator.GetCurrentAnimatorStateInfo(locomotionLayer).shortNameHash == Animator.StringToHash("Locomotion"),
+                        "L3 leaving flight returns to the avatar's own locomotion state"));
+                }
+            }
+
             Flush();
             _running = false;
         }
@@ -1099,6 +1175,66 @@ namespace VRC3CVRVerification
             }
             var value = ReadParam(animator, name);
             Check(Mathf.Abs(value - expected) < tolerance, message + " (value " + value.ToString("0.00") + ")");
+        }
+
+        static int LayerIndex(Animator animator, string name)
+        {
+            for (var i = 0; i < animator.layerCount; i++)
+            {
+                if (animator.GetLayerName(i) == name)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        // The clip holding most of the layer's blend, which for a locomotion blend tree is the one
+        // the wearer is actually seen doing.
+        static string DominantClip(Animator animator, int layer, out float weight)
+        {
+            var name = "(none)";
+            weight = 0f;
+            foreach (var info in animator.GetCurrentAnimatorClipInfo(layer))
+            {
+                if (info.clip != null && info.weight > weight)
+                {
+                    weight = info.weight;
+                    name = info.clip.name;
+                }
+            }
+            return name;
+        }
+
+        // ChilloutVR refuses flight in worlds that disallow it, so the permission is granted first.
+        // Reflected for the same reason as TrySetBool below.
+        static bool TryChangeFlight(object controller, bool flying)
+        {
+            if (controller == null)
+            {
+                return false;
+            }
+            TrySetBool(controller, "FlightAllowedInWorld", true);
+            var method = controller.GetType().GetMethod("ChangeFlight",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic
+                | System.Reflection.BindingFlags.Instance);
+            if (method == null)
+            {
+                return false;
+            }
+            var parameters = method.GetParameters();
+            if (parameters.Length == 0 || parameters.Any(parameter => parameter.ParameterType != typeof(bool)))
+            {
+                return false;
+            }
+            var arguments = new object[parameters.Length];
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                // ChangeFlight(isFlying, forceUpdate): apply it now rather than on the next input
+                arguments[i] = i == 0 ? (object)flying : true;
+            }
+            method.Invoke(controller, arguments);
+            return true;
         }
 
         // Writes a bool member whose existence is not guaranteed across client versions, so a

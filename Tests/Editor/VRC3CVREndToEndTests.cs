@@ -1,4 +1,5 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
@@ -33,6 +34,8 @@ public class VRC3CVREndToEndTests
             shouldCloneAvatar = true,
             saveAssets = false,
             gestureWeightConversionMode = mode,
+            // off by default, and the avatar's Base layer is only looked at when it is on
+            convertLocomotionLayer = true,
         });
         core.Convert();
         converted = core.chilloutAvatar;
@@ -109,6 +112,48 @@ public class VRC3CVREndToEndTests
         Assert.IsTrue(controller.parameters.Any(parameter => parameter.name == "MuteSelf"));
         Assert.IsTrue(controller.parameters.Any(parameter => parameter.name == "VRMode"));
         Assert.IsTrue(controller.parameters.Any(parameter => parameter.name == "Upright"));
+    }
+
+    // VRC3CVRBaseGraftTests already proves the graft mechanism on purpose-built controllers; this
+    // only asks whether the verification avatar — the one that gets uploaded and checked in game —
+    // really came out of the conversion grafted.
+    [Test]
+    public void ConvertVerificationAvatar_GraftsItsOwnLocomotionOntoTheChilloutVRLayer()
+    {
+        var controller = ControllerOf(Convert(VRC3CVRConvertConfig.GestureWeightConversionMode.FoldToGestureLeft));
+        var layer = controller.layers.Single(l => l.name == "Locomotion/Emotes");
+        var machine = layer.stateMachine;
+
+        Assert.IsTrue(layer.iKPass);
+        Assert.AreEqual("Locomotion", machine.defaultState.name);
+
+        // The CCK's locomotion clips carry humanoid curves Unity cannot name back ("unknown_*"),
+        // which the parameter-rename pass takes for animated animator parameters and rewrites into
+        // a "_Remapped" copy. That is about clip curves, not about this graft.
+        var hubClips = ((BlendTree)machine.defaultState.motion).children
+            .Select(child => child.motion.name.Replace("_Remapped", "")).ToArray();
+        Assert.AreEqual(new[] { "Base_CustomIdle", "LocWalkingForward" }, hubClips);
+        Assert.IsFalse(ClipNamesOf(machine).Any(name => name.StartsWith("proxy_")),
+            string.Join(" ; ", ClipNamesOf(machine)));
+
+        Assert.IsTrue(machine.states.Any(child => child.state.name == "LocFlying"));
+        Assert.IsTrue(machine.states.Any(child => child.state.name == "Swimming"));
+        Assert.IsTrue(machine.stateMachines.Any(child => child.stateMachine.name == "Emotes"));
+    }
+
+    static IEnumerable<string> ClipNamesOf(AnimatorStateMachine machine)
+    {
+        return machine.states.SelectMany(child => MotionNamesOf(child.state.motion))
+            .Concat(machine.stateMachines.SelectMany(child => ClipNamesOf(child.stateMachine)));
+    }
+
+    static IEnumerable<string> MotionNamesOf(Motion motion)
+    {
+        if (motion is BlendTree tree)
+        {
+            return tree.children.SelectMany(child => MotionNamesOf(child.motion));
+        }
+        return motion != null ? new[] { motion.name } : Enumerable.Empty<string>();
     }
 
     [Test]
