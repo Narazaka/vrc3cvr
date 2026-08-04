@@ -60,11 +60,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // This stores generated extra avatar masks based on the VRC hardcoded animator masks combined with individual layer masks.
     Dictionary<(AvatarMask, AvatarMask), AvatarMask> avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
 
-    // Layers this conversion generated (feed layers, contact proxy layers, etc.), keyed by the name
-    // they actually ended up with — MakeUniqueLayerName may suffix it. NOT inferred from the
-    // "VRC3CVR_" naming convention: an original VRC avatar layer can legally be named anything,
-    // including something that happens to start with that prefix, so name-sniffing would silently
-    // skip real avatar content. Populated only through AddGeneratedLayer so no call site can forget.
+    // Tracked rather than inferred from the "VRC3CVR_" prefix: an avatar's own layer can legally
+    // carry that name, and skipping it would silently drop real content from WalkParameterNames.
     HashSet<string> generatedLayerNames = new HashSet<string>();
 
     // This mask will mask all other layer masks from the gesture animator, and is derived from the
@@ -184,12 +181,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             AdjustParameterNames();
             MakeGestureWeightFeedLayers();
             MakeVelocityMagnitudeFeedLayer();
-            // After AdjustParameterNames, like the feed layers above, so the names it rewrites are
-            // the final ones. Running after MakeVelocityMagnitudeFeedLayer does NOT require that
-            // layer's literal "VelocityX"/"VelocityZ" reads to survive by luck of ordering —
-            // WalkParameterNames skips every layer recorded in generatedLayerNames (see
-            // AddGeneratedLayer), so this pass structurally cannot see, let alone corrupt, a feed
-            // layer's own reads, regardless of what order Convert() calls things in.
+            // After AdjustParameterNames, like the feed layers above, so the names are final.
             RemapVelocityToAvatarLocal();
             MakeGameStateParameterStreams();
             InsertChilloutOverride();
@@ -1287,27 +1279,19 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return name;
     }
 
-    // Set while a targeted rename pass is running. The whole AdjustParameterNames* walker —
-    // transitions, driver tasks, blend tree axes, AAP curves, state time/speed/cycleOffset — is the
-    // only complete inventory of the places a parameter name can hide, so a second pass with a
-    // different mapping reuses it rather than growing a parallel walker that will drift.
+    // Overrides the rename rule for the duration of a WalkParameterNames pass.
     System.Func<string, string> parameterRenamer;
 
-    // Layers only, deliberately: AdjustParameterNamesOnAnimator also renames the DECLARATIONS, and
-    // a targeted pass wants the references pointed elsewhere while the original parameter stays
-    // declared — VelocityX is still the client-fed input the derived value is computed from.
+    // Rewrites parameter references with an arbitrary mapping, reusing the AdjustParameterNames*
+    // walker because that is the only complete inventory of the places a name can hide.
     //
-    // Layers vrc3cvr itself generated are skipped, via generatedLayerNames rather than by sniffing
-    // the "VRC3CVR_" name prefix: an original VRC avatar layer can legally be named anything,
-    // including something that happens to start with that prefix, and skipping it on name alone
-    // would silently drop real avatar content from the walk. Generated layers' parameter references
-    // are exactly what their own generator chose on purpose (e.g. the magnitude layer's literal
-    // "VelocityX"/"VelocityZ" reads are deliberately world-space); a second, narrower rename pass
-    // has no business rewriting content this same Convert() call just produced, only content
-    // carried over from the original avatar. Without this, a targeted pass whose mapping happens to
-    // match a generated layer's own reads corrupts that layer — and can manufacture a false "this
-    // parameter is used" signal from its own output, independent of what order Convert() happens to
-    // call things in.
+    // Declarations are left alone: a targeted pass repoints references while the original parameter
+    // stays declared, since it is still the client-fed input its replacement is computed from.
+    //
+    // Generated layers are skipped because their references are what their own generator chose on
+    // purpose — the magnitude layer's world-space VelocityX/Z reads are deliberate — so a later,
+    // narrower pass that happens to match them would corrupt that layer and manufacture a false
+    // "this parameter is used" signal from its own output.
     void WalkParameterNames(System.Func<string, string> renamer)
     {
         parameterRenamer = renamer;
@@ -1328,10 +1312,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
     }
 
-    // The single choke point every generated layer must go through, so generatedLayerNames (see
-    // WalkParameterNames) can never miss one — a call site that used chilloutAnimatorController
-    // .AddLayer directly would silently reintroduce the corruption this exists to prevent. Keyed on
-    // layer.name as actually assigned, since MakeUniqueLayerName may have suffixed it.
+    // The one way to add a layer, so nothing can be left out of generatedLayerNames by forgetting.
     void AddGeneratedLayer(AnimatorControllerLayer layer)
     {
         chilloutAnimatorController.AddLayer(layer);
@@ -3886,8 +3867,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             return;
         }
-        // declared here, not by the feed layer: the feed layer's own guard is "does anything read
-        // the derived parameters", and pointing the references at them is what makes that true
+        // declared here rather than by the feed layer, whose guard is "does anything read these"
         var parameters = chilloutAnimatorController.parameters;
         foreach (var derived in new[] { localX, localZ })
         {
@@ -3906,17 +3886,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     }
 
     // ChilloutVR reports VelocityX/Y/Z in WORLD space (measured in game), while every VRChat layer
-    // was authored against an avatar-LOCAL VelocityX/VelocityZ. The reconstruction cannot be
-    // written back into VelocityX/Z — the client rewrites those every frame — so it lands in
-    // derived parameters and RemapVelocityToAvatarLocal points the converted layers at them.
+    // was authored against an avatar-LOCAL VelocityX/VelocityZ. The reconstruction cannot be written
+    // back into VelocityX/Z — the client rewrites those every frame — so it lands in derived
+    // parameters that RemapVelocityToAvatarLocal points the converted layers at.
     //
-    // MovementX/Y give the direction: they are player-local by construction, +X right and +Y
-    // forward, matching VRChat's VelocityX/VelocityZ axes. They are NOT a unit vector — 0.5 is the
-    // walk ring and 1.0 the run ring — so only their direction is used and the magnitude comes from
-    // the world velocity, which is frame-independent. Verified in game at 0.000 m/s mean error.
-    //
-    // Both inputs are ChilloutVR synced core parameters, so this costs no sync bits and holds on
-    // remote copies as well as the wearer's.
+    // MovementX/Y supply the direction: player-local by construction, +X right and +Y forward, the
+    // same axes VRChat means. Only their direction, though — 0.5 is the walk ring and 1.0 the run
+    // ring, so the magnitude has to come from the world velocity instead. Both are ChilloutVR
+    // synced core parameters, so this costs no sync bits and holds on remote copies too.
     void MakeLocomotionVelocityFeedLayer()
     {
         var parameters = chilloutAnimatorController.parameters;
@@ -3924,7 +3901,6 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var localZ = NonSyncParameterName("VelocityZLocal");
         if (!parameters.Any(p => p.name == localX) && !parameters.Any(p => p.name == localZ))
         {
-            // no converted layer asked for an avatar-local velocity
             return;
         }
         foreach (var inputName in new[] { "VelocityX", "VelocityZ", "MovementX", "MovementY" })
@@ -3993,12 +3969,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     localOnly = false,
                     EnterTasks = new List<AnimatorDriverTask>
                     {
-                        // ground speed; the Y axis is not part of a locomotion tree's space
+                        // ground speed: a locomotion tree's space has no vertical axis
                         Task(AnimatorDriverTask.Operator.Multiplication, scratch, "VelocityX", "VelocityX"),
                         Task(AnimatorDriverTask.Operator.Multiplication, localX, "VelocityZ", "VelocityZ"),
                         Task(AnimatorDriverTask.Operator.Addition, scratch, scratch, localX),
                         Task(AnimatorDriverTask.Operator.Power, scratch, scratch, null, 0.5f),
-                        // the walk/run ring
                         Task(AnimatorDriverTask.Operator.Multiplication, localZ, "MovementX", "MovementX"),
                         Task(AnimatorDriverTask.Operator.Multiplication, localX, "MovementY", "MovementY"),
                         Task(AnimatorDriverTask.Operator.Addition, localZ, localZ, localX),

@@ -47,10 +47,8 @@ public class VRC3CVRVelocityCompatTests
         Assert.AreEqual("#LocalX", walkedTree.blendParameter);
         Assert.AreEqual("VelocityZ", walkedTree.blendParameterY, "マッピングに無い名前は触らない");
 
-        // WalkParameterNames must only redirect layer REFERENCES, never the parameter
-        // DECLARATIONS (VRC3CVRCore.cs:1296-1299) — VelocityX/VelocityZ are the client-fed inputs
-        // the feed layer's derived values are computed from, so losing the declaration here would
-        // silently break that feed layer.
+        // The declarations must survive: they are the client-fed inputs the derived values are
+        // computed from, so a walk that renamed them would silently break the feed layer.
         var declaredNames = controller.parameters.Select(p => p.name).ToArray();
         CollectionAssert.Contains(declaredNames, "VelocityX");
         CollectionAssert.Contains(declaredNames, "VelocityZ");
@@ -85,20 +83,20 @@ public class VRC3CVRVelocityCompatTests
         Assert.AreEqual(
             new[]
             {
-                // 地上速度 -> #VelocityLocalCalc
+                // ground speed
                 "Multiplication #VelocityLocalCalc = VelocityX, VelocityX",
                 "Multiplication #VelocityXLocal = VelocityZ, VelocityZ",
                 "Addition #VelocityLocalCalc = #VelocityLocalCalc, #VelocityXLocal",
                 "Power #VelocityLocalCalc = #VelocityLocalCalc, 0.5",
-                // 歩き 0.5 / 走り 1.0 のリング -> #VelocityZLocal
+                // the walk/run ring
                 "Multiplication #VelocityZLocal = MovementX, MovementX",
                 "Multiplication #VelocityXLocal = MovementY, MovementY",
                 "Addition #VelocityZLocal = #VelocityZLocal, #VelocityXLocal",
                 "Power #VelocityZLocal = #VelocityZLocal, 0.5",
-                // scale = speed / (ring + eps)
+                // scale
                 "Addition #VelocityXLocal = #VelocityZLocal, 0.0001",
                 "Division #VelocityXLocal = #VelocityLocalCalc, #VelocityXLocal",
-                // Z が先。X を埋めると両者が使う scale が消える
+                // Z first: filling X overwrites the scale both of them need
                 "Multiplication #VelocityZLocal = MovementY, #VelocityXLocal",
                 "Multiplication #VelocityXLocal = MovementX, #VelocityXLocal",
             },
@@ -145,7 +143,6 @@ public class VRC3CVRVelocityCompatTests
         var tree = (BlendTree)controller.layers[0].stateMachine.states[0].state.motion;
         Assert.AreEqual("#VelocityXLocal", tree.blendParameter);
         Assert.AreEqual("#VelocityZLocal", tree.blendParameterY);
-        // the derived parameters exist and the feed layer was added
         var names = controller.parameters.Select(p => p.name).ToArray();
         CollectionAssert.Contains(names, "#VelocityXLocal");
         CollectionAssert.Contains(names, "#VelocityZLocal");
