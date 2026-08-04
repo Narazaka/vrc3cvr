@@ -54,14 +54,34 @@ public class VRC3CVRBaseGraftTests
     public void HasAuthoredMotion_LooksInsideBlendTrees()
     {
         var own = new AnimationClip { name = "MyCoolWalk" };
-        var tree = new BlendTree { name = "Tree" };
-        tree.AddChild(own);
-        var controller = MakeController("tree", tree);
+        var innerTree = new BlendTree { name = "InnerTree" };
+        innerTree.AddChild(own);
+        var outerTree = new BlendTree { name = "OuterTree" };
+        outerTree.AddChild(innerTree);
+        var controller = MakeController("tree", outerTree);
 
         Assert.IsTrue(InvokeHasAuthoredMotion(controller));
 
         Object.DestroyImmediate(own);
-        Object.DestroyImmediate(tree);
+        Object.DestroyImmediate(innerTree);
+        Object.DestroyImmediate(outerTree);
+        Object.DestroyImmediate(controller);
+    }
+
+    [Test]
+    public void HasAuthoredMotion_LooksInsideSubStateMachines()
+    {
+        var proxy = new AnimationClip { name = "proxy_walk_forward" };
+        var own = new AnimationClip { name = "MyCoolWalk" };
+        var controller = MakeController("sub", proxy);
+        var root = controller.layers[0].stateMachine;
+        var sub = root.AddStateMachine("Sub");
+        sub.AddState("S0").motion = own;
+
+        Assert.IsTrue(InvokeHasAuthoredMotion(controller));
+
+        Object.DestroyImmediate(proxy);
+        Object.DestroyImmediate(own);
         Object.DestroyImmediate(controller);
     }
 
