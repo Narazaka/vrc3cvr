@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -133,28 +133,41 @@ namespace VRC3CVRVerification
             Step("suite starting; waiting 10s for the world to settle");
             yield return new WaitForSeconds(10f);
 
-            var avatars = new[] { ("Fold", ReadId("fold")), ("Derived", ReadId("derived")) };
-            var unconfigured = avatars.Where(entry => string.IsNullOrEmpty(entry.Item2)).ToArray();
+            // The probe avatar is ChilloutVR-native and answers client questions rather than
+            // conversion ones, so it carries a different readiness marker and a different routine.
+            // It is OPTIONAL: a run without it is still a complete conversion check.
+            var avatars = new (string label, string id, string marker, bool probe, bool required)[]
+            {
+                ("Fold", ReadId("fold"), "Constraints/AnimC", false, true),
+                ("Derived", ReadId("derived"), "Constraints/AnimC", false, true),
+                ("Probe", ReadId("probe"), "Armature/Hips", true, false),
+            };
+            var unconfigured = avatars.Where(entry => entry.required && string.IsNullOrEmpty(entry.id)).ToArray();
             if (unconfigured.Length > 0)
             {
-                var missing = string.Join(", ", unconfigured.Select(entry => entry.Item1.ToLower()));
+                var missing = string.Join(", ", unconfigured.Select(entry => entry.label.ToLower()));
                 File.AppendAllText(ReportPath, "FAIL no content id for " + missing + " in " +
                     Path.GetFullPath(IdFilePath) + " (write \"fold=<id>\" / \"derived=<id>\", one per line)\n");
                 Step("missing avatar ids in " + Path.GetFullPath(IdFilePath));
             }
-
-            foreach (var entry in avatars.Where(entry => !string.IsNullOrEmpty(entry.Item2)))
+            foreach (var entry in avatars.Where(entry => !entry.required && string.IsNullOrEmpty(entry.id)))
             {
-                Step("switching to the " + entry.Item1 + " avatar (" + entry.Item2 + ")");
-                AssetManagement.Instance.LoadLocalAvatar(entry.Item2);
-                // the switch is asynchronous and the previously worn avatar also carries the
+                File.AppendAllText(ReportPath, "INFO no content id for " + entry.label.ToLower() + " in " +
+                    Path.GetFullPath(IdFilePath) + "; skipping it (write \"" + entry.label.ToLower() + "=<id>\" to include it)\n");
+            }
+
+            foreach (var entry in avatars.Where(entry => !string.IsNullOrEmpty(entry.id)))
+            {
+                Step("switching to the " + entry.label + " avatar (" + entry.id + ")");
+                AssetManagement.Instance.LoadLocalAvatar(entry.id);
+                // the switch is asynchronous and the previously worn avatar also carries a
                 // verification rig, so wait for one whose object name carries this content id
                 var waited = 0f;
                 var lastLogged = 0f;
                 while (waited < 60f)
                 {
                     var loaded = PlayerSetup.Instance != null ? PlayerSetup.Instance.AvatarObject : null;
-                    if (loaded != null && loaded.name.Contains(entry.Item2) && loaded.transform.Find("Constraints/AnimC") != null)
+                    if (loaded != null && loaded.name.Contains(entry.id) && loaded.transform.Find(entry.marker) != null)
                     {
                         break;
                     }
@@ -163,23 +176,23 @@ namespace VRC3CVRVerification
                     {
                         lastLogged = waited;
                         var name = loaded != null ? loaded.name : "(none)";
-                        Step("  still waiting for " + entry.Item1 + " (" + waited.ToString("0") + "s, currently \"" + name + "\")");
+                        Step("  still waiting for " + entry.label + " (" + waited.ToString("0") + "s, currently \"" + name + "\")");
                     }
                     yield return null;
                 }
                 var avatar = PlayerSetup.Instance != null ? PlayerSetup.Instance.AvatarObject : null;
-                if (avatar == null || !avatar.name.Contains(entry.Item2) || avatar.transform.Find("Constraints/AnimC") == null)
+                if (avatar == null || !avatar.name.Contains(entry.id) || avatar.transform.Find(entry.marker) == null)
                 {
-                    File.AppendAllText(ReportPath, "FAIL " + entry.Item1 + ": verification avatar did not load within 60s (worn: \"" + (avatar != null ? avatar.name : "none") + "\")\n");
-                    Step(entry.Item1 + ": avatar did not load, skipping");
+                    File.AppendAllText(ReportPath, "FAIL " + entry.label + ": avatar did not load within 60s (worn: \"" + (avatar != null ? avatar.name : "none") + "\")\n");
+                    Step(entry.label + ": avatar did not load, skipping");
                     continue;
                 }
                 // give the avatar a moment to finish initializing after it appears
                 yield return new WaitForSeconds(2f);
-                Step(entry.Item1 + ": avatar loaded, running checks");
-                File.AppendAllText(ReportPath, "INFO ===== " + entry.Item1 + " mode (" + entry.Item2 + ") =====\n");
-                yield return RunChecks(avatar.transform);
-                Step(entry.Item1 + ": checks finished");
+                Step(entry.label + ": avatar loaded, running checks");
+                File.AppendAllText(ReportPath, "INFO ===== " + entry.label + " mode (" + entry.id + ") =====\n");
+                yield return entry.probe ? RunProbeChecks(avatar.transform) : RunChecks(avatar.transform);
+                Step(entry.label + ": checks finished");
             }
 
             File.AppendAllText(ReportPath, "INFO done " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n");
@@ -349,6 +362,292 @@ namespace VRC3CVRVerification
             });
             yield return new WaitForSeconds(1f);
 
+            // ---- V2: the CONVERTED blend tree actually reads the avatar-local velocity ----
+            // V1 above only proves #VelocityMagnitude (frame-invariant, unaffected by the local
+            // fix) tracks the raw axes. This proves the fix's actual output — VelocityBar, driven
+            // by the derived #VelocityZLocal — behaves correctly in the one place a magnitude
+            // check cannot: at a heading that is NOT axis-aligned. There, walking forward and
+            // strafing right put the same component on WORLD VelocityZ, so a conversion that fed
+            // the blend tree world-space velocity would raise the bar for both. Only reading the
+            // avatar-local value tells them apart. Shape reused from M1 below (heading forced and
+            // re-asserted every frame, since the movement system owns rotation otherwise).
+            Step("  V2 VelocityBar direction (walking, ~4s)");
+            // prefixed distinctly from M1's own playerTransform/originalRotation/heading below: a
+            // nested block in C# cannot reuse a name the enclosing method body also declares, even
+            // in a non-overlapping later statement (CS0136)
+            var v2PlayerTransform = BetterBetterCharacterController.Instance != null
+                ? BetterBetterCharacterController.Instance.transform
+                : (PlayerSetup.Instance != null ? PlayerSetup.Instance.transform : null);
+            var v2VelocityBar = avatar.Find("Panel/State/VelocityBar");
+            if (v2PlayerTransform == null || v2VelocityBar == null)
+            {
+                Run("V2", () => Note("V2 skipped: " + (v2PlayerTransform == null ? "no player transform" : "VelocityBar not found")));
+            }
+            else
+            {
+                var v2OriginalRotation = v2PlayerTransform.rotation;
+                var v2Heading = Quaternion.Euler(0f, v2PlayerTransform.eulerAngles.y + 40f, 0f);
+                var forwardPeak = 0f;
+                var strafePeak = 0f;
+
+                InjectMovement = true;
+                // forward, out and back so the strafe leg below starts from roughly the same spot
+                for (var i = 0; i < 120; i++)
+                {
+                    MovementOverride = new Vector3(0f, 0f, i < 60 ? 1f : -1f);
+                    // re-asserted every frame: the movement system owns the rotation otherwise
+                    v2PlayerTransform.rotation = v2Heading;
+                    yield return null;
+                    if (i > 20 && i < 60)
+                    {
+                        Run("V2 forward sample", () => forwardPeak = Mathf.Max(forwardPeak, v2VelocityBar.localScale.y));
+                    }
+                }
+                // strafe right, out and back, same heading
+                for (var i = 0; i < 120; i++)
+                {
+                    MovementOverride = new Vector3(i < 60 ? 1f : -1f, 0f, 0f);
+                    v2PlayerTransform.rotation = v2Heading;
+                    yield return null;
+                    if (i > 20 && i < 60)
+                    {
+                        Run("V2 strafe sample", () => strafePeak = Mathf.Max(strafePeak, v2VelocityBar.localScale.y));
+                    }
+                }
+                InjectMovement = false;
+                MovementOverride = Vector3.zero;
+                v2PlayerTransform.rotation = v2OriginalRotation;
+
+                Run("V2", () =>
+                {
+                    // The bar's map is linear: scaleY = 0.02 + (v / 2) * 0.38 for v in ChilloutVR's
+                    // documented m/s. Correct local-space forward reading approaches the walk speed
+                    // itself (2.0 m/s -> scaleY 0.4, the bar's full height). A regression to
+                    // world-space velocity puts sin(40 deg) ~= 0.64 of that speed on Z during the
+                    // strafe leg (2.0 * 0.64 = 1.28 m/s -> scaleY ~= 0.26). The old 0.2 threshold sat
+                    // at the exact midpoint of the range (needing >= 0.95 m/s forward), close enough
+                    // to a still-ramping sample window's plausible sub-peak reading to risk a spurious
+                    // failure on this test's first real run. 0.15 (>= 0.68 m/s) keeps real margin
+                    // under the ~0.4 a correct forward reading should approach, while staying well
+                    // clear of the ~0.26 a world-space regression reads on strafe, so the check that
+                    // exists to catch that regression still catches it.
+                    Check(forwardPeak > 0.15f,
+                        "V2 VelocityBar rises walking forward at a 40 deg heading (peak scaleY " + forwardPeak.ToString("0.000") + ")");
+                    Check(strafePeak < 0.15f,
+                        "V2 VelocityBar stays low strafing right at the same heading (peak scaleY " + strafePeak.ToString("0.000") +
+                        ", forward peak was " + forwardPeak.ToString("0.000") + ")");
+                });
+            }
+            yield return new WaitForSeconds(1f);
+
+            // ---- M1/M3: the space and the unit of VelocityX/Y/Z (issue #28 go/no-go) ----
+            // VRChat documents these as "Lateral / Vertical / Forward move speed in m/s", which is
+            // avatar-LOCAL space. Converting a VRChat locomotion blend tree onto ChilloutVR's own
+            // Velocity* only works if ChilloutVR means the same thing: an animator has no way to
+            // rotate a vector, so a world-space reading would make that design impossible.
+            //
+            // The player is turned to a heading that is deliberately NOT axis-aligned and walked
+            // forward, then the reported (VelocityX, VelocityZ) is compared against the player's
+            // real motion expressed BOTH ways. Real motion comes from the transform's own position
+            // delta, so this needs no client API beyond the transform — and the same samples answer
+            // the unit question, since that delta is metres per second by construction.
+            Step("  M1 velocity space");
+            var playerTransform = BetterBetterCharacterController.Instance != null
+                ? BetterBetterCharacterController.Instance.transform
+                : (PlayerSetup.Instance != null ? PlayerSetup.Instance.transform : null);
+            if (playerTransform == null)
+            {
+                Run("M1", () => Note("M1 skipped: no player transform"));
+            }
+            else
+            {
+                // 40 degrees off whatever the player faces now: axis-aligned headings make the two
+                // hypotheses numerically identical, which would read as a pass for either one
+                var originalRotation = playerTransform.rotation;
+                var heading = Quaternion.Euler(0f, playerTransform.eulerAngles.y + 40f, 0f);
+                var previousPosition = playerTransform.position;
+                var localErrorSum = 0f;
+                var worldErrorSum = 0f;
+                var separationSum = 0f;
+                var velocitySamples = 0;
+                var peakMeasuredSpeed = 0f;
+                var peakReportedSpeed = 0f;
+                // Raw evidence for the one thing the error sums cannot settle by themselves: WHICH
+                // transform the client measures against. "local" above is computed from the
+                // controller transform this test rotates, so if the client uses a different one —
+                // the avatar root, say — that never turned, the local hypothesis loses for the
+                // wrong reason. Logging the actual bearings makes the reference frame readable
+                // straight off the report: reported bearing == world bearing means world space,
+                // and reported == world minus a body's yaw means local space against that body.
+                var rawSamples = new List<string>();
+                var rawLogged = 0;
+                // M4: the salvage path for a world-space reading. The CCK documents
+                // RigidBodyLocalVelocityX/Y/Z as "Rigidbody velocity (local space)", resolved from
+                // "the Rigidbody that is on the same or in a parent GameObject relative to the
+                // Parameter Stream component" — so if the worn avatar has a Rigidbody above it, a
+                // stream on the avatar root hands the animator an avatar-local velocity directly,
+                // with no trigonometry layer. Whether one exists, and whether its transform turns
+                // with the player, is what decides that. Walking up the hierarchy answers both
+                // without touching the uploaded avatar.
+                Rigidbody ancestorBody = null;
+                var ancestry = new List<string>();
+                var ancestorBodies = new List<Rigidbody>();
+                for (var t = animator.transform; t != null; t = t.parent)
+                {
+                    var body = t.GetComponent<Rigidbody>();
+                    ancestry.Add(t.name + (body != null ? " [Rigidbody]" : ""));
+                    if (body != null)
+                    {
+                        ancestorBodies.Add(body);
+                        if (ancestorBody == null)
+                        {
+                            ancestorBody = body;
+                        }
+                    }
+                }
+
+                InjectMovement = true;
+                // out and back, so the player ends where it started: a one-way walk left the
+                // player ~7m downrange and the next avatar's run started against a wall
+                for (var i = 0; i < 180; i++)
+                {
+                    MovementOverride = new Vector3(0f, 0f, i < 90 ? 1f : -1f);
+                    // re-asserted every frame: the movement system owns the rotation otherwise
+                    playerTransform.rotation = heading;
+                    yield return null;
+                    var sample = i;
+                    Run("M1 sample", () =>
+                    {
+                        var position = playerTransform.position;
+                        var worldVelocity = Time.deltaTime > 0f
+                            ? (position - previousPosition) / Time.deltaTime
+                            : Vector3.zero;
+                        previousPosition = position;
+                        // let the player accelerate and the heading settle before believing
+                        // anything, and skip the turnaround for the same reason
+                        if (sample < 30 || (sample >= 90 && sample < 120))
+                        {
+                            return;
+                        }
+                        var groundSpeed = new Vector2(worldVelocity.x, worldVelocity.z).magnitude;
+                        if (groundSpeed < 0.5f)
+                        {
+                            return;
+                        }
+                        // measured against the CURRENT rotation, so the maths stays right even if
+                        // the client refused the injected heading
+                        var localVelocity = Quaternion.Inverse(playerTransform.rotation) * worldVelocity;
+                        var world = new Vector2(worldVelocity.x, worldVelocity.z);
+                        var local = new Vector2(localVelocity.x, localVelocity.z);
+                        var reported = new Vector2(ReadParam(animator, "VelocityX"), ReadParam(animator, "VelocityZ"));
+
+                        localErrorSum += (reported - local).magnitude;
+                        worldErrorSum += (reported - world).magnitude;
+                        separationSum += (world - local).magnitude;
+                        velocitySamples++;
+                        peakMeasuredSpeed = Mathf.Max(peakMeasuredSpeed, groundSpeed);
+                        peakReportedSpeed = Mathf.Max(peakReportedSpeed, reported.magnitude);
+
+                        if (rawLogged < 5 && sample % 25 == 0 && reported.magnitude > 0.5f)
+                        {
+                            rawLogged++;
+                            // bearings measured the Unity way: 0 is +Z, growing clockwise
+                            var worldBearing = Mathf.Atan2(world.x, world.y) * Mathf.Rad2Deg;
+                            var reportedBearing = Mathf.Atan2(reported.x, reported.y) * Mathf.Rad2Deg;
+                            rawSamples.Add("M1 raw f" + sample +
+                                ": controller yaw " + playerTransform.eulerAngles.y.ToString("0.0") +
+                                ", avatar yaw " + animator.transform.eulerAngles.y.ToString("0.0") +
+                                ", world bearing " + worldBearing.ToString("0.0") +
+                                ", reported bearing " + reportedBearing.ToString("0.0") +
+                                ", world-reported " + Mathf.DeltaAngle(reportedBearing, worldBearing).ToString("0.0") +
+                                " deg, |world| " + world.magnitude.ToString("0.00") +
+                                ", |reported| " + reported.magnitude.ToString("0.00"));
+                            // EVERY Rigidbody in the chain, not just the nearest: if the nearest is
+                            // kinematic the stream may still be resolving to a different one, and
+                            // "the nearest one reads zero" is not the same claim as "no body in the
+                            // hierarchy carries the motion"
+                            foreach (var body in ancestorBodies)
+                            {
+                                var bodyLocal = body.transform.InverseTransformDirection(body.velocity);
+                                rawSamples.Add("M4 raw f" + sample + ": rigidbody \"" + body.name +
+                                    "\" kinematic " + body.isKinematic +
+                                    ", yaw " + body.transform.eulerAngles.y.ToString("0.0") +
+                                    ", world velocity (" + body.velocity.x.ToString("0.00") + ", " +
+                                    body.velocity.z.ToString("0.00") +
+                                    "), LOCAL velocity (" + bodyLocal.x.ToString("0.00") + ", " +
+                                    bodyLocal.z.ToString("0.00") + ")");
+                            }
+                            // M6: the conversion that needs no yaw and no trigonometry. ChilloutVR's
+                            // MovementX/Y are NORMALISED MOVEMENT INPUT, which is player-local by
+                            // construction, and a magnitude is frame-independent — so
+                            // (MovementX, MovementY) * |world velocity| should reconstruct exactly
+                            // the avatar-local velocity VRChat's locomotion trees expect. Checked
+                            // against the reported world vector rotated by the avatar's own yaw,
+                            // which keeps both sides free of position-sampling noise.
+                            var inputVector = new Vector2(
+                                ReadParam(animator, "MovementX"), ReadParam(animator, "MovementY"));
+                            var trueLocal3 = Quaternion.Euler(0f, -animator.transform.eulerAngles.y, 0f)
+                                * new Vector3(reported.x, 0f, reported.y);
+                            var trueLocal = new Vector2(trueLocal3.x, trueLocal3.z);
+                            var reconstructed = inputVector * reported.magnitude;
+                            rawSamples.Add("M6 raw f" + sample + ": MovementX/Y (" +
+                                inputVector.x.ToString("0.00") + ", " + inputVector.y.ToString("0.00") +
+                                "), speed " + reported.magnitude.ToString("0.00") +
+                                " -> reconstructed local (" + reconstructed.x.ToString("0.00") + ", " +
+                                reconstructed.y.ToString("0.00") +
+                                ") vs true local (" + trueLocal.x.ToString("0.00") + ", " +
+                                trueLocal.y.ToString("0.00") + ")");
+                        }
+                    });
+                }
+                InjectMovement = false;
+                MovementOverride = Vector3.zero;
+                playerTransform.rotation = originalRotation;
+                Run("M1", () =>
+                {
+                    if (velocitySamples == 0)
+                    {
+                        Note("M1 inconclusive: the player never reached a measurable speed");
+                        return;
+                    }
+                    var localError = localErrorSum / velocitySamples;
+                    var worldError = worldErrorSum / velocitySamples;
+                    var separation = separationSum / velocitySamples;
+                    foreach (var raw in rawSamples)
+                    {
+                        Note(raw);
+                    }
+                    Note("M1 read the raw lines as: world-reported ~0 means WORLD space; " +
+                         "world-reported ~= a body's yaw means LOCAL space against that body");
+                    Note("M4 hierarchy above the avatar: " + string.Join(" < ", ancestry.ToArray()));
+                    Note(ancestorBody != null
+                        ? "M4 a Rigidbody exists at or above the avatar (\"" + ancestorBody.name +
+                          "\"), so a CVRParameterStream RigidBodyLocalVelocity* on the avatar root would resolve to it. " +
+                          "Usable only if its LOCAL velocity above tracks the walk direction while its yaw turns with the player"
+                        : "M4 NO Rigidbody at or above the avatar — RigidBodyLocalVelocity* cannot resolve, so a " +
+                          "world-to-local conversion would have to be built from the transform yaw instead");
+                    Note("M1 samples " + velocitySamples +
+                         ", mean |reported - local| " + localError.ToString("0.000") +
+                         " m/s, mean |reported - world| " + worldError.ToString("0.000") +
+                         " m/s, mean |local - world| " + separation.ToString("0.000") + " m/s");
+                    // without separation the two hypotheses predict the same numbers and neither
+                    // result would mean anything
+                    if (separation < 0.5f)
+                    {
+                        Note("M1 INCONCLUSIVE: the two hypotheses were only " + separation.ToString("0.000") +
+                             " m/s apart — the injected heading did not take, so this run proves nothing");
+                        return;
+                    }
+                    Check(localError < worldError * 0.5f,
+                        "M1 ChilloutVR reports VelocityX/Z in AVATAR-LOCAL space, as VRChat does (local error " +
+                        localError.ToString("0.000") + " vs world error " + worldError.ToString("0.000") + " m/s)");
+                    Note("M3 peak measured ground speed " + peakMeasuredSpeed.ToString("0.00") +
+                         " m/s vs peak reported |VelocityXZ| " + peakReportedSpeed.ToString("0.00") +
+                         " — equal means ChilloutVR reports metres per second, as VRChat does");
+                });
+                yield return new WaitForSeconds(1f);
+            }
+
             // ---- S3: upright while crouching (injected) ----
             Step("  S3 crouch");
             var uprightStanding = 0f;
@@ -375,6 +674,57 @@ namespace VRC3CVRVerification
                 characterController.crouching = false;
             });
             yield return new WaitForSeconds(1.5f);
+
+            // ---- M2: what Upright actually READS for each ChilloutVR stance (issue #28) ----
+            // S3 only proves Upright moves. The integration feeds VRChat's Upright from
+            // ChilloutVR's AvatarUpright stream, and VRChat's stock locomotion switches stance at
+            // specific values — 0.68/0.70 between standing and crouching, 0.41/0.43 between
+            // crouching and prone — so a ChilloutVR crouch has to LAND in VRChat's crouch band or
+            // the converted state machine picks the wrong stance. These are the numbers that decide
+            // whether the stream can be used directly or has to be remapped.
+            Step("  M2 upright values");
+            if (characterController == null)
+            {
+                Run("M2", () => Note("M2 skipped: no character controller"));
+            }
+            else
+            {
+                var uprightStand = float.NaN;
+                var uprightCrouch = float.NaN;
+                var uprightProne = float.NaN;
+                var proneInjected = false;
+                Run("M2 standing", () => uprightStand = ReadParam(animator, "Upright"));
+                Run("M2 crouch on", () => characterController.crouching = true);
+                yield return new WaitForSeconds(1.5f);
+                Run("M2 crouch read", () =>
+                {
+                    uprightCrouch = ReadParam(animator, "Upright");
+                    characterController.crouching = false;
+                });
+                yield return new WaitForSeconds(1.5f);
+                Run("M2 prone on", () => proneInjected = TrySetBool(characterController, "prone", true));
+                yield return new WaitForSeconds(1.5f);
+                Run("M2 prone read", () =>
+                {
+                    if (!proneInjected)
+                    {
+                        return;
+                    }
+                    uprightProne = ReadParam(animator, "Upright");
+                    TrySetBool(characterController, "prone", false);
+                });
+                yield return new WaitForSeconds(1.5f);
+                Run("M2", () =>
+                {
+                    Note("M2 Upright reads — standing " + uprightStand.ToString("0.000") +
+                         ", crouching " + uprightCrouch.ToString("0.000") +
+                         ", prone " + (proneInjected ? uprightProne.ToString("0.000") : "n/a (no writable 'prone' on the controller)"));
+                    Note("M2 VRChat stock bands for comparison — standing > 0.70, crouching 0.43..0.68, prone < 0.41");
+                    Check(uprightCrouch > 0.43f && uprightCrouch < 0.68f,
+                        "M2 a ChilloutVR crouch lands inside VRChat's crouch band, so the stream can drive a converted locomotion layer unremapped (" +
+                        uprightCrouch.ToString("0.000") + ")");
+                });
+            }
 
             // ---- S1: mute (injected) ----
             Step("  S1 mute");
@@ -496,6 +846,195 @@ namespace VRC3CVRVerification
             _running = false;
         }
 
+        // The ChilloutVR-NATIVE probe avatar (built by VRC3CVRCvrProbeAvatar, uploaded as-is).
+        // Nothing here passes through the conversion, so every reading is a statement about what
+        // the client hands an animator — which is the only thing these questions are about.
+        IEnumerator RunProbeChecks(Transform avatar)
+        {
+            _running = true;
+            _report.Clear();
+            Note("probe started for " + avatar.name);
+            Step("  probe settling (3s)");
+            yield return new WaitForSeconds(3f);
+
+            Animator animator = null;
+            for (var attempt = 0; attempt < 20 && animator == null; attempt++)
+            {
+                Run("probe resolve animator", () => animator = avatar.GetComponentInChildren<Animator>(true));
+                if (animator == null)
+                {
+                    yield return new WaitForSeconds(0.5f);
+                }
+            }
+            if (animator == null)
+            {
+                Check(false, "probe: no Animator found on the avatar");
+                Flush();
+                _running = false;
+                yield break;
+            }
+            Run("probe params", () => Note("probe animator parameters: " + string.Join(", ",
+                animator.parameters.Select(p => p.name + ":" + p.type).ToArray())));
+
+            var playerTransform = BetterBetterCharacterController.Instance != null
+                ? BetterBetterCharacterController.Instance.transform
+                : avatar;
+            var probeOriginalRotation = playerTransform.rotation;
+
+            // ---- P1: the range and reference of TransformGlobalRotationY ----
+            // The CCK documents the value range of the Transform rotation sources as unknown, so
+            // it is read at two known headings: one reading cannot tell 0..360 from -180..180, and
+            // an axis-aligned heading cannot tell a live source from a dead one.
+            Step("  P1 world yaw source");
+            foreach (var heading in new[] { 200f, 40f })
+            {
+                var wanted = heading;
+                Run("P1 turn", () => playerTransform.rotation = Quaternion.Euler(0f, wanted, 0f));
+                yield return new WaitForSeconds(1.5f);
+                Run("P1 read", () => Note("P1 at heading " + wanted.ToString("0") +
+                    ": TransformGlobalRotationY reads " + ReadParam(animator, "PrbWorldYaw").ToString("0.00") +
+                    ", controller yaw " + playerTransform.eulerAngles.y.ToString("0.0") +
+                    ", avatar root yaw " + animator.transform.eulerAngles.y.ToString("0.0")));
+            }
+            Run("P1 upright", () => Note("P1 AvatarUpright source reads " +
+                ReadParam(animator, "PrbUpright").ToString("0.000") + " while standing"));
+
+            // ---- P2: does the reconstruction hold, and is the Rigidbody route alive? ----
+            // Walked at a heading that is not axis-aligned, out and back so the player ends where
+            // it started. Ground truth is the reported WORLD velocity rotated by the avatar's own
+            // yaw: both sides then come from the client, with no position-sampling noise.
+            Step("  P2 reconstruction (walking, ~3s)");
+            var reconErrorSum = 0f;
+            var rbLocalErrorSum = 0f;
+            var inputMatchSum = 0f;
+            var probeSamples = 0;
+            var rbAnyMotion = 0f;
+            var probeRaw = new List<string>();
+            var probeLogged = 0;
+
+            InjectMovement = true;
+            for (var i = 0; i < 180; i++)
+            {
+                MovementOverride = new Vector3(0f, 0f, i < 90 ? 1f : -1f);
+                playerTransform.rotation = Quaternion.Euler(0f, 40f, 0f);
+                yield return null;
+                var sample = i;
+                Run("P2 sample", () =>
+                {
+                    if (sample < 30 || (sample >= 90 && sample < 120))
+                    {
+                        return;
+                    }
+                    var world = new Vector2(ReadParam(animator, "VelocityX"), ReadParam(animator, "VelocityZ"));
+                    if (world.magnitude < 0.5f)
+                    {
+                        return;
+                    }
+                    var trueLocal3 = Quaternion.Euler(0f, -animator.transform.eulerAngles.y, 0f)
+                        * new Vector3(world.x, 0f, world.y);
+                    var trueLocal = new Vector2(trueLocal3.x, trueLocal3.z);
+                    var recon = new Vector2(ReadParam(animator, "PrbReconX"), ReadParam(animator, "PrbReconZ"));
+                    var rbLocal = new Vector2(ReadParam(animator, "PrbRbLocalVelX"), ReadParam(animator, "PrbRbLocalVelZ"));
+                    var core = new Vector2(ReadParam(animator, "MovementX"), ReadParam(animator, "MovementY"));
+                    var input = new Vector2(ReadParam(animator, "PrbInputMoveX"), ReadParam(animator, "PrbInputMoveY"));
+
+                    reconErrorSum += (recon - trueLocal).magnitude;
+                    rbLocalErrorSum += (rbLocal - trueLocal).magnitude;
+                    inputMatchSum += (input - core).magnitude;
+                    // every Rigidbody readout, not just the local pair: "the local variant is zero"
+                    // is a weaker claim than "the body carries no motion at all"
+                    var rbWorld = new Vector2(ReadParam(animator, "PrbRbVelX"), ReadParam(animator, "PrbRbVelZ"));
+                    rbAnyMotion = Mathf.Max(rbAnyMotion, Mathf.Max(
+                        Mathf.Max(rbLocal.magnitude, rbWorld.magnitude),
+                        ReadParam(animator, "PrbRbSpeed")));
+                    probeSamples++;
+
+                    if (probeLogged < 4 && sample % 25 == 0)
+                    {
+                        probeLogged++;
+                        probeRaw.Add("P2 raw f" + sample +
+                            ": world (" + world.x.ToString("0.00") + ", " + world.y.ToString("0.00") +
+                            "), true local (" + trueLocal.x.ToString("0.00") + ", " + trueLocal.y.ToString("0.00") +
+                            "), recon (" + recon.x.ToString("0.00") + ", " + recon.y.ToString("0.00") +
+                            "), rb local (" + rbLocal.x.ToString("0.00") + ", " + rbLocal.y.ToString("0.00") +
+                            "), rb world (" + ReadParam(animator, "PrbRbVelX").ToString("0.00") + ", " +
+                            ReadParam(animator, "PrbRbVelZ").ToString("0.00") +
+                            "), rb speed " + ReadParam(animator, "PrbRbSpeed").ToString("0.00") +
+                            ", MovementX/Y (" + core.x.ToString("0.00") + ", " + core.y.ToString("0.00") +
+                            "), InputMovement (" + input.x.ToString("0.00") + ", " + input.y.ToString("0.00") +
+                            "), derived speed " + ReadParam(animator, "PrbSpeed").ToString("0.00") +
+                            ", movement ring " + ReadParam(animator, "PrbMoveMag").ToString("0.00"));
+                    }
+                });
+            }
+            InjectMovement = false;
+            MovementOverride = Vector3.zero;
+
+            // ---- P3: the axis and sign convention, which a forward-only walk cannot show ----
+            Step("  P3 strafe convention");
+            var strafeLine = "P3 not sampled";
+            InjectMovement = true;
+            for (var i = 0; i < 60; i++)
+            {
+                MovementOverride = new Vector3(1f, 0f, 0f);
+                playerTransform.rotation = Quaternion.Euler(0f, 40f, 0f);
+                yield return null;
+                var sample = i;
+                Run("P3 sample", () =>
+                {
+                    if (sample != 45)
+                    {
+                        return;
+                    }
+                    var world = new Vector2(ReadParam(animator, "VelocityX"), ReadParam(animator, "VelocityZ"));
+                    var trueLocal3 = Quaternion.Euler(0f, -animator.transform.eulerAngles.y, 0f)
+                        * new Vector3(world.x, 0f, world.y);
+                    strafeLine = "P3 strafing right: true local (" + trueLocal3.x.ToString("0.00") + ", " +
+                        trueLocal3.z.ToString("0.00") + "), MovementX/Y (" +
+                        ReadParam(animator, "MovementX").ToString("0.00") + ", " +
+                        ReadParam(animator, "MovementY").ToString("0.00") + "), recon (" +
+                        ReadParam(animator, "PrbReconX").ToString("0.00") + ", " +
+                        ReadParam(animator, "PrbReconZ").ToString("0.00") + ")";
+                });
+            }
+            InjectMovement = false;
+            MovementOverride = Vector3.zero;
+            playerTransform.rotation = probeOriginalRotation;
+
+            Run("P2", () =>
+            {
+                foreach (var raw in probeRaw)
+                {
+                    Note(raw);
+                }
+                Note(strafeLine);
+                if (probeSamples == 0)
+                {
+                    Note("P2 inconclusive: the player never reached a measurable speed");
+                    return;
+                }
+                var reconError = reconErrorSum / probeSamples;
+                var rbLocalError = rbLocalErrorSum / probeSamples;
+                var inputMatch = inputMatchSum / probeSamples;
+                Note("P2 samples " + probeSamples +
+                     ", mean |recon - true local| " + reconError.ToString("0.000") +
+                     " m/s, mean |rb local - true local| " + rbLocalError.ToString("0.000") +
+                     " m/s, mean |InputMovement - MovementX/Y| " + inputMatch.ToString("0.000"));
+                Check(reconError < 0.25f,
+                    "P2 (MovementX, MovementY) x ground speed reconstructs the avatar-local velocity VRChat's " +
+                    "locomotion trees expect, with no yaw and no trigonometry (mean error " +
+                    reconError.ToString("0.000") + " m/s)");
+                Note(rbAnyMotion > 0.25f
+                    ? "P2 the Rigidbody sources DO carry motion (peak " + rbAnyMotion.ToString("0.00") +
+                      "); mean local error " + rbLocalError.ToString("0.000") + " m/s says whether they are avatar-local"
+                    : "P2 the Rigidbody sources report no motion at all (peak " + rbAnyMotion.ToString("0.00") +
+                      ") — RigidBodyLocalVelocity* cannot drive a converted locomotion layer");
+            });
+
+            Flush();
+            _running = false;
+        }
+
         IEnumerator Gesture(Transform avatar, Animator animator, float value, string label, bool weightBarTall, bool weightGate, bool fistGate, float derivedWeight)
         {
             _gestureOverride = value;
@@ -560,6 +1099,32 @@ namespace VRC3CVRVerification
             }
             var value = ReadParam(animator, name);
             Check(Mathf.Abs(value - expected) < tolerance, message + " (value " + value.ToString("0.00") + ")");
+        }
+
+        // Writes a bool member whose existence is not guaranteed across client versions, so a
+        // renamed or absent field degrades to "not measured" instead of failing the build.
+        static bool TrySetBool(object target, string name, bool value)
+        {
+            if (target == null)
+            {
+                return false;
+            }
+            const System.Reflection.BindingFlags Flags = System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var type = target.GetType();
+            var field = type.GetField(name, Flags);
+            if (field != null && field.FieldType == typeof(bool))
+            {
+                field.SetValue(target, value);
+                return true;
+            }
+            var property = type.GetProperty(name, Flags);
+            if (property != null && property.PropertyType == typeof(bool) && property.CanWrite)
+            {
+                property.SetValue(target, value, null);
+                return true;
+            }
+            return false;
         }
 
         // GetFloat only works on float parameters; bools and ints silently read back as 0

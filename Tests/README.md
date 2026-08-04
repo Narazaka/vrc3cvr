@@ -32,6 +32,24 @@ gesture weights, parameter streams and animator-written parameters (AAP) are all
 behavior. This layer converts a purpose-built avatar, uploads it, and has a MelonLoader mod
 drive the game and machine-check the results.
 
+There are two avatars in this layer, and they answer different kinds of question:
+
+| Avatar | Built by | Path | Answers |
+| --- | --- | --- | --- |
+| Verification avatar | `VRC3CVRVerificationAvatar.cs` | VRChat avatar → **converted** → uploaded | Does the conversion produce an avatar that behaves correctly? |
+| CVR probe avatar | `VRC3CVRCvrProbeAvatar.cs` | ChilloutVR avatar → uploaded **as-is** | What does the ChilloutVR client hand an animator? |
+
+The probe deliberately skips the conversion. Its questions — the space and unit of the core
+velocity parameters, what each `CVRParameterStream` source reports, whether an `AnimatorDriver` can
+reconstruct an avatar-local velocity — are about the client, so putting the conversion in the path
+would only add a second thing that can be wrong. It is equally deliberate that the probe ships
+**inside an uploaded avatar** rather than being assembled at runtime by the mod: a component a mod
+adds to a worn avatar is not guaranteed to behave like one that shipped with it (the client may
+collect and initialise streams at avatar load, and may cache what each entry resolves against), so
+a runtime-assembled probe cannot settle a design question.
+
+The probe is optional — a run without a `probe=` id still checks the conversion in full.
+
 ### 2.1 Generate the verification avatar
 
 `Tools → VRC3CVR → Create Verification Avatar` builds a self-contained primitive humanoid
@@ -59,7 +77,11 @@ Unity project for the editor-side uploader), one per line:
 ```
 fold=<content id of the rewrite-mode avatar>
 derived=<content id of the derived-mode avatar>
+probe=<content id of the CVR probe avatar>
 ```
+
+The probe avatar is built by `Tools → VRC3CVR → Create CVR Probe Avatar` and uploaded with the CCK
+Control Panel with **no conversion step** — it is already a ChilloutVR avatar.
 
 Both the mod and the uploader refuse to run for an entry that is missing rather than creating a
 new avatar.
@@ -91,6 +113,8 @@ The suite switches to each avatar in turn and injects everything it needs — no
 | Gestures | `PlayerSetup.SetGestureLeft()`, re-applied every frame |
 | Walking | Harmony postfix on `CVRInputManager.UpdateInput` (the input system overwrites `movementVector` every frame, so a plain write loses the race). Diagonal, so `VelocityMagnitude` differs from every single axis and the sum of squares is actually proven |
 | Crouching | `BetterBetterCharacterController.crouching` |
+| Prone | Reflection on the character controller — the member is not guaranteed across client versions, so a rename degrades to "not measured" instead of breaking the build |
+| Heading | The player transform's rotation, re-asserted every frame (the movement system owns it otherwise). Used by M1 to tell an avatar-local `VelocityX/Z` from a world-space one: an axis-aligned heading makes both readings identical, so the test would pass for either |
 | Mute | `Comms_Manager.IsMicMuted` |
 | Menu toggles | `PlayerSetup.ChangeAnimatorParam()` |
 
@@ -99,6 +123,14 @@ Results are appended to `<ChilloutVR>\VRC3CVR_VerificationReport.txt` as `PASS` 
 
 ### 2.5 Reading the results
 
+- **Watch for the terminal marker, not for the file going quiet.** Each avatar's block ends with
+  `INFO done <timestamp>`, so a suite run is finished once that line appears once per avatar —
+  polling for "no growth for a while" adds that whole quiet period to the detection delay and can
+  leave the game running long after there is anything to wait for:
+  ```
+  f="<ChilloutVR>/VRC3CVR_VerificationReport.txt"
+  until [ "$(grep -c '^INFO done' "$f")" -ge 2 ]; do sleep 2; done
+  ```
 - The report is written **per avatar**, so a hang in a later avatar cannot lose earlier results
 - A coroutine cannot `try`/`catch` across a `yield`, so every synchronous block runs through a
   helper that turns an exception into a `FAIL` line instead of a silent death

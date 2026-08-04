@@ -60,6 +60,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // This stores generated extra avatar masks based on the VRC hardcoded animator masks combined with individual layer masks.
     Dictionary<(AvatarMask, AvatarMask), AvatarMask> avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
 
+    HashSet<string> generatedLayerNames = new HashSet<string>();
+
     // This mask will mask all other layer masks from the gesture animator, and is derived from the
     // *first* layer.
     AvatarMask gestureMask;
@@ -140,6 +142,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             // Clear the cache
             avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
             gestureMask = null;
+            generatedLayerNames = new HashSet<string>();
 
             // Load masks
             emptyMask = LoadMask("vrc3cvrEmptyMask.mask");
@@ -176,6 +179,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             AdjustParameterNames();
             MakeGestureWeightFeedLayers();
             MakeVelocityMagnitudeFeedLayer();
+            // After AdjustParameterNames, like the feed layers above, so the names are final.
+            RemapVelocityToAvatarLocal();
             MakeGameStateParameterStreams();
             InsertChilloutOverride();
 
@@ -199,6 +204,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             // Clear the cache
             avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
             gestureMask = null;
+            generatedLayerNames = new HashSet<string>();
 
             Debug.Log("Conversion complete!");
         }
@@ -1225,6 +1231,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var type = RenameParameterType.None;
         if (!string.IsNullOrEmpty(name))
         {
+            // Transition conditions, blend tree axes and AAP curve bindings call this pair directly
+            // rather than through RenameParameterNameIfNeeded, so a targeted WalkParameterNames pass
+            // has to branch here too or those call sites would stay blind to it.
+            if (parameterRenamer != null)
+            {
+                return parameterRenamer(name) != name ? RenameParameterType.Rename : RenameParameterType.None;
+            }
             var renamedName = name;
             if (parameterRenameMap.ContainsKey(name))
             {
@@ -1245,6 +1258,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     string RenameParameterName(string name, RenameParameterType type)
     {
+        if (parameterRenamer != null)
+        {
+            return parameterRenamer(name);
+        }
         if (type.HasFlag(RenameParameterType.Rename))
         {
             name = parameterRenameMap[name];
@@ -1260,8 +1277,51 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return name;
     }
 
+    // Overrides the rename rule for the duration of a WalkParameterNames pass.
+    System.Func<string, string> parameterRenamer;
+
+    // Reuses the AdjustParameterNames* walker: it is the only complete inventory of the places a
+    // parameter name can hide.
+    //
+    // Declarations are left alone — the original parameter is still the client-fed input its
+    // replacement is computed from. Generated layers are skipped: their references are what their
+    // own generator chose on purpose (the magnitude layer reads world-space VelocityX/Z
+    // deliberately), so rewriting them would both corrupt that layer and manufacture a false "this
+    // parameter is used" signal out of its own output.
+    void WalkParameterNames(System.Func<string, string> renamer)
+    {
+        parameterRenamer = renamer;
+        try
+        {
+            foreach (var layer in chilloutAnimatorController.layers)
+            {
+                if (generatedLayerNames.Contains(layer.name))
+                {
+                    continue;
+                }
+                AdjustParameterNamesOnStateMachine(layer.stateMachine);
+            }
+        }
+        finally
+        {
+            parameterRenamer = null;
+        }
+    }
+
+    // The one way to add a layer, so nothing can be left out of generatedLayerNames by forgetting.
+    void AddGeneratedLayer(AnimatorControllerLayer layer)
+    {
+        chilloutAnimatorController.AddLayer(layer);
+        generatedLayerNames.Add(layer.name);
+    }
+
     void RenameParameterNameIfNeeded(ref string name)
     {
+        if (parameterRenamer != null)
+        {
+            name = parameterRenamer(name);
+            return;
+        }
         var type = GetRenameParameterType(name);
         if (type != RenameParameterType.None)
         {
@@ -3555,7 +3615,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     },
                 },
             };
-            chilloutAnimatorController.AddLayer(layer);
+            AddGeneratedLayer(layer);
         }
         chilloutAnimatorController.parameters = parameters;
     }
@@ -3652,7 +3712,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 },
             },
         };
-        chilloutAnimatorController.AddLayer(layer);
+        AddGeneratedLayer(layer);
     }
 
     // VRChat supplies VelocityMagnitude; ChilloutVR does not, so recompute it from the
@@ -3774,7 +3834,191 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 },
             },
         };
-        chilloutAnimatorController.AddLayer(layer);
+        AddGeneratedLayer(layer);
+    }
+
+    // VelocityY is deliberately untouched: the player only ever rotates about Y, so the vertical
+    // axis is the same number in world space and in avatar space. VelocityMagnitude is untouched
+    // for the same kind of reason — a magnitude has no orientation.
+    void RemapVelocityToAvatarLocal()
+    {
+        var localX = NonSyncParameterName("VelocityXLocal");
+        var localZ = NonSyncParameterName("VelocityZLocal");
+        var uses = false;
+        WalkParameterNames(name =>
+        {
+            if (name == "VelocityX")
+            {
+                uses = true;
+                return localX;
+            }
+            if (name == "VelocityZ")
+            {
+                uses = true;
+                return localZ;
+            }
+            return name;
+        });
+        if (!uses)
+        {
+            return;
+        }
+        // declared here rather than by the feed layer, whose guard is "does anything read these"
+        var parameters = chilloutAnimatorController.parameters;
+        foreach (var derived in new[] { localX, localZ })
+        {
+            if (!parameters.Any(p => p.name == derived))
+            {
+                ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+                {
+                    name = derived,
+                    type = AnimatorControllerParameterType.Float,
+                    defaultFloat = 0f,
+                });
+            }
+        }
+        chilloutAnimatorController.parameters = parameters;
+        MakeLocomotionVelocityFeedLayer();
+    }
+
+    // ChilloutVR reports VelocityX/Y/Z in WORLD space (measured in game), while every VRChat layer
+    // was authored against an avatar-LOCAL VelocityX/VelocityZ. The reconstruction cannot be written
+    // back into VelocityX/Z — the client rewrites those every frame — so it lands in derived
+    // parameters that RemapVelocityToAvatarLocal points the converted layers at.
+    //
+    // MovementX/Y supply the direction: player-local by construction, +X right and +Y forward, the
+    // same axes VRChat means. Only their direction, though — 0.5 is the walk ring and 1.0 the run
+    // ring, so the magnitude has to come from the world velocity instead. Both are ChilloutVR
+    // synced core parameters, so this costs no sync bits and holds on remote copies too.
+    void MakeLocomotionVelocityFeedLayer()
+    {
+        var parameters = chilloutAnimatorController.parameters;
+        var localX = NonSyncParameterName("VelocityXLocal");
+        var localZ = NonSyncParameterName("VelocityZLocal");
+        if (!parameters.Any(p => p.name == localX) && !parameters.Any(p => p.name == localZ))
+        {
+            return;
+        }
+        foreach (var inputName in new[] { "VelocityX", "VelocityZ", "MovementX", "MovementY" })
+        {
+            if (!parameters.Any(p => p.name == inputName))
+            {
+                ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+                {
+                    name = inputName,
+                    type = AnimatorControllerParameterType.Float,
+                    defaultFloat = 0f,
+                });
+            }
+        }
+        foreach (var derived in new[] { localX, localZ })
+        {
+            if (!parameters.Any(p => p.name == derived))
+            {
+                ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+                {
+                    name = derived,
+                    type = AnimatorControllerParameterType.Float,
+                    defaultFloat = 0f,
+                });
+            }
+        }
+        var scratch = NonSyncParameterName("VelocityLocalCalc");
+        ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+        {
+            name = scratch,
+            type = AnimatorControllerParameterType.Float,
+            defaultFloat = 0f,
+        });
+        chilloutAnimatorController.parameters = parameters;
+
+        AnimatorDriverTask Task(AnimatorDriverTask.Operator op, string targetName, string aName, string bName, float bValue = 0f)
+        {
+            return new AnimatorDriverTask
+            {
+                op = op,
+                targetName = targetName,
+                targetType = AnimatorDriverTask.ParameterType.Float,
+                aType = AnimatorDriverTask.SourceType.Parameter,
+                aParamType = AnimatorDriverTask.ParameterType.Float,
+                aName = aName,
+                bType = bName == null ? AnimatorDriverTask.SourceType.Static : AnimatorDriverTask.SourceType.Parameter,
+                bParamType = AnimatorDriverTask.ParameterType.Float,
+                bName = bName ?? "",
+                bValue = bValue,
+            };
+        }
+
+        var tickClip = new AnimationClip { name = "VRC3CVR_LocomotionVelocityTick" };
+        tickClip.SetCurve("", typeof(Animator), NonSyncParameterName("LocomotionVelocityTick"), AnimationCurve.Constant(0f, 1f / 60f, 0f));
+        var recomputeState = new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = "Recompute",
+            writeDefaultValues = false,
+            motion = tickClip,
+            behaviours = new StateMachineBehaviour[]
+            {
+                new AnimatorDriver
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    localOnly = false,
+                    EnterTasks = new List<AnimatorDriverTask>
+                    {
+                        // ground speed: a locomotion tree's space has no vertical axis
+                        Task(AnimatorDriverTask.Operator.Multiplication, scratch, "VelocityX", "VelocityX"),
+                        Task(AnimatorDriverTask.Operator.Multiplication, localX, "VelocityZ", "VelocityZ"),
+                        Task(AnimatorDriverTask.Operator.Addition, scratch, scratch, localX),
+                        Task(AnimatorDriverTask.Operator.Power, scratch, scratch, null, 0.5f),
+                        Task(AnimatorDriverTask.Operator.Multiplication, localZ, "MovementX", "MovementX"),
+                        Task(AnimatorDriverTask.Operator.Multiplication, localX, "MovementY", "MovementY"),
+                        Task(AnimatorDriverTask.Operator.Addition, localZ, localZ, localX),
+                        Task(AnimatorDriverTask.Operator.Power, localZ, localZ, null, 0.5f),
+                        // scale = speed / (ring + epsilon); standing still leaves speed ~0, so the
+                        // scale collapses to ~0 instead of dividing by zero
+                        Task(AnimatorDriverTask.Operator.Addition, localX, localZ, null, 0.0001f),
+                        Task(AnimatorDriverTask.Operator.Division, localX, scratch, localX),
+                        // Z first: filling X overwrites the scale both of them need
+                        Task(AnimatorDriverTask.Operator.Multiplication, localZ, "MovementY", localX),
+                        Task(AnimatorDriverTask.Operator.Multiplication, localX, "MovementX", localX),
+                    },
+                },
+            },
+        };
+        recomputeState.transitions = new AnimatorStateTransition[]
+        {
+            new AnimatorStateTransition
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                hasExitTime = true,
+                exitTime = 1f,
+                hasFixedDuration = true,
+                duration = 0f,
+                offset = 0f,
+                destinationState = recomputeState,
+            },
+        };
+        var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_LocomotionVelocity");
+        AddGeneratedLayer(new AnimatorControllerLayer
+        {
+            name = layerName,
+            defaultWeight = 1f,
+            blendingMode = AnimatorLayerBlendingMode.Override,
+            avatarMask = emptyMask,
+            stateMachine = new AnimatorStateMachine
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                name = layerName,
+                entryPosition = new Vector3(0, -100),
+                exitPosition = new Vector3(0, 200),
+                anyStatePosition = new Vector3(0, -300),
+                defaultState = recomputeState,
+                states = new ChildAnimatorState[]
+                {
+                    new ChildAnimatorState { state = recomputeState, position = new Vector3(0, 0) },
+                },
+            },
+        });
     }
 
     // VRChat built-ins that ChilloutVR does not supply to the animator. The client's parameter
@@ -4345,7 +4589,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             },
         };
         var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_LocalOnlyContacts");
-        chilloutAnimatorController.AddLayer(new AnimatorControllerLayer
+        AddGeneratedLayer(new AnimatorControllerLayer
         {
             name = layerName,
             avatarMask = emptyMask,
