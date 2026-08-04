@@ -113,5 +113,60 @@ public class VRC3CVRVelocityCompatTests
         Assert.AreEqual(0, controller.layers.Length);
         Object.DestroyImmediate(controller);
     }
+
+    [Test]
+    public void RemapVelocity_PointsConvertedLayersAtTheDerivedParameters()
+    {
+        var controller = new AnimatorController { name = "remapTest" };
+        controller.AddParameter("VelocityX", AnimatorControllerParameterType.Float);
+        controller.AddParameter("VelocityY", AnimatorControllerParameterType.Float);
+        controller.AddParameter("VelocityZ", AnimatorControllerParameterType.Float);
+        controller.AddLayer("L");
+        var machine = controller.layers[0].stateMachine;
+        var state = machine.AddState("S");
+        state.motion = new BlendTree
+        {
+            blendType = BlendTreeType.SimpleDirectional2D,
+            blendParameter = "VelocityX",
+            blendParameterY = "VelocityZ",
+        };
+        var core = MakeCore(controller);
+
+        typeof(VRC3CVRCore).GetMethod("RemapVelocityToAvatarLocal", Flags).Invoke(core, null);
+
+        var tree = (BlendTree)controller.layers[0].stateMachine.states[0].state.motion;
+        Assert.AreEqual("#VelocityXLocal", tree.blendParameter);
+        Assert.AreEqual("#VelocityZLocal", tree.blendParameterY);
+        // the derived parameters exist and the feed layer was added
+        var names = controller.parameters.Select(p => p.name).ToArray();
+        CollectionAssert.Contains(names, "#VelocityXLocal");
+        CollectionAssert.Contains(names, "#VelocityZLocal");
+        Assert.AreEqual(1, controller.layers.Count(l => l.name.StartsWith("VRC3CVR_LocomotionVelocity")));
+
+        Object.DestroyImmediate(controller);
+    }
+
+    [Test]
+    public void RemapVelocity_LeavesVerticalVelocityAlone()
+    {
+        var controller = new AnimatorController { name = "remapTest" };
+        controller.AddParameter("VelocityY", AnimatorControllerParameterType.Float);
+        controller.AddLayer("L");
+        var machine = controller.layers[0].stateMachine;
+        var state = machine.AddState("S");
+        var transition = machine.AddAnyStateTransition(state);
+        transition.AddCondition(AnimatorConditionMode.Less, -0.5f, "VelocityY");
+        var core = MakeCore(controller);
+
+        typeof(VRC3CVRCore).GetMethod("RemapVelocityToAvatarLocal", Flags).Invoke(core, null);
+
+        // a yaw-only rotation leaves the vertical axis identical in both spaces
+        Assert.AreEqual("VelocityY",
+            controller.layers[0].stateMachine.anyStateTransitions[0].conditions[0].parameter);
+        Assert.AreEqual(0, controller.layers.Count(l => l.name.StartsWith("VRC3CVR_LocomotionVelocity")),
+            "VelocityX/Z を誰も読んでいないので導出層は要らない");
+
+        Object.DestroyImmediate(controller);
+    }
 }
 #endif

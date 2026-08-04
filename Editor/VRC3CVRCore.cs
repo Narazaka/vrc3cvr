@@ -176,7 +176,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             AdjustParameterNames();
             MakeGestureWeightFeedLayers();
             MakeVelocityMagnitudeFeedLayer();
-            MakeLocomotionVelocityFeedLayer();
+            // after AdjustParameterNames, like the feed layers above, so the names it rewrites are
+            // the final ones — and after MakeVelocityMagnitudeFeedLayer, whose own VelocityX/Z reads
+            // are the world-space ones it wants
+            RemapVelocityToAvatarLocal();
             MakeGameStateParameterStreams();
             InsertChilloutOverride();
 
@@ -3817,6 +3820,51 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             },
         };
         chilloutAnimatorController.AddLayer(layer);
+    }
+
+    // VelocityY is deliberately untouched: the player only ever rotates about Y, so the vertical
+    // axis is the same number in world space and in avatar space. VelocityMagnitude is untouched
+    // for the same kind of reason — a magnitude has no orientation.
+    void RemapVelocityToAvatarLocal()
+    {
+        var localX = NonSyncParameterName("VelocityXLocal");
+        var localZ = NonSyncParameterName("VelocityZLocal");
+        var uses = false;
+        WalkParameterNames(name =>
+        {
+            if (name == "VelocityX")
+            {
+                uses = true;
+                return localX;
+            }
+            if (name == "VelocityZ")
+            {
+                uses = true;
+                return localZ;
+            }
+            return name;
+        });
+        if (!uses)
+        {
+            return;
+        }
+        // declared here, not by the feed layer: the feed layer's own guard is "does anything read
+        // the derived parameters", and pointing the references at them is what makes that true
+        var parameters = chilloutAnimatorController.parameters;
+        foreach (var derived in new[] { localX, localZ })
+        {
+            if (!parameters.Any(p => p.name == derived))
+            {
+                ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+                {
+                    name = derived,
+                    type = AnimatorControllerParameterType.Float,
+                    defaultFloat = 0f,
+                });
+            }
+        }
+        chilloutAnimatorController.parameters = parameters;
+        MakeLocomotionVelocityFeedLayer();
     }
 
     // ChilloutVR reports VelocityX/Y/Z in WORLD space (measured in game), while every VRChat layer
