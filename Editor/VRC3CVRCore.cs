@@ -1225,6 +1225,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var type = RenameParameterType.None;
         if (!string.IsNullOrEmpty(name))
         {
+            // Transition conditions, blend tree axes and AAP curve bindings call this pair directly
+            // rather than through RenameParameterNameIfNeeded, so a targeted WalkParameterNames pass
+            // has to branch here too or those call sites would stay blind to it.
+            if (parameterRenamer != null)
+            {
+                return parameterRenamer(name) != name ? RenameParameterType.Rename : RenameParameterType.None;
+            }
             var renamedName = name;
             if (parameterRenameMap.ContainsKey(name))
             {
@@ -1245,6 +1252,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     string RenameParameterName(string name, RenameParameterType type)
     {
+        if (parameterRenamer != null)
+        {
+            return parameterRenamer(name);
+        }
         if (type.HasFlag(RenameParameterType.Rename))
         {
             name = parameterRenameMap[name];
@@ -1260,8 +1271,38 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return name;
     }
 
+    // Set while a targeted rename pass is running. The whole AdjustParameterNames* walker —
+    // transitions, driver tasks, blend tree axes, AAP curves, state time/speed/cycleOffset — is the
+    // only complete inventory of the places a parameter name can hide, so a second pass with a
+    // different mapping reuses it rather than growing a parallel walker that will drift.
+    System.Func<string, string> parameterRenamer;
+
+    // Layers only, deliberately: AdjustParameterNamesOnAnimator also renames the DECLARATIONS, and
+    // a targeted pass wants the references pointed elsewhere while the original parameter stays
+    // declared — VelocityX is still the client-fed input the derived value is computed from.
+    void WalkParameterNames(System.Func<string, string> renamer)
+    {
+        parameterRenamer = renamer;
+        try
+        {
+            foreach (var layer in chilloutAnimatorController.layers)
+            {
+                AdjustParameterNamesOnStateMachine(layer.stateMachine);
+            }
+        }
+        finally
+        {
+            parameterRenamer = null;
+        }
+    }
+
     void RenameParameterNameIfNeeded(ref string name)
     {
+        if (parameterRenamer != null)
+        {
+            name = parameterRenamer(name);
+            return;
+        }
         var type = GetRenameParameterType(name);
         if (type != RenameParameterType.None)
         {
