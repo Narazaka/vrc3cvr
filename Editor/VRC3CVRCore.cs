@@ -2394,6 +2394,95 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return false;
     }
 
+    // VRChat's placeholders and the ChilloutVR animations that stand in the same place. The client
+    // swaps proxy_* for its own internal animations at runtime, so carrying them across would ship
+    // VRChat's preview clips as the avatar's walk. The CCK's own set is this platform's equivalent.
+    static readonly Dictionary<string, string> placeholderClipSubstitutions = new Dictionary<string, string>
+    {
+        { "proxy_stand_still", "LocIdle" },
+        { "proxy_idle", "LocIdle" },
+        { "proxy_idle2", "LocIdle" },
+        { "proxy_idle3", "LocIdle" },
+        { "proxy_stand_still2", "LocIdle" },
+        { "proxy_stand_still3", "LocIdle" },
+        { "proxy_walk_forward", "LocWalkingForward" },
+        { "proxy_walk_backward", "LocWalkingBackwards" },
+        { "proxy_strafe_right", "LocWalkingStrafeRight" },
+        { "proxy_strafe_right_45", "LocWalkingStrafeRightForwards" },
+        { "proxy_strafe_right_135", "LocWalkingStrafeRightBackwards" },
+        { "proxy_run_forward", "LocRunningForward" },
+        { "proxy_sprint_forward", "LocRunningForward" },
+        { "proxy_run_backward", "LocRunningBackward" },
+        { "proxy_run_strafe_right", "LocRunningStrafeRight" },
+        { "proxy_run_strafe_right_45", "LocRunningStrafeRightForwards" },
+        { "proxy_run_strafe_right_135", "LocRunningStrafeRightBackwards" },
+        { "proxy_crouch_still", "LocCrouchIdle" },
+        { "proxy_crouch_walk_forward", "LocCrouchForward" },
+        { "proxy_crouch_walk_right", "LocCrouchRight" },
+        { "proxy_crouch_walk_right_45", "LocCrouchForward" },
+        { "proxy_crouch_walk_right_135", "LocCrouchBackward" },
+        { "proxy_low_crawl_still", "LocProneIdle" },
+        { "proxy_low_crawl_idle", "LocProneIdle" },
+        { "proxy_low_crawl_forward", "LocProneForward" },
+        { "proxy_low_crawl_right", "LocProneRight" },
+        { "proxy_fall_short", "LocJumpAir" },
+        { "proxy_fall_long", "LocJumpAir" },
+        { "proxy_landing", "LocJumpLand" },
+        { "proxy_land_quick", "LocJumpLand" },
+        { "proxy_sit", "LocSitting" },
+        { "proxy_sit2", "LocSitting" },
+    };
+
+    const string CckLocomotionClipPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Locomotion/";
+
+    void SubstitutePlaceholderClips(AnimatorController controller)
+    {
+        foreach (var layer in controller.layers)
+        {
+            foreach (var state in AllStatesOf(layer.stateMachine))
+            {
+                state.motion = SubstitutedMotion(state.motion);
+            }
+        }
+    }
+
+    Motion SubstitutedMotion(Motion motion)
+    {
+        if (motion is AnimationClip clip)
+        {
+            return SubstitutedClip(clip) ?? (Motion)clip;
+        }
+        if (motion is BlendTree tree)
+        {
+            var children = tree.children;
+            var changed = false;
+            for (var i = 0; i < children.Length; i++)
+            {
+                var substituted = SubstitutedMotion(children[i].motion);
+                if (substituted != children[i].motion)
+                {
+                    children[i].motion = substituted;
+                    changed = true;
+                }
+            }
+            if (changed)
+            {
+                tree.children = children;
+                EditorUtility.SetDirty(tree);
+            }
+        }
+        return motion;
+    }
+
+    AnimationClip SubstitutedClip(AnimationClip clip)
+    {
+        if (clip == null || !placeholderClipSubstitutions.TryGetValue(clip.name, out var replacement))
+        {
+            return null;
+        }
+        return AssetDatabase.LoadAssetAtPath<AnimationClip>(CckLocomotionClipPath + replacement + ".anim");
+    }
+
     static IEnumerable<AnimatorState> AllStatesOf(AnimatorStateMachine machine)
     {
         if (machine == null)

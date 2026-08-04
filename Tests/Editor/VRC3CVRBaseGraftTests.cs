@@ -94,5 +94,55 @@ public class VRC3CVRBaseGraftTests
 
         Object.DestroyImmediate(controller);
     }
+
+    [Test]
+    public void PlaceholderSubstitutions_CoverTheLocomotionProxiesAndPointAtRealCckClips()
+    {
+        var map = (System.Collections.Generic.Dictionary<string, string>)
+            typeof(VRC3CVRCore).GetField("placeholderClipSubstitutions", Flags).GetValue(null);
+
+        // the proxies a locomotion blend tree actually references
+        foreach (var proxy in new[]
+        {
+            "proxy_stand_still", "proxy_walk_forward", "proxy_walk_backward",
+            "proxy_strafe_right", "proxy_run_forward", "proxy_run_backward",
+            "proxy_crouch_still", "proxy_crouch_walk_forward",
+            "proxy_low_crawl_still", "proxy_low_crawl_forward",
+            "proxy_fall_short", "proxy_landing", "proxy_sit",
+        })
+        {
+            Assert.IsTrue(map.ContainsKey(proxy), proxy + " has no ChilloutVR counterpart");
+        }
+
+        foreach (var pair in map)
+        {
+            var clip = UnityEditor.AssetDatabase.LoadAssetAtPath<AnimationClip>(
+                "Assets/CVR.CCK/Assets/Avatar/Animations/Locomotion/" + pair.Value + ".anim");
+            Assert.IsNotNull(clip, pair.Key + " maps to " + pair.Value + ", which is not in the CCK");
+        }
+    }
+
+    [Test]
+    public void SubstitutePlaceholderClips_ReplacesProxiesInsideBlendTreesAndLeavesAuthoredClipsAlone()
+    {
+        var proxy = new AnimationClip { name = "proxy_walk_forward" };
+        var own = new AnimationClip { name = "MyCoolWalk" };
+        var tree = new BlendTree { name = "Tree" };
+        tree.AddChild(proxy);
+        tree.AddChild(own);
+        var controller = MakeController("tree", tree);
+
+        var core = new VRC3CVRCore();
+        typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags).Invoke(core, new object[] { controller });
+
+        var children = ((BlendTree)controller.layers[0].stateMachine.states[0].state.motion).children;
+        Assert.AreEqual("LocWalkingForward", children[0].motion.name);
+        Assert.AreEqual("MyCoolWalk", children[1].motion.name, "the author's own clip is untouched");
+
+        Object.DestroyImmediate(proxy);
+        Object.DestroyImmediate(own);
+        Object.DestroyImmediate(tree);
+        Object.DestroyImmediate(controller);
+    }
 }
 #endif
