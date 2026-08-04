@@ -176,9 +176,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             AdjustParameterNames();
             MakeGestureWeightFeedLayers();
             MakeVelocityMagnitudeFeedLayer();
-            // after AdjustParameterNames, like the feed layers above, so the names it rewrites are
-            // the final ones — and after MakeVelocityMagnitudeFeedLayer, whose own VelocityX/Z reads
-            // are the world-space ones it wants
+            // After AdjustParameterNames, like the feed layers above, so the names it rewrites are
+            // the final ones. Running after MakeVelocityMagnitudeFeedLayer does NOT require that
+            // layer's literal "VelocityX"/"VelocityZ" reads to survive by luck of ordering —
+            // WalkParameterNames skips vrc3cvr's own "VRC3CVR_"-prefixed layers outright, so this
+            // pass structurally cannot see (and previously did corrupt) a feed layer's own reads.
             RemapVelocityToAvatarLocal();
             MakeGameStateParameterStreams();
             InsertChilloutOverride();
@@ -1284,6 +1286,17 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // Layers only, deliberately: AdjustParameterNamesOnAnimator also renames the DECLARATIONS, and
     // a targeted pass wants the references pointed elsewhere while the original parameter stays
     // declared — VelocityX is still the client-fed input the derived value is computed from.
+    //
+    // Layers vrc3cvr itself generated are skipped, identified by the "VRC3CVR_" prefix every
+    // feed/proxy layer this codebase creates uses (MakeVelocityMagnitudeFeedLayer,
+    // MakeGestureWeightFeedLayers, MakeLocomotionVelocityFeedLayer, the contact proxy/local-only
+    // layers — see the AddLayer call sites). Their parameter references are exactly what their own
+    // generator chose on purpose (e.g. the magnitude layer's literal "VelocityX"/"VelocityZ" reads
+    // are deliberately world-space); a second, narrower rename pass has no business rewriting
+    // content this same Convert() call just produced, only content carried over from the original
+    // avatar. Without this, a targeted pass whose mapping happens to match a generated layer's own
+    // reads corrupts that layer — and can manufacture a false "this parameter is used" signal from
+    // its own output, independent of what order Convert() happens to call things in.
     void WalkParameterNames(System.Func<string, string> renamer)
     {
         parameterRenamer = renamer;
@@ -1291,6 +1304,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             foreach (var layer in chilloutAnimatorController.layers)
             {
+                if (layer.name.StartsWith("VRC3CVR_"))
+                {
+                    continue;
+                }
                 AdjustParameterNamesOnStateMachine(layer.stateMachine);
             }
         }

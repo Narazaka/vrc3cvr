@@ -168,5 +168,37 @@ public class VRC3CVRVelocityCompatTests
 
         Object.DestroyImmediate(controller);
     }
+
+    [Test]
+    public void RemapVelocity_DoesNotCorruptAnAlreadyGeneratedVelocityMagnitudeLayer()
+    {
+        var controller = new AnimatorController { name = "remapAfterMagnitudeTest" };
+        controller.AddParameter("VelocityMagnitude", AnimatorControllerParameterType.Float);
+        var core = MakeCore(controller);
+
+        // Reproduce the exact hazard: a vrc3cvr-generated feed layer with its own literal
+        // VelocityX/Y/Z reads already exists by the time the remap runs (this is the actual order
+        // Convert() uses — MakeVelocityMagnitudeFeedLayer before RemapVelocityToAvatarLocal). The
+        // remap must not rewrite that layer's own reads, nor mistake them for avatar usage.
+        typeof(VRC3CVRCore).GetMethod("MakeVelocityMagnitudeFeedLayer", Flags).Invoke(core, null);
+        typeof(VRC3CVRCore).GetMethod("RemapVelocityToAvatarLocal", Flags).Invoke(core, null);
+
+        var magnitudeLayer = controller.layers.Single(l => l.name.StartsWith("VRC3CVR_VelocityMagnitude"));
+        var driver = (ABI.CCK.Components.AnimatorDriver)magnitudeLayer.stateMachine.states.Single().state.behaviours.Single();
+        var referencedNames = driver.EnterTasks.SelectMany(t => new[] { t.aName, t.bName }).ToArray();
+        CollectionAssert.Contains(referencedNames, "VelocityX");
+        CollectionAssert.Contains(referencedNames, "VelocityZ");
+        CollectionAssert.DoesNotContain(referencedNames, "#VelocityXLocal",
+            "VelocityMagnitude レイヤー自身の読み取りは書き換えられてはいけない");
+        CollectionAssert.DoesNotContain(referencedNames, "#VelocityZLocal",
+            "VelocityMagnitude レイヤー自身の読み取りは書き換えられてはいけない");
+
+        // nothing outside the magnitude layer's own generated content references VelocityX/Z, so
+        // the remap must not manufacture a "used" signal purely from that layer's own reads
+        Assert.AreEqual(0, controller.layers.Count(l => l.name.StartsWith("VRC3CVR_LocomotionVelocity")),
+            "VelocityMagnitude の生成レイヤー自身の参照を「使用」と誤検知してはいけない");
+
+        Object.DestroyImmediate(controller);
+    }
 }
 #endif
