@@ -2483,6 +2483,101 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return AssetDatabase.LoadAssetAtPath<AnimationClip>(CckLocomotionClipPath + replacement + ".anim");
     }
 
+    const string CckLocomotionLayerName = "Locomotion/Emotes";
+
+    // Set while the CVR locomotion layer is dropped in favour of the avatar's own Base layer.
+    bool graftVrcBaseLocomotion;
+
+    // The two movement modes ChilloutVR drives that VRChat has no concept of, so nothing in a
+    // converted Base layer answers them. Value = the CVR bool that selects the mode.
+    static readonly Dictionary<string, string> cckMovementModeParameters = new Dictionary<string, string>
+    {
+        { "LocFlying", "Flying" },
+        { "Swimming", "Swimming" },
+    };
+
+    Dictionary<string, AnimatorState> salvagedMovementModeStates = new Dictionary<string, AnimatorState>();
+
+    void SalvageCckMovementModeStates(AnimatorControllerLayer[] cckLayers)
+    {
+        salvagedMovementModeStates = new Dictionary<string, AnimatorState>();
+        foreach (var layer in cckLayers)
+        {
+            if (layer.name != CckLocomotionLayerName)
+            {
+                continue;
+            }
+            foreach (var state in AllStatesOf(layer.stateMachine))
+            {
+                if (cckMovementModeParameters.ContainsKey(state.name))
+                {
+                    salvagedMovementModeStates[state.name] = state;
+                }
+            }
+        }
+    }
+
+    void GraftCckMovementModes(AnimatorControllerLayer locomotionLayer)
+    {
+        var ground = locomotionLayer.stateMachine;
+        if (ground == null || salvagedMovementModeStates.Count == 0)
+        {
+            return;
+        }
+
+        // The avatar's own locomotion is pushed down into a sub-state-machine so that both
+        // directions can be StateMachine transitions: those fire from any state inside the source
+        // machine and stop firing once execution is inside the destination, where an AnyState
+        // transition would keep re-firing on the still-true condition and flicker.
+        var root = new AnimatorStateMachine
+        {
+            name = locomotionLayer.name,
+            hideFlags = ground.hideFlags,
+        };
+        var children = new List<ChildAnimatorStateMachine>
+        {
+            new ChildAnimatorStateMachine { stateMachine = ground, position = new Vector3(300f, 0f, 0f) },
+        };
+        var modeMachines = new List<KeyValuePair<AnimatorStateMachine, string>>();
+
+        foreach (var mode in cckMovementModeParameters)
+        {
+            if (!salvagedMovementModeStates.TryGetValue(mode.Key, out var state) || state == null)
+            {
+                continue;
+            }
+            // whatever this used to transition to went out with the rest of the CVR locomotion layer
+            state.transitions = new AnimatorStateTransition[0];
+            var machine = new AnimatorStateMachine
+            {
+                name = mode.Value,
+                hideFlags = ground.hideFlags,
+            };
+            machine.states = new ChildAnimatorState[]
+            {
+                new ChildAnimatorState { state = state, position = new Vector3(300f, 0f, 0f) },
+            };
+            machine.defaultState = state;
+            children.Add(new ChildAnimatorStateMachine
+            {
+                stateMachine = machine,
+                position = new Vector3(300f, 150f * children.Count, 0f),
+            });
+            modeMachines.Add(new KeyValuePair<AnimatorStateMachine, string>(machine, mode.Value));
+        }
+
+        root.stateMachines = children.ToArray();
+        root.AddEntryTransition(ground);
+
+        foreach (var mode in modeMachines)
+        {
+            root.AddStateMachineTransition(ground, mode.Key).AddCondition(AnimatorConditionMode.If, 0f, mode.Value);
+            root.AddStateMachineTransition(mode.Key, ground).AddCondition(AnimatorConditionMode.IfNot, 0f, mode.Value);
+        }
+
+        locomotionLayer.stateMachine = root;
+    }
+
     static IEnumerable<AnimatorState> AllStatesOf(AnimatorStateMachine machine)
     {
         if (machine == null)
@@ -2750,6 +2845,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         var newAnimatorController = new CopyAnimatorController(originalAnimatorController).CopyController();
 
+        var graftingThisAnimator = animatorID == VRCBaseAnimatorID.BASE && graftVrcBaseLocomotion;
+        if (graftingThisAnimator)
+        {
+            // The deep clone above and never originalAnimatorController: this rewrites clip
+            // references in place, and the avatar's own animator asset must not be touched.
+            SubstitutePlaceholderClips(newAnimatorController);
+        }
+
         // Register this animator's own parameters before processing its transitions below;
         // otherwise a parameter only this animator declares (e.g. IsLocal) is unknown until
         // CopyControllerTo merges it in later, and its conditions go out unadapted. Idempotent.
@@ -2789,6 +2892,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 controllerLayers[i] = layer;
                 layersModified = true;
             }
+        }
+        // After the loop above, so the conditions this adds are already in CVR's own vocabulary
+        // and must not go through ProcessStateMachine's VRChat-to-CVR adaptation.
+        if (graftingThisAnimator && controllerLayers.Length > 0)
+        {
+            controllerLayers[0].name = CckLocomotionLayerName;
+            GraftCckMovementModes(controllerLayers[0]);
+            layersModified = true;
         }
         if (layersModified)
         {
@@ -2859,22 +2970,44 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         List<AnimatorControllerLayer> newLayers = new List<AnimatorControllerLayer>();
 
-        string[] allowedLayerNames;
+        List<string> allowedLayerNames = new List<string> { CckLocomotionLayerName };
 
         if (convertGestureLayer && vrcAvatarDescriptor.baseAnimationLayers[(int)VRCBaseAnimatorID.GESTURE].animatorController)
         {
             Debug.Log("Deleting CVR hand layers...");
-            allowedLayerNames = new string[] { "Locomotion/Emotes" };
         }
         else
         {
             Debug.Log("Not deleting CVR hand layers...");
-            allowedLayerNames = new string[] { "Locomotion/Emotes", "LeftHand", "RightHand" };
+            allowedLayerNames.Add("LeftHand");
+            allowedLayerNames.Add("RightHand");
+        }
+
+        // ChilloutVR has no playable layers, so one Override layer series owns the body pose:
+        // merged above this one a VRC Base layer could only replace it, never supplement it, and
+        // CVR's movement sliders and stance buttons would then be answered nowhere. An avatar that
+        // ships locomotion of its own therefore takes the layer over instead of stacking onto it.
+        // Most Base layers are nothing but proxy_* references, and swapping CVR's locomotion for
+        // those would be a downgrade, so HasAuthoredMotion is the gate.
+        var baseAnimatorController = vrcAnimatorControllers.Length > (int)VRCBaseAnimatorID.BASE
+            ? vrcAnimatorControllers[(int)VRCBaseAnimatorID.BASE]
+            : null;
+        graftVrcBaseLocomotion = convertLocomotionLayer && HasAuthoredMotion(baseAnimatorController);
+
+        if (graftVrcBaseLocomotion)
+        {
+            Debug.Log("The Base animator has locomotion of its own - replacing the CVR locomotion layer with it");
+            SalvageCckMovementModeStates(existingLayers);
+            allowedLayerNames.Remove(CckLocomotionLayerName);
+        }
+        else
+        {
+            Debug.Log("Keeping the CVR locomotion layer");
         }
 
         foreach (AnimatorControllerLayer layer in existingLayers)
         {
-            if (Array.IndexOf(allowedLayerNames, layer.name) != -1)
+            if (allowedLayerNames.Contains(layer.name))
             {
                 newLayers.Add(layer);
             }
