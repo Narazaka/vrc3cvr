@@ -2560,6 +2560,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         var graftedFromAnyState = new List<AnimatorStateTransition>();
         var graftedFromHub = new List<AnimatorStateTransition>();
+        var ownAnyStateTransitionCount = machine.anyStateTransitions.Length;
         var states = machine.states;
         var y = 0f;
 
@@ -2589,6 +2590,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             graftedFromAnyState.Add(enter);
 
             Timed(flying.AddTransition(hub), 0.1f).AddCondition(AnimatorConditionMode.IfNot, 0f, "Flying");
+
+            if (ownAnyStateTransitionCount > 0)
+            {
+                Debug.LogWarning($"The Base animator's first layer has {ownAnyStateTransitionCount} AnyState transition(s) of its own. ChilloutVR's flight state is entered from AnyState and does not suppress them, so while flying any of them whose conditions hold -- an airborne one especially -- fires out of flight, which is re-entered on the next frame. The avatar will flicker between flying and its own airborne animation.");
+            }
         }
 
         if (swimming != null)

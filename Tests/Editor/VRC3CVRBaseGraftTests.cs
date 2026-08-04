@@ -203,7 +203,7 @@ public class VRC3CVRBaseGraftTests
         AssetDatabase.DeleteAsset(GraftTestFolder);
     }
 
-    AnimatorController ConvertWithBaseLayer(bool authored, bool convertLocomotionLayer)
+    AnimatorController ConvertWithBaseLayer(bool authored, bool convertLocomotionLayer, bool hubless = false)
     {
         var descriptor = VRC3CVRVerificationAvatar.Generate(GraftTestFolder);
         originalAvatar = descriptor.gameObject;
@@ -213,11 +213,23 @@ public class VRC3CVRBaseGraftTests
         var baseController = AnimatorController.CreateAnimatorControllerAtPath(GraftTestFolder + "/Base.controller");
         baseController.AddParameter(AvatarOwnAnyStateParameter, AnimatorControllerParameterType.Bool);
         var baseMachine = baseController.layers[0].stateMachine;
-        var groundState = baseMachine.AddState(GroundStateName);
-        groundState.motion = clip;
-        baseMachine.AddAnyStateTransition(groundState)
-            .AddCondition(AnimatorConditionMode.If, 0f, AvatarOwnAnyStateParameter);
-        groundState.AddExitTransition().AddCondition(AnimatorConditionMode.If, 0f, AvatarOwnAnyStateParameter);
+        if (hubless)
+        {
+            // Unity resolves a default state through sub-state-machines and refuses to have it
+            // cleared, so the only shape that really has none is a first layer with no states at
+            // all -- which leaves the motion HasAuthoredMotion looks for on a later layer.
+            baseController.AddLayer("Authored");
+            baseController.layers[1].stateMachine.AddState(GroundStateName).motion = clip;
+            Assert.IsNull(baseMachine.defaultState, "fixture: the first layer still has a default state");
+        }
+        else
+        {
+            var groundState = baseMachine.AddState(GroundStateName);
+            groundState.motion = clip;
+            baseMachine.AddAnyStateTransition(groundState)
+                .AddCondition(AnimatorConditionMode.If, 0f, AvatarOwnAnyStateParameter);
+            groundState.AddExitTransition().AddCondition(AnimatorConditionMode.If, 0f, AvatarOwnAnyStateParameter);
+        }
 
         var layers = descriptor.baseAnimationLayers;
         layers[0] = new VRCAvatarDescriptor.CustomAnimLayer
@@ -263,10 +275,6 @@ public class VRC3CVRBaseGraftTests
         Assert.AreEqual(mode, transition.conditions[0].mode, what);
     }
 
-    // The entry has to be able to fire from wherever the avatar's own locomotion currently is,
-    // and must not re-fire once it has: a transition that waits on an exit time never gets there
-    // in a looping locomotion machine, and one that can transition to itself restarts the mode
-    // every frame the condition stays true.
     static void AssertModeReachableAndLeavable(
         AnimatorStateMachine root, AnimatorState hub, AnimatorStateTransition entry, string stateName, string parameter)
     {
@@ -294,6 +302,22 @@ public class VRC3CVRBaseGraftTests
     }
 
     [Test]
+    public void Convert_WithABaseLayerThatHasNoDefaultState_KeepsChilloutVRsOwnLocomotion()
+    {
+        var controller = ConvertWithBaseLayer(authored: true, convertLocomotionLayer: true, hubless: true);
+
+        AssertCckLocomotionKept(controller);
+        Assert.IsTrue(
+            controller.layers.SelectMany(layer => AllStatesOf(layer.stateMachine))
+                .Any(state => state.name == GroundStateName),
+            "the avatar's own Base layer was not merged at all");
+        Assert.AreEqual(1,
+            controller.layers.SelectMany(layer => AllStatesOf(layer.stateMachine))
+                .Count(state => state.name == "LocFlying"),
+            "a salvaged state was grafted even though the graft was declined");
+    }
+
+    [Test]
     public void Convert_WithAnAuthoredBaseLayer_TakesOverLocomotionAndReconnectsFlightSwimmingAndEmotes()
     {
         var controller = ConvertWithBaseLayer(authored: true, convertLocomotionLayer: true);
@@ -304,18 +328,16 @@ public class VRC3CVRBaseGraftTests
         Assert.AreEqual(GroundStateName, hub.name, "the avatar's own locomotion is not the hub");
         Assert.IsTrue(locomotionLayer.iKPass, "the layer that owns the body runs no IK pass");
 
-        // flight interrupts whatever stance is running, so it is the one mode reached from AnyState
         var anyStateTransitions = root.anyStateTransitions;
         Assert.AreEqual(2, anyStateTransitions.Length);
-        Assert.IsFalse(anyStateTransitions[0].canTransitionToSelf, "the flight entry can restart itself");
+        Assert.IsFalse(anyStateTransitions[0].canTransitionToSelf, "the flight entry can transition to itself");
         AssertModeReachableAndLeavable(root, hub, anyStateTransitions[0], "LocFlying", "Flying");
-        // last, so nothing the avatar's own layer holds true can shadow the flight entry
-        Assert.AreEqual(GroundStateName, anyStateTransitions[1].destinationState.name);
+        Assert.AreEqual(GroundStateName, anyStateTransitions[1].destinationState.name,
+            "the avatar's own AnyState transition does not come last");
 
-        // same again on the hub: grafted first, the avatar's own last
         var hubTransitions = hub.transitions;
         Assert.AreEqual(3, hubTransitions.Length);
-        Assert.IsTrue(hubTransitions[2].isExit);
+        Assert.IsTrue(hubTransitions[2].isExit, "the avatar's own hub transition does not come last");
         AssertModeReachableAndLeavable(root, hub, hubTransitions[0], "Swimming", "Swimming");
 
         var emotes = root.stateMachines.Single(child => child.stateMachine.name == "Emotes").stateMachine;
@@ -327,7 +349,7 @@ public class VRC3CVRBaseGraftTests
         Assert.AreEqual(hub, leaveEmotes.destinationState, "the Emotes machine has no way back out");
         Assert.AreEqual(0, leaveEmotes.conditions.Length, "the emote return is conditional");
         Assert.IsTrue(AllStatesOf(emotes).All(state => state.transitions.Any(t => t.isExit)),
-            "an emote cannot reach the Exit node its return transition hangs off");
+            "an emote has no transition to the Exit node");
 
         foreach (var parameter in new[] { "Flying", "Swimming", "Emote", "CancelEmote" })
         {
