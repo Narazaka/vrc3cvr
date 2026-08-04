@@ -2339,6 +2339,91 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return ns != null && (ns == "VRC" || ns.StartsWith("VRC."));
     }
 
+    // A clip VRChat ships rather than the avatar's author: the proxy_* placeholders the client
+    // swaps for its own internal animations at runtime, and anything inside the VRChat packages.
+    // The real walk lives in the client, so a converted avatar gains nothing by carrying these.
+    static bool IsVrchatPlaceholderClip(AnimationClip clip)
+    {
+        if (clip == null)
+        {
+            return true;
+        }
+        if (clip.name.StartsWith("proxy_", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        var path = AssetDatabase.GetAssetPath(clip) ?? "";
+        return path.IndexOf("com.vrchat.", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    static bool HasAuthoredMotion(AnimatorController controller)
+    {
+        if (controller == null)
+        {
+            return false;
+        }
+        foreach (var layer in controller.layers)
+        {
+            foreach (var state in AllStatesOf(layer.stateMachine))
+            {
+                if (MotionHasAuthoredClip(state.motion))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    static bool MotionHasAuthoredClip(Motion motion)
+    {
+        if (motion is AnimationClip clip)
+        {
+            return !IsVrchatPlaceholderClip(clip);
+        }
+        if (motion is BlendTree tree)
+        {
+            foreach (var child in tree.children)
+            {
+                if (MotionHasAuthoredClip(child.motion))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    static IEnumerable<AnimatorState> AllStatesOf(AnimatorStateMachine machine)
+    {
+        if (machine == null)
+        {
+            yield break;
+        }
+        var stack = new Stack<AnimatorStateMachine>();
+        var seen = new HashSet<AnimatorStateMachine>();
+        stack.Push(machine);
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (current == null || !seen.Add(current))
+            {
+                continue;
+            }
+            foreach (var child in current.states)
+            {
+                if (child.state != null)
+                {
+                    yield return child.state;
+                }
+            }
+            foreach (var sub in current.stateMachines)
+            {
+                stack.Push(sub.stateMachine);
+            }
+        }
+    }
+
     static AnimatorDriverTask.ParameterType AnimatorDriverParameterType(AnimatorControllerParameter[] parameters, string name)
     {
         var parameter = parameters.FirstOrDefault(p => p.name == name);
