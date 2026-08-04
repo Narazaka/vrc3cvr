@@ -47,6 +47,14 @@ public class VRC3CVRVelocityCompatTests
         Assert.AreEqual("#LocalX", walkedTree.blendParameter);
         Assert.AreEqual("VelocityZ", walkedTree.blendParameterY, "マッピングに無い名前は触らない");
 
+        // WalkParameterNames must only redirect layer REFERENCES, never the parameter
+        // DECLARATIONS (VRC3CVRCore.cs:1296-1299) — VelocityX/VelocityZ are the client-fed inputs
+        // the feed layer's derived values are computed from, so losing the declaration here would
+        // silently break that feed layer.
+        var declaredNames = controller.parameters.Select(p => p.name).ToArray();
+        CollectionAssert.Contains(declaredNames, "VelocityX");
+        CollectionAssert.Contains(declaredNames, "VelocityZ");
+
         Object.DestroyImmediate(controller);
     }
 

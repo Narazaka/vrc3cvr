@@ -420,11 +420,20 @@ namespace VRC3CVRVerification
 
                 Run("V2", () =>
                 {
-                    // 0.2 sits between the bar's short (0.02) and tall (0.4) scale — the same
-                    // threshold the G1 weight bar check uses to call a bar "tall"
-                    Check(forwardPeak > 0.2f,
+                    // The bar's map is linear: scaleY = 0.02 + (v / 2) * 0.38 for v in ChilloutVR's
+                    // documented m/s. Correct local-space forward reading approaches the walk speed
+                    // itself (2.0 m/s -> scaleY 0.4, the bar's full height). A regression to
+                    // world-space velocity puts sin(40 deg) ~= 0.64 of that speed on Z during the
+                    // strafe leg (2.0 * 0.64 = 1.28 m/s -> scaleY ~= 0.26). The old 0.2 threshold sat
+                    // at the exact midpoint of the range (needing >= 0.95 m/s forward), close enough
+                    // to a still-ramping sample window's plausible sub-peak reading to risk a spurious
+                    // failure on this test's first real run. 0.15 (>= 0.68 m/s) keeps real margin
+                    // under the ~0.4 a correct forward reading should approach, while staying well
+                    // clear of the ~0.26 a world-space regression reads on strafe, so the check that
+                    // exists to catch that regression still catches it.
+                    Check(forwardPeak > 0.15f,
                         "V2 VelocityBar rises walking forward at a 40 deg heading (peak scaleY " + forwardPeak.ToString("0.000") + ")");
-                    Check(strafePeak < 0.2f,
+                    Check(strafePeak < 0.15f,
                         "V2 VelocityBar stays low strafing right at the same heading (peak scaleY " + strafePeak.ToString("0.000") +
                         ", forward peak was " + forwardPeak.ToString("0.000") + ")");
                 });
