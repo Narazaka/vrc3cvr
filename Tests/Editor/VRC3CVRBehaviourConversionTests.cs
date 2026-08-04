@@ -610,6 +610,41 @@ public class VRC3CVRBehaviourConversionTests
         Assert.IsFalse(result1.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm), "layer 0's baseline excluded RightArm, so layer 1 must not override it");
     }
 
+    [TestCase(VRC3CVRCore.VRCBaseAnimatorID.ADDITIVE, AnimatorLayerBlendingMode.Additive)]
+    [TestCase(VRC3CVRCore.VRCBaseAnimatorID.FX, AnimatorLayerBlendingMode.Override)]
+    public void MergeVrcAnimator_ForcesAdditiveBlendingOnlyForTheAdditivePlayable(
+        VRC3CVRCore.VRCBaseAnimatorID animatorID, AnimatorLayerBlendingMode expected)
+    {
+        var core = new VRC3CVRCore();
+        SetPrivateField(core, "fullMask", MakeMask("Full", AvatarMaskBodyPart.LeftArm));
+        SetPrivateField(core, "musclesOnlyMask", MakeMask("Muscles", AvatarMaskBodyPart.LeftArm));
+        SetPrivateField(core, "emptyMask", MakeMask("Empty"));
+        var target = new AnimatorController { name = "target" };
+        SetPrivateField(core, "chilloutAnimatorController", target);
+
+        // an author's Additive controller normally leaves its layers on Override — the platform,
+        // not the controller, is what makes the playable additive
+        var source = new AnimatorController { name = "source" };
+        source.AddLayer("L0");
+        source.AddLayer("L1");
+        var sourceLayers = source.layers;
+        sourceLayers[0].stateMachine.AddState("S0");
+        sourceLayers[1].stateMachine.AddState("S1");
+        source.layers = sourceLayers;
+
+        typeof(VRC3CVRCore).GetMethod("MergeVrcAnimatorIntoChilloutAnimator", Flags)
+            .Invoke(core, new object[] { source, animatorID });
+
+        var merged = target.layers;
+        Assert.AreEqual(2, merged.Length);
+        Assert.AreEqual(expected, merged[0].blendingMode);
+        Assert.AreEqual(expected, merged[1].blendingMode,
+            "every layer of the Additive playable is additive once merged, not just the first");
+
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(target);
+    }
+
     [Test]
     public void ReplaceVRCMask_ReplacesBuiltInVrcMaskNamesWithCckEquivalentsAndPassesOthersThrough()
     {

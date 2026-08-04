@@ -2604,6 +2604,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 newAnimatorController.parameters = parameters;
 
                 layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(animatorID, i, layer.avatarMask);
+                if (animatorID == VRCBaseAnimatorID.ADDITIVE)
+                {
+                    // The Additive playable is additive by platform rule, not by anything in the
+                    // controller, so an author's layers are usually left on Override. Every layer
+                    // becomes additive rather than only the first: one that stayed on Override
+                    // would replace the whole merged pose, not just the additive contribution.
+                    layer.blendingMode = AnimatorLayerBlendingMode.Additive;
+                }
                 controllerLayers[i] = layer;
                 layersModified = true;
             }
