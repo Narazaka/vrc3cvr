@@ -153,13 +153,45 @@ public class VRC3CVRBaseGraftTests
         Object.DestroyImmediate(controller);
     }
 
+    [Test]
+    public void SubstitutePlaceholderClips_LeavesABlendTreeAssetItDoesNotOwnAlone()
+    {
+        EnsureTestFolder();
+        var proxy = new AnimationClip { name = "proxy_walk_forward" };
+        AssetDatabase.CreateAsset(proxy, GraftTestFolder + "/proxy_walk_forward.anim");
+        var shared = new BlendTree { name = "SharedTree" };
+        shared.AddChild(proxy);
+        AssetDatabase.CreateAsset(shared, GraftTestFolder + "/SharedTree.asset");
+        var controller = MakeController("shared", shared);
+
+        typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags)
+            .Invoke(new VRC3CVRCore(), new object[] { controller });
+
+        Assert.AreEqual("proxy_walk_forward", shared.children[0].motion.name,
+            "an asset outside the conversion's own clone was rewritten");
+        var substituted = (BlendTree)controller.layers[0].stateMachine.states[0].state.motion;
+        Assert.AreNotSame(shared, substituted);
+        Assert.AreEqual("LocWalkingForward", substituted.children[0].motion.name);
+
+        Object.DestroyImmediate(controller);
+    }
+
     // ---- the graft itself, over a whole conversion ----
 
     const string GraftTestFolder = "Assets/VRC3CVR_BaseGraftTest";
     const string GroundStateName = "AvatarGroundLocomotion";
+    const string AvatarOwnAnyStateParameter = "AvatarOwnFlag";
 
     GameObject originalAvatar;
     GameObject convertedAvatar;
+
+    static void EnsureTestFolder()
+    {
+        if (!AssetDatabase.IsValidFolder(GraftTestFolder))
+        {
+            AssetDatabase.CreateFolder("Assets", System.IO.Path.GetFileName(GraftTestFolder));
+        }
+    }
 
     [TearDown]
     public void TearDown()
@@ -179,7 +211,13 @@ public class VRC3CVRBaseGraftTests
         var clip = new AnimationClip { name = authored ? "AuthoredWalk" : "proxy_stand_still" };
         AssetDatabase.CreateAsset(clip, GraftTestFolder + "/" + clip.name + ".anim");
         var baseController = AnimatorController.CreateAnimatorControllerAtPath(GraftTestFolder + "/Base.controller");
-        baseController.layers[0].stateMachine.AddState(GroundStateName).motion = clip;
+        baseController.AddParameter(AvatarOwnAnyStateParameter, AnimatorControllerParameterType.Bool);
+        var baseMachine = baseController.layers[0].stateMachine;
+        var groundState = baseMachine.AddState(GroundStateName);
+        groundState.motion = clip;
+        baseMachine.AddAnyStateTransition(groundState)
+            .AddCondition(AnimatorConditionMode.If, 0f, AvatarOwnAnyStateParameter);
+        groundState.AddExitTransition().AddCondition(AnimatorConditionMode.If, 0f, AvatarOwnAnyStateParameter);
 
         var layers = descriptor.baseAnimationLayers;
         layers[0] = new VRCAvatarDescriptor.CustomAnimLayer
@@ -217,22 +255,30 @@ public class VRC3CVRBaseGraftTests
             "the avatar's own locomotion took the layer over");
     }
 
-    static void AssertMovementModeReconnected(
-        AnimatorStateMachine root, AnimatorStateMachine ground, string parameter, string stateName)
+    static void AssertCondition(
+        AnimatorTransitionBase transition, string parameter, AnimatorConditionMode mode, string what)
     {
-        var mode = root.stateMachines.Single(child => child.stateMachine.name == parameter).stateMachine;
-        Assert.IsTrue(AllStatesOf(mode).Any(state => state.name == stateName));
+        Assert.AreEqual(1, transition.conditions.Length, what);
+        Assert.AreEqual(parameter, transition.conditions[0].parameter, what);
+        Assert.AreEqual(mode, transition.conditions[0].mode, what);
+    }
 
-        var enter = root.GetStateMachineTransitions(ground).Single(t => t.destinationStateMachine == mode);
-        Assert.AreEqual(1, enter.conditions.Length);
-        Assert.AreEqual(parameter, enter.conditions[0].parameter);
-        Assert.AreEqual(AnimatorConditionMode.If, enter.conditions[0].mode);
+    // The entry has to be able to fire from wherever the avatar's own locomotion currently is,
+    // and must not re-fire once it has: a transition that waits on an exit time never gets there
+    // in a looping locomotion machine, and one that can transition to itself restarts the mode
+    // every frame the condition stays true.
+    static void AssertModeReachableAndLeavable(
+        AnimatorStateMachine root, AnimatorState hub, AnimatorStateTransition entry, string stateName, string parameter)
+    {
+        var state = root.states.Single(child => child.state.name == stateName).state;
+        Assert.AreEqual(state, entry.destinationState);
+        Assert.IsFalse(entry.hasExitTime, parameter + " entry waits for an exit time");
+        AssertCondition(entry, parameter, AnimatorConditionMode.If, parameter + " entry");
 
-        var leave = root.GetStateMachineTransitions(mode).Single();
-        Assert.AreEqual(ground, leave.destinationStateMachine);
-        Assert.AreEqual(1, leave.conditions.Length);
-        Assert.AreEqual(parameter, leave.conditions[0].parameter);
-        Assert.AreEqual(AnimatorConditionMode.IfNot, leave.conditions[0].mode);
+        var leave = state.transitions.Single();
+        Assert.AreEqual(hub, leave.destinationState, stateName + " does not lead back to the hub");
+        Assert.IsFalse(leave.hasExitTime, stateName + " exit waits for an exit time");
+        AssertCondition(leave, parameter, AnimatorConditionMode.IfNot, stateName + " exit");
     }
 
     [Test]
@@ -248,22 +294,44 @@ public class VRC3CVRBaseGraftTests
     }
 
     [Test]
-    public void Convert_WithAnAuthoredBaseLayer_TakesOverLocomotionAndReconnectsFlightAndSwimming()
+    public void Convert_WithAnAuthoredBaseLayer_TakesOverLocomotionAndReconnectsFlightSwimmingAndEmotes()
     {
         var controller = ConvertWithBaseLayer(authored: true, convertLocomotionLayer: true);
-        var root = LocomotionLayerOf(controller).stateMachine;
+        var locomotionLayer = LocomotionLayerOf(controller);
+        var root = locomotionLayer.stateMachine;
 
-        var ground = root.entryTransitions.Single().destinationStateMachine;
-        Assert.IsNotNull(ground);
-        Assert.IsTrue(AllStatesOf(ground).Any(state => state.name == GroundStateName));
+        var hub = root.defaultState;
+        Assert.AreEqual(GroundStateName, hub.name, "the avatar's own locomotion is not the hub");
+        Assert.IsTrue(locomotionLayer.iKPass, "the layer that owns the body runs no IK pass");
 
-        AssertMovementModeReconnected(root, ground, "Flying", "LocFlying");
-        AssertMovementModeReconnected(root, ground, "Swimming", "Swimming");
+        // flight interrupts whatever stance is running, so it is the one mode reached from AnyState
+        var anyStateTransitions = root.anyStateTransitions;
+        Assert.AreEqual(2, anyStateTransitions.Length);
+        Assert.IsFalse(anyStateTransitions[0].canTransitionToSelf, "the flight entry can restart itself");
+        AssertModeReachableAndLeavable(root, hub, anyStateTransitions[0], "LocFlying", "Flying");
+        // last, so nothing the avatar's own layer holds true can shadow the flight entry
+        Assert.AreEqual(GroundStateName, anyStateTransitions[1].destinationState.name);
 
-        foreach (var parameter in new[] { "Flying", "Swimming" })
+        // same again on the hub: grafted first, the avatar's own last
+        var hubTransitions = hub.transitions;
+        Assert.AreEqual(3, hubTransitions.Length);
+        Assert.IsTrue(hubTransitions[2].isExit);
+        AssertModeReachableAndLeavable(root, hub, hubTransitions[0], "Swimming", "Swimming");
+
+        var emotes = root.stateMachines.Single(child => child.stateMachine.name == "Emotes").stateMachine;
+        Assert.IsTrue(AllStatesOf(emotes).Any(state => state.name == "Emote1"));
+        Assert.AreEqual(emotes, hubTransitions[1].destinationStateMachine);
+        Assert.IsFalse(hubTransitions[1].hasExitTime, "the emote entry waits for an exit time");
+        AssertCondition(hubTransitions[1], "Emote", AnimatorConditionMode.Greater, "emote entry");
+        var leaveEmotes = root.GetStateMachineTransitions(emotes).Single();
+        Assert.AreEqual(hub, leaveEmotes.destinationState, "the Emotes machine has no way back out");
+        Assert.AreEqual(0, leaveEmotes.conditions.Length, "the emote return is conditional");
+        Assert.IsTrue(AllStatesOf(emotes).All(state => state.transitions.Any(t => t.isExit)),
+            "an emote cannot reach the Exit node its return transition hangs off");
+
+        foreach (var parameter in new[] { "Flying", "Swimming", "Emote", "CancelEmote" })
         {
-            Assert.IsTrue(
-                controller.parameters.Any(p => p.name == parameter && p.type == AnimatorControllerParameterType.Bool),
+            Assert.IsTrue(controller.parameters.Any(p => p.name == parameter),
                 parameter + " is no longer declared");
         }
     }

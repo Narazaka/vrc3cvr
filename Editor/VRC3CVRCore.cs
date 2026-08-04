@@ -2465,11 +2465,16 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     changed = true;
                 }
             }
-            if (changed)
+            if (!changed)
             {
-                tree.children = children;
-                EditorUtility.SetDirty(tree);
+                return tree;
             }
+            // CopyAnimatorController shares rather than copies any blend tree that lives in an
+            // asset of its own, so the tree reached here can still be the avatar's -- or another
+            // controller's. The substitution goes into a copy the conversion owns.
+            var owned = CopyAnimatorController.CopyBlendTree(null, tree, false);
+            owned.children = children;
+            return owned;
         }
         return motion;
     }
@@ -2488,19 +2493,33 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // Set while the CVR locomotion layer is dropped in favour of the avatar's own Base layer.
     bool graftVrcBaseLocomotion;
 
-    // The two movement modes ChilloutVR drives that VRChat has no concept of, so nothing in a
-    // converted Base layer answers them. Value = the CVR bool that selects the mode.
-    static readonly Dictionary<string, string> cckMovementModeParameters = new Dictionary<string, string>
+    // Every salvaged mode is wired to the layer's default state, so a first layer without one
+    // cannot take the graft. Decided before the CVR layer is dropped, or the avatar would be left
+    // with neither locomotion.
+    static bool HasLocomotionHub(AnimatorController controller)
     {
-        { "LocFlying", "Flying" },
-        { "Swimming", "Swimming" },
-    };
+        if (controller == null || controller.layers.Length == 0)
+        {
+            return false;
+        }
+        var machine = controller.layers[0].stateMachine;
+        return machine != null && machine.defaultState != null;
+    }
+
+    const string CckFlyingStateName = "LocFlying";
+    const string CckSwimmingStateName = "Swimming";
+    const string CckEmotesMachineName = "Emotes";
 
     Dictionary<string, AnimatorState> salvagedMovementModeStates = new Dictionary<string, AnimatorState>();
+    AnimatorStateMachine salvagedEmotesMachine;
 
+    // The parts of the CVR locomotion layer nothing in a converted Base layer can answer: the two
+    // movement modes VRChat has no concept of, and the quick-menu emotes, whose Emote/CancelEmote
+    // parameters stay declared and would otherwise drive nothing.
     void SalvageCckMovementModeStates(AnimatorControllerLayer[] cckLayers)
     {
         salvagedMovementModeStates = new Dictionary<string, AnimatorState>();
+        salvagedEmotesMachine = null;
         foreach (var layer in cckLayers)
         {
             if (layer.name != CckLocomotionLayerName)
@@ -2509,74 +2528,114 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             }
             foreach (var state in AllStatesOf(layer.stateMachine))
             {
-                if (cckMovementModeParameters.ContainsKey(state.name))
+                if (state.name == CckFlyingStateName || state.name == CckSwimmingStateName)
                 {
                     salvagedMovementModeStates[state.name] = state;
+                }
+            }
+            foreach (var childMachine in layer.stateMachine.stateMachines)
+            {
+                if (childMachine.stateMachine != null && childMachine.stateMachine.name == CckEmotesMachineName)
+                {
+                    salvagedEmotesMachine = childMachine.stateMachine;
                 }
             }
         }
     }
 
+    // The CVR locomotion layer is a hub-and-spoke: its default state carries a transition to each
+    // mode and every mode leads back to it, the one exception being flight, which is reached from
+    // AnyState because it has to interrupt whatever stance is running. That wiring is reproduced
+    // here with the avatar's own default state as the hub. Emotes keep their nested machine, whose
+    // states leave through its Exit node -- which only goes anywhere because the hub-bound
+    // transition below is registered for the machine on its parent.
     void GraftCckMovementModes(AnimatorControllerLayer locomotionLayer)
     {
-        var ground = locomotionLayer.stateMachine;
-        if (ground == null || salvagedMovementModeStates.Count == 0)
+        var machine = locomotionLayer.stateMachine;
+        var hub = machine != null ? machine.defaultState : null;
+        if (hub == null)
         {
             return;
         }
 
-        // The avatar's own locomotion is pushed down into a sub-state-machine so that both
-        // directions can be StateMachine transitions: those fire from any state inside the source
-        // machine and stop firing once execution is inside the destination, where an AnyState
-        // transition would keep re-firing on the still-true condition and flicker.
-        var root = new AnimatorStateMachine
-        {
-            name = locomotionLayer.name,
-            hideFlags = ground.hideFlags,
-        };
-        var children = new List<ChildAnimatorStateMachine>
-        {
-            new ChildAnimatorStateMachine { stateMachine = ground, position = new Vector3(300f, 0f, 0f) },
-        };
-        var modeMachines = new List<KeyValuePair<AnimatorStateMachine, string>>();
+        var graftedFromAnyState = new List<AnimatorStateTransition>();
+        var graftedFromHub = new List<AnimatorStateTransition>();
+        var states = machine.states;
+        var y = 0f;
 
-        foreach (var mode in cckMovementModeParameters)
+        AnimatorState Adopt(string stateName)
         {
-            if (!salvagedMovementModeStates.TryGetValue(mode.Key, out var state) || state == null)
+            if (!salvagedMovementModeStates.TryGetValue(stateName, out var state) || state == null)
             {
-                continue;
+                return null;
             }
-            // whatever this used to transition to went out with the rest of the CVR locomotion layer
+            ArrayUtility.Add(ref states, new ChildAnimatorState { state = state, position = new Vector3(600f, y, 0f) });
+            y += 100f;
+            // whatever this used to lead to went out with the rest of the CVR locomotion layer
             state.transitions = new AnimatorStateTransition[0];
-            var machine = new AnimatorStateMachine
-            {
-                name = mode.Value,
-                hideFlags = ground.hideFlags,
-            };
-            machine.states = new ChildAnimatorState[]
-            {
-                new ChildAnimatorState { state = state, position = new Vector3(300f, 0f, 0f) },
-            };
-            machine.defaultState = state;
-            children.Add(new ChildAnimatorStateMachine
-            {
-                stateMachine = machine,
-                position = new Vector3(300f, 150f * children.Count, 0f),
-            });
-            modeMachines.Add(new KeyValuePair<AnimatorStateMachine, string>(machine, mode.Value));
+            return state;
         }
 
-        root.stateMachines = children.ToArray();
-        root.AddEntryTransition(ground);
+        var flying = Adopt(CckFlyingStateName);
+        var swimming = Adopt(CckSwimmingStateName);
+        machine.states = states;
 
-        foreach (var mode in modeMachines)
+        if (flying != null)
         {
-            root.AddStateMachineTransition(ground, mode.Key).AddCondition(AnimatorConditionMode.If, 0f, mode.Value);
-            root.AddStateMachineTransition(mode.Key, ground).AddCondition(AnimatorConditionMode.IfNot, 0f, mode.Value);
+            var enter = Timed(machine.AddAnyStateTransition(flying), 0f);
+            // without this a Flying that stays true restarts the state every frame
+            enter.canTransitionToSelf = false;
+            enter.AddCondition(AnimatorConditionMode.If, 0f, "Flying");
+            graftedFromAnyState.Add(enter);
+
+            Timed(flying.AddTransition(hub), 0.1f).AddCondition(AnimatorConditionMode.IfNot, 0f, "Flying");
         }
 
-        locomotionLayer.stateMachine = root;
+        if (swimming != null)
+        {
+            var enter = Timed(hub.AddTransition(swimming), 0.25f);
+            enter.AddCondition(AnimatorConditionMode.If, 0f, "Swimming");
+            graftedFromHub.Add(enter);
+
+            Timed(swimming.AddTransition(hub), 0.25f).AddCondition(AnimatorConditionMode.IfNot, 0f, "Swimming");
+        }
+
+        if (salvagedEmotesMachine != null)
+        {
+            var childMachines = machine.stateMachines;
+            ArrayUtility.Add(ref childMachines, new ChildAnimatorStateMachine
+            {
+                stateMachine = salvagedEmotesMachine,
+                position = new Vector3(600f, y, 0f),
+            });
+            machine.stateMachines = childMachines;
+
+            var enter = Timed(hub.AddTransition(salvagedEmotesMachine), 0f);
+            enter.AddCondition(AnimatorConditionMode.Greater, 0f, "Emote");
+            graftedFromHub.Add(enter);
+
+            // unconditional, as CVR has it: an emote that ends lands back on the hub and the hub
+            // re-dispatches on the next frame, which is what lets the stance it started from resume
+            machine.AddStateMachineTransition(salvagedEmotesMachine, hub);
+        }
+
+        machine.anyStateTransitions = PutFirst(machine.anyStateTransitions, graftedFromAnyState);
+        hub.transitions = PutFirst(hub.transitions, graftedFromHub);
     }
+
+    static AnimatorStateTransition Timed(AnimatorStateTransition transition, float duration)
+    {
+        transition.hasExitTime = false;
+        transition.exitTime = 0f;
+        transition.duration = duration;
+        transition.hasFixedDuration = true;
+        return transition;
+    }
+
+    // Ahead of whatever the avatar's own layer already had: these answer game states it was never
+    // written for, and one of its own conditions holding would otherwise shadow them.
+    static AnimatorStateTransition[] PutFirst(AnimatorStateTransition[] all, List<AnimatorStateTransition> grafted) =>
+        grafted.Concat(all.Where(transition => !grafted.Contains(transition))).ToArray();
 
     static IEnumerable<AnimatorState> AllStatesOf(AnimatorStateMachine machine)
     {
@@ -2898,6 +2957,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         if (graftingThisAnimator && controllerLayers.Length > 0)
         {
             controllerLayers[0].name = CckLocomotionLayerName;
+            // the CVR layer this replaces ran the IK pass; VRChat's stock Base layer does not
+            controllerLayers[0].iKPass = true;
             GraftCckMovementModes(controllerLayers[0]);
             layersModified = true;
         }
@@ -2992,7 +3053,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var baseAnimatorController = vrcAnimatorControllers.Length > (int)VRCBaseAnimatorID.BASE
             ? vrcAnimatorControllers[(int)VRCBaseAnimatorID.BASE]
             : null;
-        graftVrcBaseLocomotion = convertLocomotionLayer && HasAuthoredMotion(baseAnimatorController);
+        graftVrcBaseLocomotion = convertLocomotionLayer
+            && HasAuthoredMotion(baseAnimatorController)
+            && HasLocomotionHub(baseAnimatorController);
 
         if (graftVrcBaseLocomotion)
         {
