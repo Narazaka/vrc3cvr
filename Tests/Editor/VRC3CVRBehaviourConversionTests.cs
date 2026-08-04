@@ -501,9 +501,8 @@ public class VRC3CVRBehaviourConversionTests
             "restriction on either input mask is silently dropped from the combined mask.");
     }
 
-    [TestCase(VRC3CVRCore.VRCBaseAnimatorID.BASE)]
-    [TestCase(VRC3CVRCore.VRCBaseAnimatorID.ADDITIVE)]
-    public void GetAvatarMaskForLayer_BaseAndAdditive_IntersectWithFullMask(VRC3CVRCore.VRCBaseAnimatorID animatorID)
+    [Test]
+    public void GetAvatarMaskForLayer_Base_IntersectsWithFullMask()
     {
         var core = new VRC3CVRCore();
         SetPrivateField(core, "fullMask", MakeMask("Full", AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.RightArm));
@@ -512,9 +511,46 @@ public class VRC3CVRBehaviourConversionTests
 
         var layerMask = MakeMask("Layer", AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.Head);
 
-        var result = InvokeGetAvatarMaskForLayerAndVRCAnimator(core, animatorID, 0, layerMask);
+        var result = InvokeGetAvatarMaskForLayerAndVRCAnimator(core, VRC3CVRCore.VRCBaseAnimatorID.BASE, 0, layerMask);
 
         Assert.IsTrue(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftArm), "active in both full mask and layer mask");
+        Assert.IsFalse(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm), "layer mask excluded RightArm");
+        Assert.IsFalse(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.Head), "full mask excluded Head");
+    }
+
+    [Test]
+    public void GetAvatarMaskForLayer_AdditiveFirstLayer_IgnoresTheLayerMask()
+    {
+        // VRChat ignores the Additive playable's first layer mask, so the avatar was authored with
+        // that mask having no effect. Honouring it here would apply a restriction the author never
+        // experienced.
+        var core = new VRC3CVRCore();
+        SetPrivateField(core, "fullMask", MakeMask("Full", AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.RightArm));
+        SetPrivateField(core, "musclesOnlyMask", MakeMask("Muscles"));
+        SetPrivateField(core, "emptyMask", MakeMask("Empty"));
+
+        var layerMask = MakeMask("Layer", AvatarMaskBodyPart.LeftArm);
+
+        var result = InvokeGetAvatarMaskForLayerAndVRCAnimator(core, VRC3CVRCore.VRCBaseAnimatorID.ADDITIVE, 0, layerMask);
+
+        Assert.IsTrue(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftArm));
+        Assert.IsTrue(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm),
+            "the layer mask excluded RightArm, but VRChat never applied it");
+    }
+
+    [Test]
+    public void GetAvatarMaskForLayer_AdditiveLaterLayer_IntersectsWithFullMask()
+    {
+        var core = new VRC3CVRCore();
+        SetPrivateField(core, "fullMask", MakeMask("Full", AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.RightArm));
+        SetPrivateField(core, "musclesOnlyMask", MakeMask("Muscles"));
+        SetPrivateField(core, "emptyMask", MakeMask("Empty"));
+
+        var layerMask = MakeMask("Layer", AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.Head);
+
+        var result = InvokeGetAvatarMaskForLayerAndVRCAnimator(core, VRC3CVRCore.VRCBaseAnimatorID.ADDITIVE, 1, layerMask);
+
+        Assert.IsTrue(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftArm));
         Assert.IsFalse(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm), "layer mask excluded RightArm");
         Assert.IsFalse(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.Head), "full mask excluded Head");
     }

@@ -2545,7 +2545,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             case VRCBaseAnimatorID.BASE:
                 return GetCombinedAvatarMask(ReplaceVRCMask(fullMask), ReplaceVRCMask(originalMask));
             case VRCBaseAnimatorID.ADDITIVE:
-                return GetCombinedAvatarMask(ReplaceVRCMask(fullMask), ReplaceVRCMask(originalMask));
+                // VRChat ignores the Additive playable's first layer mask, so the avatar was
+                // authored with that mask having no effect.
+                return layerID == 0
+                    ? ReplaceVRCMask(fullMask)
+                    : GetCombinedAvatarMask(ReplaceVRCMask(fullMask), ReplaceVRCMask(originalMask));
             case VRCBaseAnimatorID.GESTURE:
                 if (layerID == 0)
                 {
