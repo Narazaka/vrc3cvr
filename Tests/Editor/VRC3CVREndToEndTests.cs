@@ -127,11 +127,8 @@ public class VRC3CVREndToEndTests
         Assert.IsTrue(layer.iKPass);
         Assert.AreEqual("Locomotion", machine.defaultState.name);
 
-        // The CCK's locomotion clips carry humanoid curves Unity cannot name back ("unknown_*"),
-        // which the parameter-rename pass takes for animated animator parameters and rewrites into
-        // a "_Remapped" copy. That is about clip curves, not about this graft.
         var hubClips = ((BlendTree)machine.defaultState.motion).children
-            .Select(child => child.motion.name.Replace("_Remapped", "")).ToArray();
+            .Select(child => child.motion.name).ToArray();
         Assert.AreEqual(new[] { "Base_CustomIdle", "LocWalkingForward" }, hubClips);
         Assert.IsFalse(ClipNamesOf(machine).Any(name => name.StartsWith("proxy_")),
             string.Join(" ; ", ClipNamesOf(machine)));

@@ -843,10 +843,8 @@ namespace VRC3CVRVerification
                 Check(target.gameObject.activeSelf, "Show Gesture ON shows the gesture group")));
 
             // ---- L1/L2/L3: the avatar's own Base locomotion, grafted onto CVR's own layer ----
-            // The conversion drops ChilloutVR's locomotion layer, puts the VRChat Base layer in its
-            // place under the same name, swaps the proxy_* placeholders for the CCK's real clips and
-            // reconnects the movement modes it salvaged. Which clip is actually playing is the only
-            // thing that says all three of those survived into the running game.
+            // Which clip is actually playing is the only thing that says the graft survived into
+            // the running game.
             Step("  L1..L3 grafted locomotion");
             var locomotionLayer = LayerIndex(animator, "Locomotion/Emotes");
             if (locomotionLayer < 0)
@@ -891,13 +889,12 @@ namespace VRC3CVRVerification
                 }
                 InjectMovement = false;
                 MovementOverride = Vector3.zero;
-                // StartsWith, because the parameter-rename pass may hand the clip over as a
-                // "LocWalkingForward_Remapped" copy of itself
-                Run("L2", () => Check(walkClip.StartsWith("LocWalkingForward"),
+                Run("L2", () => Check(walkClip == "LocWalkingForward",
                     "L2 walking forward plays ChilloutVR's own walk clip, so the placeholder was substituted and the " +
                     "velocity conversion drives the blend tree (\"" + walkClip + "\" at weight " + walkWeight.ToString("0.00") + ")"));
                 yield return new WaitForSeconds(1f);
 
+                var flightWasAllowed = TryGetBool(characterController, "FlightAllowedInWorld");
                 var flightInjected = false;
                 Run("L3 flight on", () => flightInjected = TryChangeFlight(characterController, true));
                 yield return new WaitForSeconds(1.5f);
@@ -915,6 +912,10 @@ namespace VRC3CVRVerification
                     Run("L3 landed", () => Check(
                         animator.GetCurrentAnimatorStateInfo(locomotionLayer).shortNameHash == Animator.StringToHash("Locomotion"),
                         "L3 leaving flight returns to the avatar's own locomotion state"));
+                }
+                if (flightWasAllowed.HasValue)
+                {
+                    Run("L3 restore", () => TrySetBool(characterController, "FlightAllowedInWorld", flightWasAllowed.Value));
                 }
             }
 
@@ -1215,9 +1216,16 @@ namespace VRC3CVRVerification
                 return false;
             }
             TrySetBool(controller, "FlightAllowedInWorld", true);
-            var method = controller.GetType().GetMethod("ChangeFlight",
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic
-                | System.Reflection.BindingFlags.Instance);
+            System.Reflection.MethodInfo method;
+            try
+            {
+                method = controller.GetType().GetMethod("ChangeFlight", MemberFlags);
+            }
+            catch (System.Reflection.AmbiguousMatchException)
+            {
+                // an overload added by a later client version: no way to tell which one means this
+                return false;
+            }
             if (method == null)
             {
                 return false;
@@ -1237,6 +1245,9 @@ namespace VRC3CVRVerification
             return true;
         }
 
+        const System.Reflection.BindingFlags MemberFlags = System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+
         // Writes a bool member whose existence is not guaranteed across client versions, so a
         // renamed or absent field degrades to "not measured" instead of failing the build.
         static bool TrySetBool(object target, string name, bool value)
@@ -1245,22 +1256,41 @@ namespace VRC3CVRVerification
             {
                 return false;
             }
-            const System.Reflection.BindingFlags Flags = System.Reflection.BindingFlags.Public
-                | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
             var type = target.GetType();
-            var field = type.GetField(name, Flags);
+            var field = type.GetField(name, MemberFlags);
             if (field != null && field.FieldType == typeof(bool))
             {
                 field.SetValue(target, value);
                 return true;
             }
-            var property = type.GetProperty(name, Flags);
+            var property = type.GetProperty(name, MemberFlags);
             if (property != null && property.PropertyType == typeof(bool) && property.CanWrite)
             {
                 property.SetValue(target, value, null);
                 return true;
             }
             return false;
+        }
+
+        // Reads back what TrySetBool would write, so an injected setting can be put back afterwards.
+        static bool? TryGetBool(object target, string name)
+        {
+            if (target == null)
+            {
+                return null;
+            }
+            var type = target.GetType();
+            var field = type.GetField(name, MemberFlags);
+            if (field != null && field.FieldType == typeof(bool))
+            {
+                return (bool)field.GetValue(target);
+            }
+            var property = type.GetProperty(name, MemberFlags);
+            if (property != null && property.PropertyType == typeof(bool) && property.CanRead)
+            {
+                return (bool)property.GetValue(target, null);
+            }
+            return null;
         }
 
         // GetFloat only works on float parameters; bools and ints silently read back as 0

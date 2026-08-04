@@ -18,7 +18,7 @@ using VRC.SDKBase;
 //   C1..C6 the six constraint types / C7 Target Transform redirect
 //   C8 same-type merge / C9 animated constraint properties (menu toggle)
 //   L1 the Base layer's own idle clip still drives the body after the graft
-//   L2 its proxy_walk_forward stands in for ChilloutVR's own walk clip
+//   L2 ChilloutVR's own walk clip took the place of its proxy_walk_forward placeholder
 //   L3 flight, salvaged out of the replaced CVR locomotion layer, is still reachable
 // Each group can be shown/hidden from the expressions menu so items can be checked one at a
 // time. Labels carry the expected behavior (in English: the built-in font has no CJK glyphs).
