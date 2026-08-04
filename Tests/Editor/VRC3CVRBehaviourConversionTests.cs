@@ -501,9 +501,8 @@ public class VRC3CVRBehaviourConversionTests
             "restriction on either input mask is silently dropped from the combined mask.");
     }
 
-    [TestCase(VRC3CVRCore.VRCBaseAnimatorID.BASE)]
-    [TestCase(VRC3CVRCore.VRCBaseAnimatorID.ADDITIVE)]
-    public void GetAvatarMaskForLayer_BaseAndAdditive_IntersectWithFullMask(VRC3CVRCore.VRCBaseAnimatorID animatorID)
+    [Test]
+    public void GetAvatarMaskForLayer_Base_IntersectsWithFullMask()
     {
         var core = new VRC3CVRCore();
         SetPrivateField(core, "fullMask", MakeMask("Full", AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.RightArm));
@@ -512,9 +511,43 @@ public class VRC3CVRBehaviourConversionTests
 
         var layerMask = MakeMask("Layer", AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.Head);
 
-        var result = InvokeGetAvatarMaskForLayerAndVRCAnimator(core, animatorID, 0, layerMask);
+        var result = InvokeGetAvatarMaskForLayerAndVRCAnimator(core, VRC3CVRCore.VRCBaseAnimatorID.BASE, 0, layerMask);
 
         Assert.IsTrue(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftArm), "active in both full mask and layer mask");
+        Assert.IsFalse(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm), "layer mask excluded RightArm");
+        Assert.IsFalse(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.Head), "full mask excluded Head");
+    }
+
+    [Test]
+    public void GetAvatarMaskForLayer_AdditiveFirstLayer_IgnoresTheLayerMask()
+    {
+        var core = new VRC3CVRCore();
+        SetPrivateField(core, "fullMask", MakeMask("Full", AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.RightArm));
+        SetPrivateField(core, "musclesOnlyMask", MakeMask("Muscles"));
+        SetPrivateField(core, "emptyMask", MakeMask("Empty"));
+
+        var layerMask = MakeMask("Layer", AvatarMaskBodyPart.LeftArm);
+
+        var result = InvokeGetAvatarMaskForLayerAndVRCAnimator(core, VRC3CVRCore.VRCBaseAnimatorID.ADDITIVE, 0, layerMask);
+
+        Assert.IsTrue(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftArm));
+        Assert.IsTrue(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm),
+            "the first layer's mask must not narrow the result");
+    }
+
+    [Test]
+    public void GetAvatarMaskForLayer_AdditiveLaterLayer_IntersectsWithFullMask()
+    {
+        var core = new VRC3CVRCore();
+        SetPrivateField(core, "fullMask", MakeMask("Full", AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.RightArm));
+        SetPrivateField(core, "musclesOnlyMask", MakeMask("Muscles"));
+        SetPrivateField(core, "emptyMask", MakeMask("Empty"));
+
+        var layerMask = MakeMask("Layer", AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.Head);
+
+        var result = InvokeGetAvatarMaskForLayerAndVRCAnimator(core, VRC3CVRCore.VRCBaseAnimatorID.ADDITIVE, 1, layerMask);
+
+        Assert.IsTrue(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftArm));
         Assert.IsFalse(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm), "layer mask excluded RightArm");
         Assert.IsFalse(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.Head), "full mask excluded Head");
     }
@@ -575,6 +608,39 @@ public class VRC3CVRBehaviourConversionTests
 
         Assert.IsTrue(result1.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftArm), "both layer 0's baseline and layer 1's mask allow LeftArm");
         Assert.IsFalse(result1.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm), "layer 0's baseline excluded RightArm, so layer 1 must not override it");
+    }
+
+    [TestCase(VRC3CVRCore.VRCBaseAnimatorID.ADDITIVE, AnimatorLayerBlendingMode.Additive)]
+    [TestCase(VRC3CVRCore.VRCBaseAnimatorID.FX, AnimatorLayerBlendingMode.Override)]
+    public void MergeVrcAnimator_ForcesAdditiveBlendingOnlyForTheAdditivePlayable(
+        VRC3CVRCore.VRCBaseAnimatorID animatorID, AnimatorLayerBlendingMode expected)
+    {
+        var core = new VRC3CVRCore();
+        SetPrivateField(core, "fullMask", MakeMask("Full", AvatarMaskBodyPart.LeftArm));
+        SetPrivateField(core, "musclesOnlyMask", MakeMask("Muscles", AvatarMaskBodyPart.LeftArm));
+        SetPrivateField(core, "emptyMask", MakeMask("Empty"));
+        var target = new AnimatorController { name = "target" };
+        SetPrivateField(core, "chilloutAnimatorController", target);
+
+        var source = new AnimatorController { name = "source" };
+        source.AddLayer("L0");
+        source.AddLayer("L1");
+        var sourceLayers = source.layers;
+        sourceLayers[0].stateMachine.AddState("S0");
+        sourceLayers[1].stateMachine.AddState("S1");
+        source.layers = sourceLayers;
+
+        typeof(VRC3CVRCore).GetMethod("MergeVrcAnimatorIntoChilloutAnimator", Flags)
+            .Invoke(core, new object[] { source, animatorID });
+
+        var merged = target.layers;
+        Assert.AreEqual(2, merged.Length);
+        Assert.AreEqual(expected, merged[0].blendingMode);
+        Assert.AreEqual(expected, merged[1].blendingMode,
+            "every layer of the Additive playable is additive once merged, not just the first");
+
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(target);
     }
 
     [Test]
