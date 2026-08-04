@@ -60,8 +60,6 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // This stores generated extra avatar masks based on the VRC hardcoded animator masks combined with individual layer masks.
     Dictionary<(AvatarMask, AvatarMask), AvatarMask> avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
 
-    // Tracked rather than inferred from the "VRC3CVR_" prefix: an avatar's own layer can legally
-    // carry that name, and skipping it would silently drop real content from WalkParameterNames.
     HashSet<string> generatedLayerNames = new HashSet<string>();
 
     // This mask will mask all other layer masks from the gesture animator, and is derived from the
@@ -1282,16 +1280,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // Overrides the rename rule for the duration of a WalkParameterNames pass.
     System.Func<string, string> parameterRenamer;
 
-    // Rewrites parameter references with an arbitrary mapping, reusing the AdjustParameterNames*
-    // walker because that is the only complete inventory of the places a name can hide.
+    // Reuses the AdjustParameterNames* walker: it is the only complete inventory of the places a
+    // parameter name can hide.
     //
-    // Declarations are left alone: a targeted pass repoints references while the original parameter
-    // stays declared, since it is still the client-fed input its replacement is computed from.
-    //
-    // Generated layers are skipped because their references are what their own generator chose on
-    // purpose — the magnitude layer's world-space VelocityX/Z reads are deliberate — so a later,
-    // narrower pass that happens to match them would corrupt that layer and manufacture a false
-    // "this parameter is used" signal from its own output.
+    // Declarations are left alone — the original parameter is still the client-fed input its
+    // replacement is computed from. Generated layers are skipped: their references are what their
+    // own generator chose on purpose (the magnitude layer reads world-space VelocityX/Z
+    // deliberately), so rewriting them would both corrupt that layer and manufacture a false "this
+    // parameter is used" signal out of its own output.
     void WalkParameterNames(System.Func<string, string> renamer)
     {
         parameterRenamer = renamer;
