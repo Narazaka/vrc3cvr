@@ -521,9 +521,6 @@ public class VRC3CVRBehaviourConversionTests
     [Test]
     public void GetAvatarMaskForLayer_AdditiveFirstLayer_IgnoresTheLayerMask()
     {
-        // VRChat ignores the Additive playable's first layer mask, so the avatar was authored with
-        // that mask having no effect. Honouring it here would apply a restriction the author never
-        // experienced.
         var core = new VRC3CVRCore();
         SetPrivateField(core, "fullMask", MakeMask("Full", AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.RightArm));
         SetPrivateField(core, "musclesOnlyMask", MakeMask("Muscles"));
@@ -535,7 +532,7 @@ public class VRC3CVRBehaviourConversionTests
 
         Assert.IsTrue(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftArm));
         Assert.IsTrue(result.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm),
-            "the layer mask excluded RightArm, but VRChat never applied it");
+            "the first layer's mask must not narrow the result");
     }
 
     [Test]
