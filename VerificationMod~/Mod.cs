@@ -362,6 +362,75 @@ namespace VRC3CVRVerification
             });
             yield return new WaitForSeconds(1f);
 
+            // ---- V2: the CONVERTED blend tree actually reads the avatar-local velocity ----
+            // V1 above only proves #VelocityMagnitude (frame-invariant, unaffected by the local
+            // fix) tracks the raw axes. This proves the fix's actual output — VelocityBar, driven
+            // by the derived #VelocityZLocal — behaves correctly in the one place a magnitude
+            // check cannot: at a heading that is NOT axis-aligned. There, walking forward and
+            // strafing right put the same component on WORLD VelocityZ, so a conversion that fed
+            // the blend tree world-space velocity would raise the bar for both. Only reading the
+            // avatar-local value tells them apart. Shape reused from M1 below (heading forced and
+            // re-asserted every frame, since the movement system owns rotation otherwise).
+            Step("  V2 VelocityBar direction (walking, ~4s)");
+            // prefixed distinctly from M1's own playerTransform/originalRotation/heading below: a
+            // nested block in C# cannot reuse a name the enclosing method body also declares, even
+            // in a non-overlapping later statement (CS0136)
+            var v2PlayerTransform = BetterBetterCharacterController.Instance != null
+                ? BetterBetterCharacterController.Instance.transform
+                : (PlayerSetup.Instance != null ? PlayerSetup.Instance.transform : null);
+            var v2VelocityBar = avatar.Find("Panel/State/VelocityBar");
+            if (v2PlayerTransform == null || v2VelocityBar == null)
+            {
+                Run("V2", () => Note("V2 skipped: " + (v2PlayerTransform == null ? "no player transform" : "VelocityBar not found")));
+            }
+            else
+            {
+                var v2OriginalRotation = v2PlayerTransform.rotation;
+                var v2Heading = Quaternion.Euler(0f, v2PlayerTransform.eulerAngles.y + 40f, 0f);
+                var forwardPeak = 0f;
+                var strafePeak = 0f;
+
+                InjectMovement = true;
+                // forward, out and back so the strafe leg below starts from roughly the same spot
+                for (var i = 0; i < 120; i++)
+                {
+                    MovementOverride = new Vector3(0f, 0f, i < 60 ? 1f : -1f);
+                    // re-asserted every frame: the movement system owns the rotation otherwise
+                    v2PlayerTransform.rotation = v2Heading;
+                    yield return null;
+                    if (i > 20 && i < 60)
+                    {
+                        Run("V2 forward sample", () => forwardPeak = Mathf.Max(forwardPeak, v2VelocityBar.localScale.y));
+                    }
+                }
+                // strafe right, out and back, same heading
+                for (var i = 0; i < 120; i++)
+                {
+                    MovementOverride = new Vector3(i < 60 ? 1f : -1f, 0f, 0f);
+                    v2PlayerTransform.rotation = v2Heading;
+                    yield return null;
+                    if (i > 20 && i < 60)
+                    {
+                        Run("V2 strafe sample", () => strafePeak = Mathf.Max(strafePeak, v2VelocityBar.localScale.y));
+                    }
+                }
+                InjectMovement = false;
+                MovementOverride = Vector3.zero;
+                v2PlayerTransform.rotation = v2OriginalRotation;
+
+                Run("V2", () =>
+                {
+                    // 0.2 sits between the bar's short (0.02) and tall (0.4) scale — the same
+                    // threshold the G1 weight bar check uses to call a bar "tall"
+                    Check(forwardPeak > 0.2f,
+                        "V2 VelocityBar rises walking forward at a 40 deg heading (peak scaleY " + forwardPeak.ToString("0.000") + ")");
+                    Check(strafePeak < 0.2f,
+                        "V2 VelocityBar stays low strafing right at the same heading (peak scaleY " + strafePeak.ToString("0.000") +
+                        ", forward peak was " + forwardPeak.ToString("0.000") + ")");
+                });
+            }
+            yield return new WaitForSeconds(1f);
+
             // ---- M1/M3: the space and the unit of VelocityX/Y/Z (issue #28 go/no-go) ----
             // VRChat documents these as "Lateral / Vertical / Forward move speed in m/s", which is
             // avatar-LOCAL space. Converting a VRChat locomotion blend tree onto ChilloutVR's own

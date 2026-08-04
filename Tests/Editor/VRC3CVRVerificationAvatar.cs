@@ -13,8 +13,9 @@ using VRC.SDKBase;
 // Generates a self-contained primitive humanoid avatar whose gimmicks make every in-game
 // verification item of the conversion observable (see the table in issue #17 / #21):
 //   G1 weight bar (analog squeeze) / G2 standalone weight condition (fixed 1 outside Fist)
-//   G3 weight condition paired with Fist / V1 VelocityMagnitude / S1 MuteSelf / S2 VRMode
-//   S3 Upright / C1..C6 the six constraint types / C7 Target Transform redirect
+//   G3 weight condition paired with Fist / V1 VelocityMagnitude / V2 avatar-local VelocityZ
+//   (forward vs strafe at an off-axis heading) / S1 MuteSelf / S2 VRMode / S3 Upright
+//   C1..C6 the six constraint types / C7 Target Transform redirect
 //   C8 same-type merge / C9 animated constraint properties (menu toggle)
 // Each group can be shown/hidden from the expressions menu so items can be checked one at a
 // time. Labels carry the expected behavior (in English: the built-in font has no CJK glyphs).
@@ -281,8 +282,8 @@ public static class VRC3CVRVerificationAvatar
 
         var state = new GameObject("State").transform;
         state.SetParent(panel, false);
-        Marker("VelocityBar", state, new Vector3(0.1f, 0f, 0f), new Vector3(0.05f, 0.02f, 0.05f), materials.green,
-            "grows with move speed\ncheck from a remote viewer too");
+        Marker("VelocityMagnitudeBar", state, new Vector3(0.1f, 0f, 0f), new Vector3(0.05f, 0.02f, 0.05f), materials.green,
+            "grows with move speed, any direction\ncheck from a remote viewer too");
         Marker("UprightBar", state, new Vector3(0.3f, 0f, 0f), new Vector3(0.05f, 0.02f, 0.05f), materials.blue,
             "shrinks while crouching / prone\ncheck from a remote viewer too");
         Marker("MuteMarker", state, new Vector3(0.5f, 0f, 0f), Vector3.one * 0.06f, materials.red,
@@ -290,6 +291,10 @@ public static class VRC3CVRVerificationAvatar
         Marker("VRMarker", state, new Vector3(0.7f, 0f, 0f), Vector3.one * 0.06f, materials.green,
             "green = wearer is in VR / blue = desktop\ncheck from a remote viewer too");
         Marker("DesktopMarker", state, new Vector3(0.7f, 0f, 0f), Vector3.one * 0.055f, materials.blue, null);
+        // avatar-local VelocityZ: proves the direction fix, not just the speed (V1 above uses
+        // VelocityMagnitude, which is frame-invariant and cannot tell forward from strafe)
+        Marker("VelocityBar", state, new Vector3(0.9f, 0f, 0f), new Vector3(0.05f, 0.02f, 0.05f), materials.white,
+            "walking forward raises this bar\nstrafing leaves it low, whatever heading you face");
     }
 
     // ---- constraint objects ----
@@ -631,6 +636,11 @@ public static class VRC3CVRVerificationAvatar
         fx.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
         fx.AddParameter("GestureLeftWeight", AnimatorControllerParameterType.Float);
         fx.AddParameter("VelocityMagnitude", AnimatorControllerParameterType.Float);
+        // referenced by V2's blend tree below: the parameter-name walker only rewrites
+        // Velocity{X,Z} to the derived avatar-local value where a layer actually reads them, so
+        // declaring them alone (with nothing consuming them) would not exercise the conversion
+        fx.AddParameter("VelocityX", AnimatorControllerParameterType.Float);
+        fx.AddParameter("VelocityZ", AnimatorControllerParameterType.Float);
         fx.AddParameter("Upright", AnimatorControllerParameterType.Float);
         fx.AddParameter("VRMode", AnimatorControllerParameterType.Int);
         fx.AddParameter("MuteSelf", AnimatorControllerParameterType.Bool);
@@ -766,10 +776,17 @@ public static class VRC3CVRVerificationAvatar
                 new[] { Cond("GestureLeftWeight", AnimatorConditionMode.Less, 0.5f) },
             });
 
-        // V1: velocity bar (0..4 m/s)
+        // V1: velocity magnitude bar (0..4 m/s, any direction)
         BlendTreeLayer("V1 Velocity", "VelocityMagnitude",
-            BarClip("V1_Low", "Panel/State/VelocityBar", 0.02f), 0f,
-            BarClip("V1_High", "Panel/State/VelocityBar", 0.4f), 4f);
+            BarClip("V1_Low", "Panel/State/VelocityMagnitudeBar", 0.02f), 0f,
+            BarClip("V1_High", "Panel/State/VelocityMagnitudeBar", 0.4f), 4f);
+
+        // V2: avatar-local VelocityZ bar (0..2 m/s, ChilloutVR's measured walk speed). Unlike V1,
+        // this is direction-sensitive: it should rise walking forward and stay low strafing,
+        // whatever the player's heading — the discriminating test the mod's V2 check runs
+        BlendTreeLayer("V2 VelocityZ", "VelocityZ",
+            BarClip("V2_Low", "Panel/State/VelocityBar", 0.02f), 0f,
+            BarClip("V2_High", "Panel/State/VelocityBar", 0.4f), 2f);
 
         // S3: upright bar
         BlendTreeLayer("S3 Upright", "Upright",
