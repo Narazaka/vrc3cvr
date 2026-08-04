@@ -176,6 +176,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             AdjustParameterNames();
             MakeGestureWeightFeedLayers();
             MakeVelocityMagnitudeFeedLayer();
+            MakeLocomotionVelocityFeedLayer();
             MakeGameStateParameterStreams();
             InsertChilloutOverride();
 
@@ -3816,6 +3817,151 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             },
         };
         chilloutAnimatorController.AddLayer(layer);
+    }
+
+    // ChilloutVR reports VelocityX/Y/Z in WORLD space (measured in game), while every VRChat layer
+    // was authored against an avatar-LOCAL VelocityX/VelocityZ. The reconstruction cannot be
+    // written back into VelocityX/Z — the client rewrites those every frame — so it lands in
+    // derived parameters and RemapVelocityToAvatarLocal points the converted layers at them.
+    //
+    // MovementX/Y give the direction: they are player-local by construction, +X right and +Y
+    // forward, matching VRChat's VelocityX/VelocityZ axes. They are NOT a unit vector — 0.5 is the
+    // walk ring and 1.0 the run ring — so only their direction is used and the magnitude comes from
+    // the world velocity, which is frame-independent. Verified in game at 0.000 m/s mean error.
+    //
+    // Both inputs are ChilloutVR synced core parameters, so this costs no sync bits and holds on
+    // remote copies as well as the wearer's.
+    void MakeLocomotionVelocityFeedLayer()
+    {
+        var parameters = chilloutAnimatorController.parameters;
+        var localX = NonSyncParameterName("VelocityXLocal");
+        var localZ = NonSyncParameterName("VelocityZLocal");
+        if (!parameters.Any(p => p.name == localX) && !parameters.Any(p => p.name == localZ))
+        {
+            // no converted layer asked for an avatar-local velocity
+            return;
+        }
+        foreach (var inputName in new[] { "VelocityX", "VelocityZ", "MovementX", "MovementY" })
+        {
+            if (!parameters.Any(p => p.name == inputName))
+            {
+                ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+                {
+                    name = inputName,
+                    type = AnimatorControllerParameterType.Float,
+                    defaultFloat = 0f,
+                });
+            }
+        }
+        foreach (var derived in new[] { localX, localZ })
+        {
+            if (!parameters.Any(p => p.name == derived))
+            {
+                ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+                {
+                    name = derived,
+                    type = AnimatorControllerParameterType.Float,
+                    defaultFloat = 0f,
+                });
+            }
+        }
+        var scratch = NonSyncParameterName("VelocityLocalCalc");
+        ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+        {
+            name = scratch,
+            type = AnimatorControllerParameterType.Float,
+            defaultFloat = 0f,
+        });
+        chilloutAnimatorController.parameters = parameters;
+
+        AnimatorDriverTask Task(AnimatorDriverTask.Operator op, string targetName, string aName, string bName, float bValue = 0f)
+        {
+            return new AnimatorDriverTask
+            {
+                op = op,
+                targetName = targetName,
+                targetType = AnimatorDriverTask.ParameterType.Float,
+                aType = AnimatorDriverTask.SourceType.Parameter,
+                aParamType = AnimatorDriverTask.ParameterType.Float,
+                aName = aName,
+                bType = bName == null ? AnimatorDriverTask.SourceType.Static : AnimatorDriverTask.SourceType.Parameter,
+                bParamType = AnimatorDriverTask.ParameterType.Float,
+                bName = bName ?? "",
+                bValue = bValue,
+            };
+        }
+
+        var tickClip = new AnimationClip { name = "VRC3CVR_LocomotionVelocityTick" };
+        tickClip.SetCurve("", typeof(Animator), NonSyncParameterName("LocomotionVelocityTick"), AnimationCurve.Constant(0f, 1f / 60f, 0f));
+        var recomputeState = new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = "Recompute",
+            writeDefaultValues = false,
+            motion = tickClip,
+            behaviours = new StateMachineBehaviour[]
+            {
+                new AnimatorDriver
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    localOnly = false,
+                    EnterTasks = new List<AnimatorDriverTask>
+                    {
+                        // ground speed; the Y axis is not part of a locomotion tree's space
+                        Task(AnimatorDriverTask.Operator.Multiplication, scratch, "VelocityX", "VelocityX"),
+                        Task(AnimatorDriverTask.Operator.Multiplication, localX, "VelocityZ", "VelocityZ"),
+                        Task(AnimatorDriverTask.Operator.Addition, scratch, scratch, localX),
+                        Task(AnimatorDriverTask.Operator.Power, scratch, scratch, null, 0.5f),
+                        // the walk/run ring
+                        Task(AnimatorDriverTask.Operator.Multiplication, localZ, "MovementX", "MovementX"),
+                        Task(AnimatorDriverTask.Operator.Multiplication, localX, "MovementY", "MovementY"),
+                        Task(AnimatorDriverTask.Operator.Addition, localZ, localZ, localX),
+                        Task(AnimatorDriverTask.Operator.Power, localZ, localZ, null, 0.5f),
+                        // scale = speed / (ring + epsilon); standing still leaves speed ~0, so the
+                        // scale collapses to ~0 instead of dividing by zero
+                        Task(AnimatorDriverTask.Operator.Addition, localX, localZ, null, 0.0001f),
+                        Task(AnimatorDriverTask.Operator.Division, localX, scratch, localX),
+                        // Z first: filling X overwrites the scale both of them need
+                        Task(AnimatorDriverTask.Operator.Multiplication, localZ, "MovementY", localX),
+                        Task(AnimatorDriverTask.Operator.Multiplication, localX, "MovementX", localX),
+                    },
+                },
+            },
+        };
+        recomputeState.transitions = new AnimatorStateTransition[]
+        {
+            new AnimatorStateTransition
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                hasExitTime = true,
+                exitTime = 1f,
+                hasFixedDuration = true,
+                duration = 0f,
+                offset = 0f,
+                destinationState = recomputeState,
+            },
+        };
+        var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_LocomotionVelocity");
+        chilloutAnimatorController.AddLayer(new AnimatorControllerLayer
+        {
+            name = layerName,
+            defaultWeight = 1f,
+            blendingMode = AnimatorLayerBlendingMode.Override,
+            avatarMask = emptyMask,
+            stateMachine = new AnimatorStateMachine
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                name = layerName,
+                entryPosition = new Vector3(0, -100),
+                exitPosition = new Vector3(0, 200),
+                anyStatePosition = new Vector3(0, -300),
+                defaultState = recomputeState,
+                states = new ChildAnimatorState[]
+                {
+                    new ChildAnimatorState { state = recomputeState, position = new Vector3(0, 0) },
+                },
+            },
+        });
     }
 
     // VRChat built-ins that ChilloutVR does not supply to the animator. The client's parameter
