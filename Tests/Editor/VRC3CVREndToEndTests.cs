@@ -169,7 +169,7 @@ public class VRC3CVREndToEndTests
         Assert.Less(FramesUntil("RestoreTracking"), 30, "the avatar never went airborne");
 
         animator.SetBool("Grounded", true);
-        Assert.Less(FramesUntil("Locomotion"), 60, "landing left the avatar stuck in the pass-through state");
+        Assert.Less(FramesUntil("Locomotion"), 40, "landing left the avatar stuck in the pass-through state");
     }
 
     static IEnumerable<string> ClipNamesOf(AnimatorStateMachine machine)

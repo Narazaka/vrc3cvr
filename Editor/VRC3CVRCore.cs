@@ -2031,8 +2031,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     {
         { "proxy_stand_still", "LocIdle.anim" },
         { "proxy_idle", "LocIdle.anim" },
-        { "proxy_idle_2", "LocIdle.anim" },
-        { "proxy_idle_3", "LocIdle.anim" },
+        { "proxy_idle2", "LocIdle.anim" },
+        { "proxy_idle3", "LocIdle.anim" },
         { "proxy_run_forward", "LocRunningForward.anim" },
         { "proxy_run_backward", "LocRunningBackward.anim" },
     };

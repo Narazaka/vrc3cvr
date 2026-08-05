@@ -180,14 +180,20 @@ public class VRC3CVRBaseGraftTests
     // own length is what strands the avatar.
     static void AssertIsPoseOf(Motion motion, string cckClipName)
     {
-        Assert.AreEqual(cckClipName + "_Pose", motion.name);
-        Assert.AreEqual(1f / 60f, ((AnimationClip)motion).length, 1e-4f);
-        Assert.AreEqual(
-            AnimationUtility.GetCurveBindings(
-                AssetDatabase.LoadAssetAtPath<AnimationClip>(
-                    "Assets/CVR.CCK/Assets/Avatar/Animations/Locomotion/" + cckClipName + ".anim")).Length,
-            AnimationUtility.GetCurveBindings((AnimationClip)motion).Length,
+        var pose = (AnimationClip)motion;
+        var source = AssetDatabase.LoadAssetAtPath<AnimationClip>(
+            "Assets/CVR.CCK/Assets/Avatar/Animations/Locomotion/" + cckClipName + ".anim");
+        Assert.AreEqual(cckClipName + "_Pose", pose.name);
+        Assert.AreEqual(1f / 60f, pose.length, 1e-4f);
+        Assert.IsTrue(pose.humanMotion, "the pose does not drive the humanoid rig");
+
+        var bindings = AnimationUtility.GetCurveBindings(source);
+        Assert.AreEqual(bindings.Length, AnimationUtility.GetCurveBindings(pose).Length,
             "the pose does not carry the same curves as the clip it came from");
+        Assert.AreEqual(
+            AnimationUtility.GetEditorCurve(source, bindings[0]).Evaluate(0f),
+            AnimationUtility.GetEditorCurve(pose, bindings[0]).Evaluate(0f), 1e-4f,
+            "the pose holds something other than the clip's first frame on " + bindings[0].propertyName);
     }
 
     [Test]
@@ -268,9 +274,9 @@ public class VRC3CVRBaseGraftTests
         Object.DestroyImmediate(controller);
     }
 
-    // What the state machine holds cannot say whether the pass-through still passes: the exit time
-    // is only reached while the clip behind it has no length, and only once the entry blend that
-    // suppresses the check has finished. Both are timing, so the animator is run.
+    // What the state machine holds cannot say whether the pass-through still passes: the crossing
+    // comes round only as often as the motion behind it is long, and is not checked at all until the
+    // entry blend finishes. Both are timing, so the animator is run.
     [Test]
     public void SubstitutePlaceholderClips_APassThroughStateIsStillLeftPromptlyAfterAStockEntryBlend()
     {
@@ -303,9 +309,9 @@ public class VRC3CVRBaseGraftTests
             Assert.Less(FramesUntil(animator, 0, "PassThrough"), 30, "the fixture never entered the state");
 
             animator.SetBool("Grounded", true);
-            // entry blend 15F + a frame or two for the crossing + exit blend 15F, against the 2160
-            // a substituted LocIdle would cost
-            Assert.Less(FramesUntil(animator, 0, "Hub"), 60,
+            // entry blend 15F + a frame or two for the crossing + exit blend 15F. Tight enough to
+            // fail the zero-length regression too, which measured ~60F before the pose landed here.
+            Assert.Less(FramesUntil(animator, 0, "Hub"), 40,
                 "the pass-through state held the avatar for a whole loop of a substituted clip");
         }
         finally
@@ -340,7 +346,7 @@ public class VRC3CVRBaseGraftTests
     }
 
     // ProcessStateMachine replaces proxies too, on its own map, and runs after the substitution
-    // above -- so both have to leave a pass-through alone. layerName only feeds a warning message.
+    // above -- so both have to pose a pass-through. layerName only feeds a warning message.
     static void RunProcessStateMachine(AnimatorStateMachine machine)
     {
         typeof(VRC3CVRCore).GetMethod("ProcessStateMachine", Flags)
