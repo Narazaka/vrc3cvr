@@ -2038,7 +2038,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     };
 
     // Copies before replacing, for the reason given on SubstitutedMotion.
-    BlendTree ProxySubstitutedBlendTree(BlendTree tree)
+    BlendTree ProxySubstitutedBlendTree(BlendTree tree, bool poseOnly)
     {
         var children = tree.children;
         var changed = false;
@@ -2048,7 +2048,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             {
                 continue;
             }
-            var replacement = ReplaceProxyAnimationClip(children[i].motion);
+            var replacement = ReplaceProxyAnimationClip(children[i].motion, poseOnly);
             if (replacement != children[i].motion)
             {
                 children[i].motion = replacement;
@@ -2064,7 +2064,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return owned;
     }
 
-    Motion ReplaceProxyAnimationClip(Motion clip)
+    Motion ReplaceProxyAnimationClip(Motion clip, bool poseOnly)
     {
         if (!clip) return clip;
 
@@ -2072,12 +2072,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         if (handClipMap.TryGetValue(clip.name, out var getClip))
         {
             var replacement = getClip();
-            return replacement ? replacement : clip;
+            return replacement ? (poseOnly ? PoseClipOf(replacement) : replacement) : clip;
         }
 
         if (proxyLocomotionClipMap.TryGetValue(clip.name, out var locomotionFile))
         {
-            return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/{locomotionFile}", typeof(AnimationClip));
+            var locomotion = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/{locomotionFile}", typeof(AnimationClip));
+            return poseOnly && locomotion ? PoseClipOf(locomotion) : locomotion;
         }
 
         return clip;
@@ -2108,6 +2109,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             // In DerivedParameter mode weight references are kept; the parameter is fed from
             // GestureLeft (MakeGestureWeightFeedLayers) and renamed later by AdjustParameterNames
 
+            var passThrough = IsTimedPassThrough(state);
             if (state.motion is BlendTree)
             {
                 BlendTree blendTree = (BlendTree)state.motion;
@@ -2117,16 +2119,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     FoldGestureWeightOnBlendTree(blendTree);
                 }
 
-                // A tree is as long as its children, so replacing one would give a pass-through state
-                // the length its exit time is timed against.
-                if (!IsTimedPassThrough(state))
-                {
-                    state.motion = ProxySubstitutedBlendTree(blendTree);
-                }
+                // a tree is as long as its children, so a pass-through state's children have to be
+                // reduced to poses too or the state gets the length back through them
+                state.motion = ProxySubstitutedBlendTree(blendTree, passThrough);
             }
-            else if (state.motion is AnimationClip && !IsTimedPassThrough(state))
+            else if (state.motion is AnimationClip)
             {
-                state.motion = ReplaceProxyAnimationClip(state.motion);
+                state.motion = ReplaceProxyAnimationClip(state.motion, passThrough);
             }
 
             var parameters2 = parameters;
@@ -2486,33 +2485,61 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             foreach (var state in AllStatesOf(layer.stateMachine))
             {
-                if (IsTimedPassThrough(state))
-                {
-                    continue;
-                }
-                state.motion = SubstitutedMotion(state.motion);
+                state.motion = SubstitutedMotion(state.motion, IsTimedPassThrough(state));
             }
         }
     }
 
-    // An exit time is a fraction of the motion's length, and a motion of no length runs as a one
-    // second loop, so on a placeholder every exit time fires within a second of arriving: 0.1 after
-    // a tenth of one, 1 after all of it. Authors time machinery on that -- stock leaves JumpAndFall's
-    // RestoreTracking on 0 and QuickLand on 1, and custom locomotion chains utility states on 0.1
-    // and 0.5. A clip of real length multiplies every one of those waits by its own length, so 0.1
-    // against LocIdle's 36 seconds strands the avatar for 3.6. Keeping the motion zero-length is
-    // what keeps the timing. A state with no exit-time transition has none riding on the length, so
-    // it is substituted as usual.
+    // VRChat swaps each proxy_* for the real animation of the same name, and it is the real one's
+    // length the layer was timed against. There is no standing animation, so the stand_still family
+    // resolves to a static pose of next to no length -- which is what lets a state exist purely to be
+    // passed through on an exit time: JumpAndFall's RestoreTracking, QuickLand, a custom decision
+    // chain. proxy_landing is the one SDK proxy with real length (1.03s), precisely because
+    // HardLand's exit time of 0.6 had to be authored against it. So the placeholder lengths mirror
+    // the real ones, and a state whose placeholder has no length with an exit time riding on it wants
+    // the ChilloutVR clip's pose rather than the clip.
     static bool IsTimedPassThrough(AnimatorState state) =>
         state.motion != null
         && state.motion.averageDuration == 0f
         && state.transitions.Any(transition => transition.hasExitTime);
 
-    Motion SubstitutedMotion(Motion motion)
+    readonly Dictionary<AnimationClip, AnimationClip> poseClips = new Dictionary<AnimationClip, AnimationClip>();
+
+    // The clip's first frame, held for one frame rather than none: a zero-length clip is run as a one
+    // second loop, so its exit time only comes round once a second, where one frame comes round every
+    // frame -- still in reach under an entry transition, which suppresses the check while it blends.
+    AnimationClip PoseClipOf(AnimationClip source)
+    {
+        if (source == null)
+        {
+            return null;
+        }
+        if (poseClips.TryGetValue(source, out var cached))
+        {
+            return cached;
+        }
+        var bindings = AnimationUtility.GetCurveBindings(source);
+        var held = new AnimationCurve[bindings.Length];
+        for (var i = 0; i < bindings.Length; i++)
+        {
+            held[i] = AnimationCurve.Constant(0f, 1f / 60f,
+                AnimationUtility.GetEditorCurve(source, bindings[i]).Evaluate(0f));
+        }
+        var pose = new AnimationClip { name = source.name + "_Pose", frameRate = source.frameRate };
+        AnimationUtility.SetEditorCurves(pose, bindings, held);
+        var settings = AnimationUtility.GetAnimationClipSettings(pose);
+        settings.loopTime = true;
+        AnimationUtility.SetAnimationClipSettings(pose, settings);
+        poseClips[source] = pose;
+        return pose;
+    }
+
+    Motion SubstitutedMotion(Motion motion, bool poseOnly)
     {
         if (motion is AnimationClip clip)
         {
-            return SubstitutedClip(clip) ?? (Motion)clip;
+            var substituted = SubstitutedClip(clip);
+            return substituted == null ? clip : poseOnly ? PoseClipOf(substituted) : substituted;
         }
         if (motion is BlendTree tree)
         {
@@ -2520,7 +2547,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             var changed = false;
             for (var i = 0; i < children.Length; i++)
             {
-                var substituted = SubstitutedMotion(children[i].motion);
+                var substituted = SubstitutedMotion(children[i].motion, poseOnly);
                 if (substituted != children[i].motion)
                 {
                     children[i].motion = substituted;

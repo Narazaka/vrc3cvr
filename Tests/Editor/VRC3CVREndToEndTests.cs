@@ -131,9 +131,14 @@ public class VRC3CVREndToEndTests
         var hubClips = ((BlendTree)machine.defaultState.motion).children
             .Select(child => child.motion.name).ToArray();
         Assert.AreEqual(new[] { "Base_CustomIdle", "LocWalkingForward" }, hubClips);
-        // the airborne pass-through is the one placeholder that has to survive the substitution
-        Assert.AreEqual(new[] { "proxy_stand_still" },
-            ClipNamesOf(machine).Where(name => name.StartsWith("proxy_")).ToArray());
+        Assert.IsFalse(ClipNamesOf(machine).Any(name => name.StartsWith("proxy_")),
+            string.Join(" ; ", ClipNamesOf(machine)));
+        // the airborne pass-through gets the ChilloutVR clip's pose, so it stays short enough to
+        // leave on its exit time
+        var restoreTracking = machine.stateMachines.Single(child => child.stateMachine.name == "JumpAndFall")
+            .stateMachine.states.Single().state;
+        Assert.AreEqual("LocIdle_Pose", restoreTracking.motion.name);
+        Assert.AreEqual(1f / 60f, ((AnimationClip)restoreTracking.motion).length, 1e-4f);
 
         Assert.IsTrue(machine.states.Any(child => child.state.name == "LocFlying"));
         Assert.IsTrue(machine.states.Any(child => child.state.name == "Swimming"));
@@ -164,7 +169,7 @@ public class VRC3CVREndToEndTests
         Assert.Less(FramesUntil("RestoreTracking"), 30, "the avatar never went airborne");
 
         animator.SetBool("Grounded", true);
-        Assert.Less(FramesUntil("Locomotion"), 120, "landing left the avatar stuck in the pass-through state");
+        Assert.Less(FramesUntil("Locomotion"), 60, "landing left the avatar stuck in the pass-through state");
     }
 
     static IEnumerable<string> ClipNamesOf(AnimatorStateMachine machine)

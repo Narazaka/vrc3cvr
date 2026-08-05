@@ -176,8 +176,22 @@ public class VRC3CVRBaseGraftTests
         Object.DestroyImmediate(controller);
     }
 
+    // The pose has to be one frame long: zero would be run as a one second loop, and the real clip's
+    // own length is what strands the avatar.
+    static void AssertIsPoseOf(Motion motion, string cckClipName)
+    {
+        Assert.AreEqual(cckClipName + "_Pose", motion.name);
+        Assert.AreEqual(1f / 60f, ((AnimationClip)motion).length, 1e-4f);
+        Assert.AreEqual(
+            AnimationUtility.GetCurveBindings(
+                AssetDatabase.LoadAssetAtPath<AnimationClip>(
+                    "Assets/CVR.CCK/Assets/Avatar/Animations/Locomotion/" + cckClipName + ".anim")).Length,
+            AnimationUtility.GetCurveBindings((AnimationClip)motion).Length,
+            "the pose does not carry the same curves as the clip it came from");
+    }
+
     [Test]
-    public void SubstitutePlaceholderClips_KeepsTheZeroLengthPlaceholderOfAPassThroughState()
+    public void SubstitutePlaceholderClips_GivesAPassThroughStateThePoseOfItsChilloutVRClip()
     {
         var proxy = VRC3CVRVerificationAvatar.ZeroLengthClip("proxy_stand_still");
         var controller = MakeController("passThrough", proxy);
@@ -189,7 +203,7 @@ public class VRC3CVRBaseGraftTests
         typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags)
             .Invoke(new VRC3CVRCore(), new object[] { controller });
 
-        Assert.AreSame(proxy, state.motion, "the pass-through lost the zero length its exit time needs");
+        AssertIsPoseOf(state.motion, "LocIdle");
         Assert.AreEqual(0f, state.transitions.Single().exitTime, "the exit time was rewritten");
 
         Object.DestroyImmediate(proxy);
@@ -197,7 +211,7 @@ public class VRC3CVRBaseGraftTests
     }
 
     [Test]
-    public void SubstitutePlaceholderClips_KeepsAZeroLengthPlaceholderWhateverItsExitTimeIs()
+    public void SubstitutePlaceholderClips_PosesAPassThroughStateWhateverItsExitTimeIs()
     {
         var proxy = VRC3CVRVerificationAvatar.ZeroLengthClip("proxy_land_quick");
         var controller = MakeController("quickLand", proxy);
@@ -209,8 +223,7 @@ public class VRC3CVRBaseGraftTests
         typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags)
             .Invoke(new VRC3CVRCore(), new object[] { controller });
 
-        Assert.AreSame(proxy, state.motion,
-            "an exit time of one fires within the placeholder's one-second loop, the way stock's QuickLand does");
+        AssertIsPoseOf(state.motion, "LocJumpLand");
 
         Object.DestroyImmediate(proxy);
         Object.DestroyImmediate(controller);
@@ -290,9 +303,9 @@ public class VRC3CVRBaseGraftTests
             Assert.Less(FramesUntil(animator, 0, "PassThrough"), 30, "the fixture never entered the state");
 
             animator.SetBool("Grounded", true);
-            // the placeholder loops once a second, so the crossing is at most 60 frames away, plus
-            // the exit blend -- against the 2160 a substituted LocIdle would cost
-            Assert.Less(FramesUntil(animator, 0, "Hub"), 120,
+            // entry blend 15F + a frame or two for the crossing + exit blend 15F, against the 2160
+            // a substituted LocIdle would cost
+            Assert.Less(FramesUntil(animator, 0, "Hub"), 60,
                 "the pass-through state held the avatar for a whole loop of a substituted clip");
         }
         finally
@@ -342,7 +355,7 @@ public class VRC3CVRBaseGraftTests
     }
 
     [Test]
-    public void ProcessStateMachine_KeepsThePlaceholdersInAPassThroughStatesBlendTree()
+    public void ProcessStateMachine_PosesTheClipsInAPassThroughStatesBlendTree()
     {
         var first = VRC3CVRVerificationAvatar.ZeroLengthClip("proxy_stand_still");
         var second = VRC3CVRVerificationAvatar.ZeroLengthClip("proxy_idle");
@@ -356,9 +369,10 @@ public class VRC3CVRBaseGraftTests
 
         RunProcessStateMachine(MachineAround(state));
 
-        Assert.AreEqual(new[] { "proxy_stand_still", "proxy_idle" },
-            ((BlendTree)state.motion).children.Select(child => child.motion.name).ToArray(),
-            "a substituted child would give the tree the length the exit time is measured against");
+        foreach (var child in ((BlendTree)state.motion).children)
+        {
+            AssertIsPoseOf(child.motion, "LocIdle");
+        }
 
         Object.DestroyImmediate(first);
         Object.DestroyImmediate(second);
