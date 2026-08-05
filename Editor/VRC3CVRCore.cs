@@ -2102,7 +2102,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
                 blendTree.children = blendTreeMotions;
             }
-            else if (state.motion is AnimationClip)
+            else if (state.motion is AnimationClip && !IsTimedPassThrough(state))
             {
                 state.motion = ReplaceProxyAnimationClip(state.motion);
             }
@@ -2458,40 +2458,34 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     const string CckLocomotionClipPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Locomotion/";
 
-    // Small enough that the first frame of any real clip is already past it: a looping clip fires an
-    // exit time when the fraction of its normalized time crosses the value, and one frame of the
-    // longest CCK locomotion clip is ~5e-4 of its length.
-    const float PassThroughExitTime = 1e-5f;
-
     void SubstitutePlaceholderClips(AnimatorController controller)
     {
         foreach (var layer in controller.layers)
         {
             foreach (var state in AllStatesOf(layer.stateMachine))
             {
-                var placeholder = state.motion;
-                var substituted = SubstitutedMotion(placeholder);
-                state.motion = substituted;
-                // An exit time is a fraction of the clip, so it keeps its meaning once a clip of real
-                // length stands in -- QuickLand's exit time of 1 plays the whole landing either way.
-                // Zero is the exception: on the zero-length placeholder it means "leave on the frame
-                // you arrive", which is how stock locomotion passes through JumpAndFall's
-                // RestoreTracking, but on a looping clip it means "leave one loop from now", and
-                // LocIdle loops at 36 seconds.
-                if (substituted == placeholder || placeholder.averageDuration != 0f)
+                if (IsTimedPassThrough(state))
                 {
                     continue;
                 }
-                foreach (var transition in state.transitions)
-                {
-                    if (transition.hasExitTime && transition.exitTime == 0f)
-                    {
-                        transition.exitTime = PassThroughExitTime;
-                    }
-                }
+                state.motion = SubstitutedMotion(state.motion);
             }
         }
     }
+
+    // An exit time is normalized against the motion's length, so on a motion of no length every exit
+    // time collapses to the same thing: leave at once. Authors build machinery out of that -- stock
+    // passes through JumpAndFall's RestoreTracking on 0 and QuickLand on 1, and custom locomotion
+    // chains utility states on 0.1 and 0.5 -- and a clip of real length cannot express it, since its
+    // crossing comes round only once per loop (36 seconds of LocIdle). Retiming cannot stand in
+    // either: the crossing is not evaluated while the entry transition is still blending, and stock
+    // blends in over 0.25s, by which point normalized time is already past any small threshold.
+    // Keeping the motion zero-length is the only thing that preserves the timing. A state with no
+    // exit-time transition has none riding on the length, so it is substituted as usual.
+    static bool IsTimedPassThrough(AnimatorState state) =>
+        state.motion != null
+        && state.motion.averageDuration == 0f
+        && state.transitions.Any(transition => transition.hasExitTime);
 
     Motion SubstitutedMotion(Motion motion)
     {

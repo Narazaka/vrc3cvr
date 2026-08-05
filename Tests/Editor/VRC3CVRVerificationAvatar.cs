@@ -696,11 +696,13 @@ public static class VRC3CVRVerificationAvatar
         var leave = restoreTracking.AddExitTransition();
         leave.hasExitTime = true;
         leave.exitTime = 0f;
-        leave.duration = 0f;
+        leave.hasFixedDuration = true;
+        leave.duration = 0.25f;
         stateMachine.AddStateMachineTransition(jumpAndFall, locomotion);
         var enterJump = locomotion.AddTransition(jumpAndFall);
         enterJump.hasExitTime = false;
-        enterJump.duration = 0f;
+        enterJump.hasFixedDuration = true;
+        enterJump.duration = 0.25f;
         enterJump.AddCondition(AnimatorConditionMode.IfNot, 0f, "Grounded");
 
         return baseController;

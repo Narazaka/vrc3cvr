@@ -177,7 +177,7 @@ public class VRC3CVRBaseGraftTests
     }
 
     [Test]
-    public void SubstitutePlaceholderClips_RetimesTheExitOfAZeroLengthPassThroughState()
+    public void SubstitutePlaceholderClips_KeepsTheZeroLengthPlaceholderOfAPassThroughState()
     {
         var proxy = VRC3CVRVerificationAvatar.ZeroLengthClip("proxy_stand_still");
         var controller = MakeController("passThrough", proxy);
@@ -189,40 +189,77 @@ public class VRC3CVRBaseGraftTests
         typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags)
             .Invoke(new VRC3CVRCore(), new object[] { controller });
 
-        Assert.AreEqual("LocIdle", state.motion.name);
-        Assert.Greater(state.transitions.Single().exitTime, 0f,
-            "an exit time of zero on a looping clip only fires when it wraps around");
+        Assert.AreSame(proxy, state.motion, "the pass-through lost the zero length its exit time needs");
+        Assert.AreEqual(0f, state.transitions.Single().exitTime, "the exit time was rewritten");
 
         Object.DestroyImmediate(proxy);
         Object.DestroyImmediate(controller);
     }
 
     [Test]
-    public void SubstitutePlaceholderClips_LeavesTheExitOfAPlaceholderThatHasRealLength()
+    public void SubstitutePlaceholderClips_KeepsAZeroLengthPlaceholderWhateverItsExitTimeIs()
     {
-        var proxy = new AnimationClip { name = "proxy_landing" };
-        proxy.SetCurve("Placeholder", typeof(GameObject), "m_IsActive", AnimationCurve.Constant(0f, 1.033f, 1f));
-        var controller = MakeController("landing", proxy);
+        var proxy = VRC3CVRVerificationAvatar.ZeroLengthClip("proxy_land_quick");
+        var controller = MakeController("quickLand", proxy);
         var state = controller.layers[0].stateMachine.states[0].state;
         var exit = state.AddExitTransition();
         exit.hasExitTime = true;
-        exit.exitTime = 0f;
+        exit.exitTime = 1f;
+
+        typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags)
+            .Invoke(new VRC3CVRCore(), new object[] { controller });
+
+        Assert.AreSame(proxy, state.motion,
+            "on a motion of no length an exit time of one is as immediate as zero, the way stock's QuickLand is");
+
+        Object.DestroyImmediate(proxy);
+        Object.DestroyImmediate(controller);
+    }
+
+    [Test]
+    public void SubstitutePlaceholderClips_SubstitutesAZeroLengthPlaceholderWithNothingTimedAgainstIt()
+    {
+        var proxy = VRC3CVRVerificationAvatar.ZeroLengthClip("proxy_sit");
+        var controller = MakeController("seated", proxy);
+        var state = controller.layers[0].stateMachine.states[0].state;
+        state.AddExitTransition().hasExitTime = false;
+
+        typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags)
+            .Invoke(new VRC3CVRCore(), new object[] { controller });
+
+        Assert.AreEqual("LocSitting", state.motion.name, "no exit time rides on this state's clip length");
+
+        Object.DestroyImmediate(proxy);
+        Object.DestroyImmediate(controller);
+    }
+
+    [Test]
+    public void SubstitutePlaceholderClips_SubstitutesAPlaceholderThatHasRealLength()
+    {
+        // stock's HardLand: proxy_landing really is 1.03s long, so its exit time scales as normalized
+        var proxy = new AnimationClip { name = "proxy_landing" };
+        proxy.SetCurve("Placeholder", typeof(GameObject), "m_IsActive", AnimationCurve.Constant(0f, 1.033f, 1f));
+        var controller = MakeController("hardLand", proxy);
+        var state = controller.layers[0].stateMachine.states[0].state;
+        var exit = state.AddExitTransition();
+        exit.hasExitTime = true;
+        exit.exitTime = 0.6f;
 
         typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags)
             .Invoke(new VRC3CVRCore(), new object[] { controller });
 
         Assert.AreEqual("LocJumpLand", state.motion.name);
-        Assert.AreEqual(0f, state.transitions.Single().exitTime,
-            "waiting out a loop was already this state's behaviour before the substitution");
+        Assert.AreEqual(0.6f, state.transitions.Single().exitTime, "the fraction the author asked for changed");
 
         Object.DestroyImmediate(proxy);
         Object.DestroyImmediate(controller);
     }
 
-    // The retimed value has to be small enough to fire on the first frame of a real clip, which no
-    // reading of the number itself can show. This runs the animator and watches it leave.
+    // What the state machine holds cannot say whether the pass-through still passes: the exit time
+    // is only reached while the clip behind it has no length, and only once the entry blend that
+    // suppresses the check has finished. Both are timing, so the animator is run.
     [Test]
-    public void SubstitutePlaceholderClips_ARetimedPassThroughStateIsLeftWithinAFewFrames()
+    public void SubstitutePlaceholderClips_APassThroughStateIsStillLeftPromptlyAfterAStockEntryBlend()
     {
         var proxy = VRC3CVRVerificationAvatar.ZeroLengthClip("proxy_stand_still");
         var controller = MakeController("driven");
@@ -233,23 +270,14 @@ public class VRC3CVRBaseGraftTests
         var passMachine = root.AddStateMachine("PassThroughMachine");
         var passState = passMachine.AddState("PassThrough");
         passState.motion = proxy;
-        var toExit = passState.AddExitTransition();
-        toExit.hasExitTime = true;
-        toExit.exitTime = 0f;
-        toExit.duration = 0f;
-        var afterAFullPlay = passState.AddTransition(hub);
-        afterAFullPlay.hasExitTime = true;
-        afterAFullPlay.exitTime = 1f;
+        StockTimed(passState.AddExitTransition()).exitTime = 0f;
         root.AddStateMachineTransition(passMachine, hub);
-        var toPass = hub.AddTransition(passMachine);
+        var toPass = StockTimed(hub.AddTransition(passMachine));
         toPass.hasExitTime = false;
-        toPass.duration = 0f;
         toPass.AddCondition(AnimatorConditionMode.IfNot, 0f, "Grounded");
 
         typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags)
             .Invoke(new VRC3CVRCore(), new object[] { controller });
-
-        Assert.AreEqual(1f, afterAFullPlay.exitTime, "an exit time that scales with the clip was retimed too");
 
         var go = new GameObject("PassThroughProbe");
         try
@@ -259,18 +287,13 @@ public class VRC3CVRBaseGraftTests
             animator.SetBool("Grounded", true);
             animator.Update(0f);
             animator.SetBool("Grounded", false);
-            animator.Update(1f / 60f);
-            Assert.AreEqual(Animator.StringToHash("PassThrough"),
-                animator.GetCurrentAnimatorStateInfo(0).shortNameHash, "the fixture never entered the state");
+            Assert.Less(FramesUntil(animator, 0, "PassThrough"), 30, "the fixture never entered the state");
 
             animator.SetBool("Grounded", true);
-            var frames = 0;
-            while (frames < 10 && animator.GetCurrentAnimatorStateInfo(0).shortNameHash != Animator.StringToHash("Hub"))
-            {
-                animator.Update(1f / 60f);
-                frames++;
-            }
-            Assert.Less(frames, 10, "the pass-through state held the avatar for a whole loop of the substituted clip");
+            // the placeholder loops once a second, so the crossing is at most 60 frames away, plus
+            // the exit blend -- against the 2160 a substituted LocIdle would cost
+            Assert.Less(FramesUntil(animator, 0, "Hub"), 120,
+                "the pass-through state held the avatar for a whole loop of a substituted clip");
         }
         finally
         {
@@ -279,6 +302,28 @@ public class VRC3CVRBaseGraftTests
 
         Object.DestroyImmediate(proxy);
         Object.DestroyImmediate(controller);
+    }
+
+    // The blend stock locomotion gives these transitions. A fixture that cut it to zero would let a
+    // broken pass-through look healthy, since the entry blend is what hides the exit time's window.
+    static AnimatorStateTransition StockTimed(AnimatorStateTransition transition)
+    {
+        transition.hasExitTime = true;
+        transition.hasFixedDuration = true;
+        transition.duration = 0.25f;
+        return transition;
+    }
+
+    static int FramesUntil(Animator animator, int layer, string stateName, int limit = 240)
+    {
+        var frames = 0;
+        while (frames < limit &&
+               animator.GetCurrentAnimatorStateInfo(layer).shortNameHash != Animator.StringToHash(stateName))
+        {
+            animator.Update(1f / 60f);
+            frames++;
+        }
+        return frames;
     }
 
     // ---- the graft itself, over a whole conversion ----
