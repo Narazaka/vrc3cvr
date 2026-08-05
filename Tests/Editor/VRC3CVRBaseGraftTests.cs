@@ -259,12 +259,19 @@ public class VRC3CVRBaseGraftTests
     static AnimatorControllerLayer LocomotionLayerOf(AnimatorController controller) =>
         controller.layers.Single(layer => layer.name == "Locomotion/Emotes");
 
+    // ChilloutVR's locomotion layer and layers merged from the VRC Base must never coexist: merged
+    // above it, an Override layer at weight 1 replaces it rather than adds to it. So a declined
+    // graft keeps the CCK layer and drops the Base animator whole.
     static void AssertCckLocomotionKept(AnimatorController controller)
     {
         var machine = LocomotionLayerOf(controller).stateMachine;
         Assert.IsTrue(machine.states.Any(child => child.state.name == "LocFlying"));
-        Assert.IsFalse(AllStatesOf(machine).Any(state => state.name == GroundStateName),
-            "the avatar's own locomotion took the layer over");
+        Assert.IsFalse(
+            controller.layers.SelectMany(layer => AllStatesOf(layer.stateMachine))
+                .Any(state => state.name == GroundStateName),
+            "the avatar's own Base layer was merged alongside ChilloutVR's locomotion");
+        Assert.IsFalse(controller.animationClips.Any(clip => clip.name.StartsWith("proxy_")),
+            "a VRChat placeholder clip came across with the Base layer");
     }
 
     static void AssertCondition(
@@ -307,10 +314,6 @@ public class VRC3CVRBaseGraftTests
         var controller = ConvertWithBaseLayer(authored: true, convertLocomotionLayer: true, hubless: true);
 
         AssertCckLocomotionKept(controller);
-        Assert.IsTrue(
-            controller.layers.SelectMany(layer => AllStatesOf(layer.stateMachine))
-                .Any(state => state.name == GroundStateName),
-            "the avatar's own Base layer was not merged at all");
         Assert.AreEqual(1,
             controller.layers.SelectMany(layer => AllStatesOf(layer.stateMachine))
                 .Count(state => state.name == "LocFlying"),

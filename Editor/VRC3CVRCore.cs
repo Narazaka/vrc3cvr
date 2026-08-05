@@ -1363,6 +1363,21 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
             VRCBaseAnimatorID baseAnimatorID = (VRCBaseAnimatorID)i;
 
+            // The Base animator is either the whole locomotion layer or nothing: ChilloutVR's own
+            // locomotion is still there when the graft is declined, and this merged above it would
+            // replace it rather than add to it (see CreateEmptyChilloutAnimator). Reaching here with
+            // the graft off means the user asked for the conversion and the gate turned it down --
+            // an unassigned Base layer left a null behind and was skipped above.
+            if (baseAnimatorID == VRCBaseAnimatorID.BASE && !graftVrcBaseLocomotion)
+            {
+                Debug.LogWarning("Not converting the Base animator: "
+                    + (HasAuthoredMotion(vrcAnimatorControllers[i])
+                        ? "its first layer has no default state, so the salvaged movement modes would have nothing to hang off"
+                        : "every clip in it is one of VRChat's proxy_* placeholders, which the client swaps for its own animations at runtime")
+                    + ". ChilloutVR's own locomotion layer is kept instead.");
+                continue;
+            }
+
             MergeVrcAnimatorIntoChilloutAnimator(vrcAnimatorControllers[i], baseAnimatorID);
         }
 
