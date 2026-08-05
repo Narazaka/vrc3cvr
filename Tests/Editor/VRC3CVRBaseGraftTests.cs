@@ -344,9 +344,8 @@ public class VRC3CVRBaseGraftTests
     static AnimatorControllerLayer LocomotionLayerOf(AnimatorController controller) =>
         controller.layers.Single(layer => layer.name == "Locomotion/Emotes");
 
-    // ChilloutVR's locomotion layer and layers merged from the VRC Base must never coexist: merged
-    // above it, an Override layer at weight 1 replaces it rather than adds to it. So a declined
-    // graft keeps the CCK layer and drops the Base animator whole.
+    // Checks the invariant both declined-graft paths share: the CVR locomotion layer stays and the
+    // Base animator is dropped whole, never both.
     static void AssertCckLocomotionKept(AnimatorController controller)
     {
         var machine = LocomotionLayerOf(controller).stateMachine;

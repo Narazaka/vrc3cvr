@@ -1363,11 +1363,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
             VRCBaseAnimatorID baseAnimatorID = (VRCBaseAnimatorID)i;
 
-            // The Base animator is either the whole locomotion layer or nothing: ChilloutVR's own
-            // locomotion is still there when the graft is declined, and this merged above it would
-            // replace it rather than add to it (see CreateEmptyChilloutAnimator). Reaching here with
-            // the graft off means the user asked for the conversion and the gate turned it down --
-            // an unassigned Base layer left a null behind and was skipped above.
+            // A declined graft leaves the CVR locomotion layer in place, so this one has to go
+            // (CreateEmptyChilloutAnimator explains why the two cannot coexist). Reaching here with
+            // the graft off means the user asked for the conversion and the gate turned it down: an
+            // unassigned Base layer left a null behind and the check above already skipped it.
             if (baseAnimatorID == VRCBaseAnimatorID.BASE && !graftVrcBaseLocomotion)
             {
                 Debug.LogWarning("Not converting the Base animator: "
