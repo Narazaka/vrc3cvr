@@ -124,6 +124,10 @@ The suite switches to each avatar in turn and injects everything it needs — no
 Results are appended to `<ChilloutVR>\VRC3CVR_VerificationReport.txt` as `PASS` / `FAIL` /
 `INFO` lines, per avatar, and progress goes to the MelonLoader console as `[step]` lines.
 
+- **Uninstall when the run is over**: delete `Mods\VRC3CVRVerification.dll` and
+  `VRC3CVR_AutoVerify.flag`. A leftover flag re-runs the suite on every later launch, and the
+  mod's per-frame input injection fights any manual, by-hand verification session.
+
 ### 2.5 Reading the results
 
 - **Watch for the terminal marker, not for the file going quiet.** The suite ends with a single
