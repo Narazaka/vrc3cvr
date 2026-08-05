@@ -2459,13 +2459,37 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     const string CckLocomotionClipPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Locomotion/";
 
+    // Small enough that the first frame of any real clip is already past it: a looping clip fires an
+    // exit time when the fraction of its normalized time crosses the value, and one frame of the
+    // longest CCK locomotion clip is ~5e-4 of its length.
+    const float PassThroughExitTime = 1e-5f;
+
     void SubstitutePlaceholderClips(AnimatorController controller)
     {
         foreach (var layer in controller.layers)
         {
             foreach (var state in AllStatesOf(layer.stateMachine))
             {
-                state.motion = SubstitutedMotion(state.motion);
+                var placeholder = state.motion;
+                var substituted = SubstitutedMotion(placeholder);
+                state.motion = substituted;
+                // An exit time is a fraction of the clip, so it keeps its meaning once a clip of real
+                // length stands in -- QuickLand's exit time of 1 plays the whole landing either way.
+                // Zero is the exception: on the zero-length placeholder it means "leave on the frame
+                // you arrive", which is how stock locomotion passes through JumpAndFall's
+                // RestoreTracking, but on a looping clip it means "leave one loop from now", and
+                // LocIdle loops at 36 seconds.
+                if (substituted == placeholder || placeholder.averageDuration != 0f)
+                {
+                    continue;
+                }
+                foreach (var transition in state.transitions)
+                {
+                    if (transition.hasExitTime && transition.exitTime == 0f)
+                    {
+                        transition.exitTime = PassThroughExitTime;
+                    }
+                }
             }
         }
     }

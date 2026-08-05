@@ -120,7 +120,8 @@ public class VRC3CVREndToEndTests
     [Test]
     public void ConvertVerificationAvatar_GraftsItsOwnLocomotionOntoTheChilloutVRLayer()
     {
-        var controller = ControllerOf(Convert(VRC3CVRConvertConfig.GestureWeightConversionMode.FoldToGestureLeft));
+        var avatar = Convert(VRC3CVRConvertConfig.GestureWeightConversionMode.FoldToGestureLeft);
+        var controller = ControllerOf(avatar);
         var layer = controller.layers.Single(l => l.name == "Locomotion/Emotes");
         var machine = layer.stateMachine;
 
@@ -136,6 +137,29 @@ public class VRC3CVREndToEndTests
         Assert.IsTrue(machine.states.Any(child => child.state.name == "LocFlying"));
         Assert.IsTrue(machine.states.Any(child => child.state.name == "Swimming"));
         Assert.IsTrue(machine.stateMachines.Any(child => child.stateMachine.name == "Emotes"));
+
+        // The avatar's airborne sub-state-machine is passed through on an exit time of zero, which
+        // only works while the clip behind it is VRChat's zero-length placeholder. Nothing static
+        // shows that the substituted clip is still passable, so the converted animator is run.
+        var animator = avatar.GetComponent<Animator>();
+        var layerIndex = Enumerable.Range(0, animator.layerCount)
+            .Single(index => animator.GetLayerName(index) == "Locomotion/Emotes");
+        animator.SetBool("Grounded", true);
+        animator.Update(0f);
+        animator.SetBool("Grounded", false);
+        animator.Update(1f / 60f);
+        Assert.AreEqual(Animator.StringToHash("RestoreTracking"),
+            animator.GetCurrentAnimatorStateInfo(layerIndex).shortNameHash, "the avatar never went airborne");
+
+        animator.SetBool("Grounded", true);
+        var frames = 0;
+        while (frames < 10 &&
+               animator.GetCurrentAnimatorStateInfo(layerIndex).shortNameHash != Animator.StringToHash("Locomotion"))
+        {
+            animator.Update(1f / 60f);
+            frames++;
+        }
+        Assert.Less(frames, 10, "landing left the avatar stuck in the pass-through state");
     }
 
     static IEnumerable<string> ClipNamesOf(AnimatorStateMachine machine)

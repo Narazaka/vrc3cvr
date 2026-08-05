@@ -176,6 +176,91 @@ public class VRC3CVRBaseGraftTests
         Object.DestroyImmediate(controller);
     }
 
+    [Test]
+    public void SubstitutePlaceholderClips_RetimesTheExitOfAZeroLengthPassThroughState()
+    {
+        var proxy = new AnimationClip { name = "proxy_stand_still" };
+        var controller = MakeController("passThrough", proxy);
+        var state = controller.layers[0].stateMachine.states[0].state;
+        var exit = state.AddExitTransition();
+        exit.hasExitTime = true;
+        exit.exitTime = 0f;
+
+        typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags)
+            .Invoke(new VRC3CVRCore(), new object[] { controller });
+
+        Assert.AreEqual("LocIdle", state.motion.name);
+        Assert.Greater(state.transitions.Single().exitTime, 0f,
+            "an exit time of zero on a looping clip only fires when it wraps around");
+
+        Object.DestroyImmediate(proxy);
+        Object.DestroyImmediate(controller);
+    }
+
+    // The retimed value has to be small enough to fire on the first frame of a real clip, which no
+    // reading of the number itself can show. This runs the animator and watches it leave.
+    [Test]
+    public void SubstitutePlaceholderClips_ARetimedPassThroughStateIsLeftWithinAFewFrames()
+    {
+        var proxy = new AnimationClip { name = "proxy_stand_still" };
+        var controller = MakeController("driven");
+        controller.AddParameter("Grounded", AnimatorControllerParameterType.Bool);
+        var root = controller.layers[0].stateMachine;
+        var hub = root.AddState("Hub");
+        root.defaultState = hub;
+        var passMachine = root.AddStateMachine("PassThroughMachine");
+        var passState = passMachine.AddState("PassThrough");
+        passState.motion = proxy;
+        var toExit = passState.AddExitTransition();
+        toExit.hasExitTime = true;
+        toExit.exitTime = 0f;
+        toExit.duration = 0f;
+        // an exit time that is a real fraction of the clip still means the same thing once a clip of
+        // real length stands in (QuickLand plays the whole landing), so it has to survive untouched
+        var afterAFullPlay = passState.AddTransition(hub);
+        afterAFullPlay.hasExitTime = true;
+        afterAFullPlay.exitTime = 1f;
+        root.AddStateMachineTransition(passMachine, hub);
+        var toPass = hub.AddTransition(passMachine);
+        toPass.hasExitTime = false;
+        toPass.duration = 0f;
+        toPass.AddCondition(AnimatorConditionMode.IfNot, 0f, "Grounded");
+
+        typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags)
+            .Invoke(new VRC3CVRCore(), new object[] { controller });
+
+        Assert.AreEqual(1f, afterAFullPlay.exitTime, "an exit time that scales with the clip was retimed too");
+
+        var go = new GameObject("PassThroughProbe");
+        try
+        {
+            var animator = go.AddComponent<Animator>();
+            animator.runtimeAnimatorController = controller;
+            animator.SetBool("Grounded", true);
+            animator.Update(0f);
+            animator.SetBool("Grounded", false);
+            animator.Update(1f / 60f);
+            Assert.AreEqual(Animator.StringToHash("PassThrough"),
+                animator.GetCurrentAnimatorStateInfo(0).shortNameHash, "the fixture never entered the state");
+
+            animator.SetBool("Grounded", true);
+            var frames = 0;
+            while (frames < 10 && animator.GetCurrentAnimatorStateInfo(0).shortNameHash != Animator.StringToHash("Hub"))
+            {
+                animator.Update(1f / 60f);
+                frames++;
+            }
+            Assert.Less(frames, 10, "the pass-through state held the avatar for a whole loop of the substituted clip");
+        }
+        finally
+        {
+            Object.DestroyImmediate(go);
+        }
+
+        Object.DestroyImmediate(proxy);
+        Object.DestroyImmediate(controller);
+    }
+
     // ---- the graft itself, over a whole conversion ----
 
     const string GraftTestFolder = "Assets/VRC3CVR_BaseGraftTest";

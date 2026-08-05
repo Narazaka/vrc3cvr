@@ -675,6 +675,26 @@ public static class VRC3CVRVerificationAvatar
         locomotion.writeDefaultValues = true;
         stateMachine.defaultState = locomotion;
 
+        // Shaped like VRChat's stock locomotion: a sub-state-machine entered while airborne whose
+        // state does nothing but be passed through, on an exit time of zero that only works because
+        // the placeholder is zero length. Substituting a clip of real length has to keep it passable.
+        baseController.AddParameter("Grounded", AnimatorControllerParameterType.Bool);
+        var standStill = new AnimationClip { name = "proxy_stand_still" };
+        AssetDatabase.CreateAsset(standStill, assetFolder + "/proxy_stand_still.anim");
+        var jumpAndFall = stateMachine.AddStateMachine("JumpAndFall");
+        var restoreTracking = jumpAndFall.AddState("RestoreTracking");
+        restoreTracking.motion = standStill;
+        restoreTracking.writeDefaultValues = true;
+        var leave = restoreTracking.AddExitTransition();
+        leave.hasExitTime = true;
+        leave.exitTime = 0f;
+        leave.duration = 0f;
+        stateMachine.AddStateMachineTransition(jumpAndFall, locomotion);
+        var enterJump = locomotion.AddTransition(jumpAndFall);
+        enterJump.hasExitTime = false;
+        enterJump.duration = 0f;
+        enterJump.AddCondition(AnimatorConditionMode.IfNot, 0f, "Grounded");
+
         return baseController;
     }
 
