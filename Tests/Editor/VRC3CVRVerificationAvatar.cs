@@ -662,7 +662,7 @@ public static class VRC3CVRVerificationAvatar
         // Both the placeholder test and the substitution table key on the clip NAME, so an empty
         // clip named like VRChat's own placeholder exercises the swap without depending on the SDK
         // shipping that asset.
-        var walkForward = new AnimationClip { name = "proxy_walk_forward" };
+        var walkForward = ZeroLengthClip("proxy_walk_forward");
         AssetDatabase.CreateAsset(walkForward, assetFolder + "/proxy_walk_forward.anim");
 
         var tree = new BlendTree

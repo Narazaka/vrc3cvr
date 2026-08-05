@@ -2037,6 +2037,33 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         { "proxy_run_backward", "LocRunningBackward.anim" },
     };
 
+    // Copies before replacing, for the reason given on SubstitutedMotion.
+    BlendTree ProxySubstitutedBlendTree(BlendTree tree)
+    {
+        var children = tree.children;
+        var changed = false;
+        for (var i = 0; i < children.Length; i++)
+        {
+            if (!(children[i].motion is AnimationClip))
+            {
+                continue;
+            }
+            var replacement = ReplaceProxyAnimationClip(children[i].motion);
+            if (replacement != children[i].motion)
+            {
+                children[i].motion = replacement;
+                changed = true;
+            }
+        }
+        if (!changed)
+        {
+            return tree;
+        }
+        var owned = CopyAnimatorController.CopyBlendTree(null, tree, false);
+        owned.children = children;
+        return owned;
+    }
+
     Motion ReplaceProxyAnimationClip(Motion clip)
     {
         if (!clip) return clip;
@@ -2090,17 +2117,12 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     FoldGestureWeightOnBlendTree(blendTree);
                 }
 
-                ChildMotion[] blendTreeMotions = blendTree.children;
-
-                for (int i = 0; i < blendTreeMotions.Count(); i++)
+                // A tree is as long as its children, so replacing one would give a pass-through state
+                // the length its exit time is timed against.
+                if (!IsTimedPassThrough(state))
                 {
-                    if (blendTreeMotions[i].motion is AnimationClip)
-                    {
-                        blendTreeMotions[i].motion = ReplaceProxyAnimationClip(blendTreeMotions[i].motion);
-                    }
+                    state.motion = ProxySubstitutedBlendTree(blendTree);
                 }
-
-                blendTree.children = blendTreeMotions;
             }
             else if (state.motion is AnimationClip && !IsTimedPassThrough(state))
             {
@@ -2473,15 +2495,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
     }
 
-    // An exit time is normalized against the motion's length, so on a motion of no length every exit
-    // time collapses to the same thing: leave at once. Authors build machinery out of that -- stock
-    // passes through JumpAndFall's RestoreTracking on 0 and QuickLand on 1, and custom locomotion
-    // chains utility states on 0.1 and 0.5 -- and a clip of real length cannot express it, since its
-    // crossing comes round only once per loop (36 seconds of LocIdle). Retiming cannot stand in
-    // either: the crossing is not evaluated while the entry transition is still blending, and stock
-    // blends in over 0.25s, by which point normalized time is already past any small threshold.
-    // Keeping the motion zero-length is the only thing that preserves the timing. A state with no
-    // exit-time transition has none riding on the length, so it is substituted as usual.
+    // An exit time is a fraction of the motion's length, and a motion of no length runs as a one
+    // second loop, so on a placeholder every exit time fires within a second of arriving: 0.1 after
+    // a tenth of one, 1 after all of it. Authors time machinery on that -- stock leaves JumpAndFall's
+    // RestoreTracking on 0 and QuickLand on 1, and custom locomotion chains utility states on 0.1
+    // and 0.5. A clip of real length multiplies every one of those waits by its own length, so 0.1
+    // against LocIdle's 36 seconds strands the avatar for 3.6. Keeping the motion zero-length is
+    // what keeps the timing. A state with no exit-time transition has none riding on the length, so
+    // it is substituted as usual.
     static bool IsTimedPassThrough(AnimatorState state) =>
         state.motion != null
         && state.motion.averageDuration == 0f

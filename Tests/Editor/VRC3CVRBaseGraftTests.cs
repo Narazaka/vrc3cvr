@@ -210,7 +210,7 @@ public class VRC3CVRBaseGraftTests
             .Invoke(new VRC3CVRCore(), new object[] { controller });
 
         Assert.AreSame(proxy, state.motion,
-            "on a motion of no length an exit time of one is as immediate as zero, the way stock's QuickLand is");
+            "an exit time of one fires within the placeholder's one-second loop, the way stock's QuickLand does");
 
         Object.DestroyImmediate(proxy);
         Object.DestroyImmediate(controller);
@@ -324,6 +324,64 @@ public class VRC3CVRBaseGraftTests
             frames++;
         }
         return frames;
+    }
+
+    // ProcessStateMachine replaces proxies too, on its own map, and runs after the substitution
+    // above -- so both have to leave a pass-through alone. layerName only feeds a warning message.
+    static void RunProcessStateMachine(AnimatorStateMachine machine)
+    {
+        typeof(VRC3CVRCore).GetMethod("ProcessStateMachine", Flags)
+            .Invoke(new VRC3CVRCore(), new object[] { machine, "TestLayer", new AnimatorControllerParameter[0] });
+    }
+
+    static AnimatorStateMachine MachineAround(AnimatorState state)
+    {
+        var machine = new AnimatorStateMachine();
+        machine.states = new[] { new ChildAnimatorState { state = state } };
+        return machine;
+    }
+
+    [Test]
+    public void ProcessStateMachine_KeepsThePlaceholdersInAPassThroughStatesBlendTree()
+    {
+        var first = VRC3CVRVerificationAvatar.ZeroLengthClip("proxy_stand_still");
+        var second = VRC3CVRVerificationAvatar.ZeroLengthClip("proxy_idle");
+        var tree = new BlendTree { name = "PassThroughTree" };
+        tree.AddChild(first);
+        tree.AddChild(second);
+        var state = new AnimatorState { name = "RestoreTracking", motion = tree };
+        var exit = state.AddExitTransition();
+        exit.hasExitTime = true;
+        exit.exitTime = 0f;
+
+        RunProcessStateMachine(MachineAround(state));
+
+        Assert.AreEqual(new[] { "proxy_stand_still", "proxy_idle" },
+            ((BlendTree)state.motion).children.Select(child => child.motion.name).ToArray(),
+            "a substituted child would give the tree the length the exit time is measured against");
+
+        Object.DestroyImmediate(first);
+        Object.DestroyImmediate(second);
+        Object.DestroyImmediate(tree);
+    }
+
+    [Test]
+    public void ProcessStateMachine_LeavesABlendTreeAssetItDoesNotOwnAlone()
+    {
+        EnsureTestFolder();
+        var proxy = new AnimationClip { name = "proxy_stand_still" };
+        AssetDatabase.CreateAsset(proxy, GraftTestFolder + "/proxy_stand_still.anim");
+        var shared = new BlendTree { name = "SharedTree" };
+        shared.AddChild(proxy);
+        AssetDatabase.CreateAsset(shared, GraftTestFolder + "/SharedTree.asset");
+        var state = new AnimatorState { name = "S", motion = shared };
+
+        RunProcessStateMachine(MachineAround(state));
+
+        Assert.AreEqual("proxy_stand_still", shared.children[0].motion.name,
+            "an asset outside the conversion's own clone was rewritten");
+        Assert.AreNotSame(shared, state.motion);
+        Assert.AreEqual("LocIdle", ((BlendTree)state.motion).children[0].motion.name);
     }
 
     // ---- the graft itself, over a whole conversion ----
