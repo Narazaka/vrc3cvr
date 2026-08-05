@@ -176,10 +176,19 @@ public class VRC3CVRBaseGraftTests
         Object.DestroyImmediate(controller);
     }
 
+    // A clip with no curves at all reports a length of 1, so it cannot stand in for a placeholder:
+    // only a curve whose single key sits at time zero is as long as VRChat's real proxy_* assets.
+    static AnimationClip ZeroLengthClip(string name)
+    {
+        var clip = new AnimationClip { name = name };
+        clip.SetCurve("Placeholder", typeof(GameObject), "m_IsActive", new AnimationCurve(new Keyframe(0f, 1f)));
+        return clip;
+    }
+
     [Test]
     public void SubstitutePlaceholderClips_RetimesTheExitOfAZeroLengthPassThroughState()
     {
-        var proxy = new AnimationClip { name = "proxy_stand_still" };
+        var proxy = ZeroLengthClip("proxy_stand_still");
         var controller = MakeController("passThrough", proxy);
         var state = controller.layers[0].stateMachine.states[0].state;
         var exit = state.AddExitTransition();
@@ -202,7 +211,7 @@ public class VRC3CVRBaseGraftTests
     [Test]
     public void SubstitutePlaceholderClips_ARetimedPassThroughStateIsLeftWithinAFewFrames()
     {
-        var proxy = new AnimationClip { name = "proxy_stand_still" };
+        var proxy = ZeroLengthClip("proxy_stand_still");
         var controller = MakeController("driven");
         controller.AddParameter("Grounded", AnimatorControllerParameterType.Bool);
         var root = controller.layers[0].stateMachine;

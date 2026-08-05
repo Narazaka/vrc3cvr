@@ -679,7 +679,11 @@ public static class VRC3CVRVerificationAvatar
         // state does nothing but be passed through, on an exit time of zero that only works because
         // the placeholder is zero length. Substituting a clip of real length has to keep it passable.
         baseController.AddParameter("Grounded", AnimatorControllerParameterType.Bool);
+        // zero length like VRChat's real placeholders -- that is what makes the exit time below a
+        // pass-through rather than a wait, and a curve whose single key sits at time zero is the
+        // only way to build one (a clip with no curves reports a length of 1)
         var standStill = new AnimationClip { name = "proxy_stand_still" };
+        standStill.SetCurve("Placeholder", typeof(GameObject), "m_IsActive", new AnimationCurve(new Keyframe(0f, 1f)));
         AssetDatabase.CreateAsset(standStill, assetFolder + "/proxy_stand_still.anim");
         var jumpAndFall = stateMachine.AddStateMachine("JumpAndFall");
         var restoreTracking = jumpAndFall.AddState("RestoreTracking");

@@ -142,6 +142,9 @@ public class VRC3CVREndToEndTests
         // only works while the clip behind it is VRChat's zero-length placeholder. Nothing static
         // shows that the substituted clip is still passable, so the converted animator is run.
         var animator = avatar.GetComponent<Animator>();
+        // the controller was assigned to a component that already existed, and outside play mode
+        // nothing rebinds it on its own -- until it does, the animator reports no layers at all
+        animator.Rebind();
         var layerIndex = Enumerable.Range(0, animator.layerCount)
             .Single(index => animator.GetLayerName(index) == "Locomotion/Emotes");
         animator.SetBool("Grounded", true);
