@@ -138,9 +138,7 @@ public class VRC3CVREndToEndTests
         Assert.IsTrue(machine.states.Any(child => child.state.name == "Swimming"));
         Assert.IsTrue(machine.stateMachines.Any(child => child.stateMachine.name == "Emotes"));
 
-        // The avatar's airborne sub-state-machine is passed through on an exit time of zero, which
-        // only works while the clip behind it is VRChat's zero-length placeholder. Nothing static
-        // shows that the substituted clip is still passable, so the converted animator is run.
+        // Nothing in the converted asset shows whether the pass-through still passes, so it is run.
         var animator = avatar.GetComponent<Animator>();
         // the controller was assigned to a component that already existed, and outside play mode
         // nothing rebinds it on its own -- until it does, the animator reports no layers at all

@@ -176,19 +176,10 @@ public class VRC3CVRBaseGraftTests
         Object.DestroyImmediate(controller);
     }
 
-    // A clip with no curves at all reports a length of 1, so it cannot stand in for a placeholder:
-    // only a curve whose single key sits at time zero is as long as VRChat's real proxy_* assets.
-    static AnimationClip ZeroLengthClip(string name)
-    {
-        var clip = new AnimationClip { name = name };
-        clip.SetCurve("Placeholder", typeof(GameObject), "m_IsActive", new AnimationCurve(new Keyframe(0f, 1f)));
-        return clip;
-    }
-
     [Test]
     public void SubstitutePlaceholderClips_RetimesTheExitOfAZeroLengthPassThroughState()
     {
-        var proxy = ZeroLengthClip("proxy_stand_still");
+        var proxy = VRC3CVRVerificationAvatar.ZeroLengthClip("proxy_stand_still");
         var controller = MakeController("passThrough", proxy);
         var state = controller.layers[0].stateMachine.states[0].state;
         var exit = state.AddExitTransition();
@@ -206,12 +197,34 @@ public class VRC3CVRBaseGraftTests
         Object.DestroyImmediate(controller);
     }
 
+    [Test]
+    public void SubstitutePlaceholderClips_LeavesTheExitOfAPlaceholderThatHasRealLength()
+    {
+        var proxy = new AnimationClip { name = "proxy_landing" };
+        proxy.SetCurve("Placeholder", typeof(GameObject), "m_IsActive", AnimationCurve.Constant(0f, 1.033f, 1f));
+        var controller = MakeController("landing", proxy);
+        var state = controller.layers[0].stateMachine.states[0].state;
+        var exit = state.AddExitTransition();
+        exit.hasExitTime = true;
+        exit.exitTime = 0f;
+
+        typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags)
+            .Invoke(new VRC3CVRCore(), new object[] { controller });
+
+        Assert.AreEqual("LocJumpLand", state.motion.name);
+        Assert.AreEqual(0f, state.transitions.Single().exitTime,
+            "waiting out a loop was already this state's behaviour before the substitution");
+
+        Object.DestroyImmediate(proxy);
+        Object.DestroyImmediate(controller);
+    }
+
     // The retimed value has to be small enough to fire on the first frame of a real clip, which no
     // reading of the number itself can show. This runs the animator and watches it leave.
     [Test]
     public void SubstitutePlaceholderClips_ARetimedPassThroughStateIsLeftWithinAFewFrames()
     {
-        var proxy = ZeroLengthClip("proxy_stand_still");
+        var proxy = VRC3CVRVerificationAvatar.ZeroLengthClip("proxy_stand_still");
         var controller = MakeController("driven");
         controller.AddParameter("Grounded", AnimatorControllerParameterType.Bool);
         var root = controller.layers[0].stateMachine;
@@ -224,8 +237,6 @@ public class VRC3CVRBaseGraftTests
         toExit.hasExitTime = true;
         toExit.exitTime = 0f;
         toExit.duration = 0f;
-        // an exit time that is a real fraction of the clip still means the same thing once a clip of
-        // real length stands in (QuickLand plays the whole landing), so it has to survive untouched
         var afterAFullPlay = passState.AddTransition(hub);
         afterAFullPlay.hasExitTime = true;
         afterAFullPlay.exitTime = 1f;
@@ -302,7 +313,8 @@ public class VRC3CVRBaseGraftTests
         var descriptor = VRC3CVRVerificationAvatar.Generate(GraftTestFolder);
         originalAvatar = descriptor.gameObject;
 
-        var clip = new AnimationClip { name = authored ? "AuthoredWalk" : "proxy_stand_still" };
+        // not proxy_stand_still: the generated avatar already writes one of those into this folder
+        var clip = new AnimationClip { name = authored ? "AuthoredWalk" : "proxy_idle" };
         AssetDatabase.CreateAsset(clip, GraftTestFolder + "/" + clip.name + ".anim");
         var baseController = AnimatorController.CreateAnimatorControllerAtPath(GraftTestFolder + "/Base.controller");
         baseController.AddParameter(AvatarOwnAnyStateParameter, AnimatorControllerParameterType.Bool);

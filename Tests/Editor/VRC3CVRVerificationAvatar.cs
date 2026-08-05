@@ -640,6 +640,15 @@ public static class VRC3CVRVerificationAvatar
 
     // ---- base controller (the avatar's own locomotion) ----
 
+    // A clip with no curves at all reports a length of 1, so it cannot stand in for a placeholder:
+    // only a curve whose single key sits at time zero is as long as VRChat's real proxy_* assets.
+    public static AnimationClip ZeroLengthClip(string name)
+    {
+        var clip = new AnimationClip { name = name };
+        clip.SetCurve("Placeholder", typeof(GameObject), "m_IsActive", new AnimationCurve(new Keyframe(0f, 1f)));
+        return clip;
+    }
+
     static AnimatorController BuildBaseController(string assetFolder)
     {
         var baseController = AnimatorController.CreateAnimatorControllerAtPath(assetFolder + "/VerificationBase.controller");
@@ -675,15 +684,10 @@ public static class VRC3CVRVerificationAvatar
         locomotion.writeDefaultValues = true;
         stateMachine.defaultState = locomotion;
 
-        // Shaped like VRChat's stock locomotion: a sub-state-machine entered while airborne whose
-        // state does nothing but be passed through, on an exit time of zero that only works because
-        // the placeholder is zero length. Substituting a clip of real length has to keep it passable.
+        // Shaped like VRChat's stock JumpAndFall / RestoreTracking: a sub-state-machine entered
+        // while airborne, holding a state that exists only to be passed through.
         baseController.AddParameter("Grounded", AnimatorControllerParameterType.Bool);
-        // zero length like VRChat's real placeholders -- that is what makes the exit time below a
-        // pass-through rather than a wait, and a curve whose single key sits at time zero is the
-        // only way to build one (a clip with no curves reports a length of 1)
-        var standStill = new AnimationClip { name = "proxy_stand_still" };
-        standStill.SetCurve("Placeholder", typeof(GameObject), "m_IsActive", new AnimationCurve(new Keyframe(0f, 1f)));
+        var standStill = ZeroLengthClip("proxy_stand_still");
         AssetDatabase.CreateAsset(standStill, assetFolder + "/proxy_stand_still.anim");
         var jumpAndFall = stateMachine.AddStateMachine("JumpAndFall");
         var restoreTracking = jumpAndFall.AddState("RestoreTracking");
