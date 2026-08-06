@@ -194,6 +194,21 @@ public class VRC3CVRBaseGraftTests
             AnimationUtility.GetEditorCurve(source, bindings[0]).Evaluate(0f),
             AnimationUtility.GetEditorCurve(pose, bindings[0]).Evaluate(0f), 1e-4f,
             "the pose holds something other than the clip's first frame on " + bindings[0].propertyName);
+
+        // everything but the timing, which belongs to the pose rather than the clip it came from
+        var sourceSettings = AnimationUtility.GetAnimationClipSettings(source);
+        var poseSettings = AnimationUtility.GetAnimationClipSettings(pose);
+        bool[] RootMotionFlags(AnimationClipSettings s) => new[]
+        {
+            s.loopBlend, s.loopBlendOrientation, s.loopBlendPositionY, s.loopBlendPositionXZ,
+            s.keepOriginalOrientation, s.keepOriginalPositionY, s.keepOriginalPositionXZ,
+            s.heightFromFeet, s.mirror,
+        };
+        Assert.AreEqual(RootMotionFlags(sourceSettings), RootMotionFlags(poseSettings),
+            "the pose applies its root curves differently than the clip it came from");
+        Assert.AreEqual(sourceSettings.orientationOffsetY, poseSettings.orientationOffsetY, 1e-4f);
+        Assert.AreEqual(sourceSettings.level, poseSettings.level, 1e-4f);
+        Assert.AreEqual(sourceSettings.cycleOffset, poseSettings.cycleOffset, 1e-4f);
     }
 
     [Test]

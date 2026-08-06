@@ -2527,8 +2527,16 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
         var pose = new AnimationClip { name = source.name + "_Pose", frameRate = source.frameRate };
         AnimationUtility.SetEditorCurves(pose, bindings, held);
-        var settings = AnimationUtility.GetAnimationClipSettings(pose);
+        // A clip's settings decide how its root curves are applied, and the CCK sets them per clip:
+        // LocJumpLand sinks the root on landing and leans on KeepOriginalPositionY to place the body
+        // anyway. Held at defaults, the pose would take that sunken RootT.y as a real displacement
+        // and bury the avatar. The timing is the only part of the source's settings that cannot come
+        // across, since the pose is one frame rather than the whole clip. Written after the curves:
+        // setting them first lets the curves overwrite stopTime.
+        var settings = AnimationUtility.GetAnimationClipSettings(source);
         settings.loopTime = true;
+        settings.startTime = 0f;
+        settings.stopTime = 1f / 60f;
         AnimationUtility.SetAnimationClipSettings(pose, settings);
         poseClips[source] = pose;
         return pose;
