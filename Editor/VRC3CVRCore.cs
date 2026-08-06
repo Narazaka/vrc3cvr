@@ -181,7 +181,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             MakeVelocityMagnitudeFeedLayer();
             // After AdjustParameterNames, like the feed layers above, so the names are final.
             RemapVelocityToAvatarLocal();
-            // before the streams, which route AvatarUpright at whatever this leaves reading it
+            // Before the streams, twice over: they route AvatarUpright at whatever this leaves
+            // reading it, and this is what declares VRMode, without which they emit no DeviceMode
+            // entry at all -- and an unfed VRMode reads 0, silently discretising Upright in VR.
             MakeUprightFeedLayer();
             MakeGameStateParameterStreams();
             InsertChilloutOverride();
@@ -864,6 +866,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         { "ScaleFactor", 1f },
         { "ScaleFactorInverse", 1f },
         { "EyeHeightAsPercent", 1f },
+        // zero is the prone band, so an unset Upright shows a frame of lying down on load
+        { "Upright", 1f },
     };
 
     HashSet<string> preserveParameters;
@@ -931,8 +935,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         // lets CVR's normal parameter sync carry the values to remotes (see MakeGameStateParameterStreams)
         if (feedGameStateParameters) preserveParameters.UnionWith(GameStateParameterStreams.Select(s => s.parameterName));
         // a grafted avatar derives Upright rather than receiving it, so it stops being a synced
-        // input and becomes a driven local value (MakeUprightFeedLayer)
-        if (graftVrcBaseLocomotion) preserveParameters.Remove("Upright");
+        // input and becomes a driven local value (MakeUprightFeedLayer, same guard)
+        if (feedGameStateParameters && graftVrcBaseLocomotion) preserveParameters.Remove("Upright");
         if (!addActionMenuModAnnotations)
         {
             impulseParameters = new HashSet<string>();
@@ -4548,18 +4552,19 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 ArrayUtility.Add(ref parameters, new AnimatorControllerParameter { name = input, type = type });
             }
         }
-        ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
-        {
-            name = UprightSensorParameter,
-            type = AnimatorControllerParameterType.Float,
-            defaultFloat = 1f,
-        });
         var scratch = NonSyncParameterName("UprightCalc");
-        ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+        foreach (var (derived, defaultFloat) in new[] { (UprightSensorParameter, 1f), (scratch, 0f) })
         {
-            name = scratch,
-            type = AnimatorControllerParameterType.Float,
-        });
+            if (!parameters.Any(p => p.name == derived))
+            {
+                ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+                {
+                    name = derived,
+                    type = AnimatorControllerParameterType.Float,
+                    defaultFloat = defaultFloat,
+                });
+            }
+        }
         chilloutAnimatorController.parameters = parameters;
 
         var declared = chilloutAnimatorController.parameters;

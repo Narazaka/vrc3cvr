@@ -102,8 +102,7 @@ public class VRC3CVREndToEndTests
         Assert.IsTrue(layers.Any(layer => layer.name.Contains("VRC3CVR_VelocityMagnitude")));
         Assert.IsTrue(controller.parameters.Any(parameter => parameter.name == "#GestureLeftWeight"));
 
-        // game state stream: wearer-side sources for the synced parameters. This conversion grafts,
-        // so AvatarUpright feeds the sensor and the Upright the avatar reads is derived from it.
+        // game state stream: wearer-side sources for the synced parameters
         var stream = avatar.GetComponent<CVRParameterStream>();
         Assert.IsNotNull(stream);
         Assert.AreEqual(
@@ -114,9 +113,9 @@ public class VRC3CVREndToEndTests
         Assert.IsTrue(controller.parameters.Any(parameter => parameter.name == "VRMode"));
         Assert.IsTrue(controller.parameters.Any(parameter => parameter.name == "UprightSensor"));
         Assert.IsTrue(layers.Any(layer => layer.name.StartsWith("VRC3CVR_Upright")));
-        Assert.IsTrue(controller.parameters.Any(parameter => parameter.name == "#Upright"),
-            "the driven Upright is still synced");
-        Assert.IsFalse(controller.parameters.Any(parameter => parameter.name == "Upright"));
+        Assert.IsTrue(controller.parameters.Any(parameter => parameter.name == "#Upright"));
+        Assert.IsFalse(controller.parameters.Any(parameter => parameter.name == "Upright"),
+            "the derived Upright is still costing sync bits");
     }
 
     // VRC3CVRBaseGraftTests already proves the graft mechanism on purpose-built controllers; this

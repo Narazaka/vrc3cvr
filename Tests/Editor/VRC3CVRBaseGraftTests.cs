@@ -424,29 +424,30 @@ public class VRC3CVRBaseGraftTests
     // Runs the driver's task list the way the client would, so the constants are checked by the
     // numbers they produce rather than by being read back.
     static float RunUprightTasks(System.Collections.Generic.List<ABI.CCK.Components.AnimatorDriverTask> tasks,
-        float crouching, float prone, float vrMode, float sensor)
+        float crouching, float prone, float vrMode, float sensor, int passes = 1)
     {
         var values = new System.Collections.Generic.Dictionary<string, float>
         {
             { "Crouching", crouching }, { "Prone", prone }, { "VRMode", vrMode },
             { "UprightSensor", sensor }, { "#Upright", 0f }, { "#UprightCalc", 0f },
         };
-        foreach (var task in tasks)
+        for (var pass = 0; pass < passes; pass++)
         {
-            var a = values[task.aName];
-            var b = task.bType == ABI.CCK.Components.AnimatorDriverTask.SourceType.Static
-                ? task.bValue
-                : values[task.bName];
-            values[task.targetName] =
-                task.op == ABI.CCK.Components.AnimatorDriverTask.Operator.Multiplication ? a * b : a + b;
+            foreach (var task in tasks)
+            {
+                var a = values[task.aName];
+                var b = task.bType == ABI.CCK.Components.AnimatorDriverTask.SourceType.Static
+                    ? task.bValue
+                    : values[task.bName];
+                values[task.targetName] =
+                    task.op == ABI.CCK.Components.AnimatorDriverTask.Operator.Multiplication ? a * b : a + b;
+            }
         }
         return values["#Upright"];
     }
 
-    static System.Collections.Generic.List<ABI.CCK.Components.AnimatorDriverTask> BuildUprightFeedLayer()
+    static ABI.CCK.Components.AnimatorDriver BuildUprightFeedLayer(AnimatorController controller)
     {
-        var controller = new AnimatorController { name = "uprightFeed" };
-        controller.AddParameter("#Upright", AnimatorControllerParameterType.Float);
         var core = new VRC3CVRCore();
         typeof(VRC3CVRCore).GetField("chilloutAnimatorController", Flags).SetValue(core, controller);
         typeof(VRC3CVRCore).GetField("graftVrcBaseLocomotion", Flags).SetValue(core, true);
@@ -454,9 +455,16 @@ public class VRC3CVRBaseGraftTests
         typeof(VRC3CVRCore).GetMethod("MakeUprightFeedLayer", Flags).Invoke(core, null);
 
         var layer = controller.layers.Single(l => l.name.StartsWith("VRC3CVR_Upright"));
-        var driver = (ABI.CCK.Components.AnimatorDriver)layer.stateMachine.states.Single().state.behaviours.Single();
+        return (ABI.CCK.Components.AnimatorDriver)layer.stateMachine.states.Single().state.behaviours.Single();
+    }
+
+    static System.Collections.Generic.List<ABI.CCK.Components.AnimatorDriverTask> BuildUprightFeedLayer()
+    {
+        var controller = new AnimatorController { name = "uprightFeed" };
+        controller.AddParameter("#Upright", AnimatorControllerParameterType.Float);
+        var tasks = BuildUprightFeedLayer(controller).EnterTasks;
         Object.DestroyImmediate(controller);
-        return driver.EnterTasks;
+        return tasks;
     }
 
     [Test]
@@ -472,19 +480,25 @@ public class VRC3CVRBaseGraftTests
         // VR: the sensor, whatever the flags say, so a half-crouch survives
         Assert.AreEqual(0.42f, RunUprightTasks(tasks, 0f, 0f, 1f, 0.42f), 1e-4f, "VR standing");
         Assert.AreEqual(0.42f, RunUprightTasks(tasks, 1f, 0f, 1f, 0.42f), 1e-4f, "VR crouching");
+        // the layer reruns every frame onto its own output, so the value has to be a function of the
+        // inputs alone -- a second pass that drifted would mean it accumulates
+        Assert.AreEqual(0.55f, RunUprightTasks(tasks, 1f, 0f, 0f, 0.42f, 2), 1e-4f, "crouching, run twice");
     }
 
     [Test]
-    public void UprightFeedLayer_ReadsOnlySyncedInputs()
+    public void UprightFeedLayer_ReadsOnlySyncedInputsAndRunsOnRemoteCopies()
     {
-        var tasks = BuildUprightFeedLayer();
-        var read = tasks
+        var controller = new AnimatorController { name = "uprightFeed" };
+        controller.AddParameter("#Upright", AnimatorControllerParameterType.Float);
+        var driver = BuildUprightFeedLayer(controller);
+        var read = driver.EnterTasks
             .SelectMany(t => new[] { t.aName, t.bType == ABI.CCK.Components.AnimatorDriverTask.SourceType.Static ? null : t.bName })
             .Where(n => !string.IsNullOrEmpty(n))
             .Distinct()
             .Where(n => n != "#Upright" && n != "#UprightCalc");
-        // a remote copy runs the same layer, so anything local-only would compute from zeroes there
         CollectionAssert.AreEquivalent(new[] { "Crouching", "Prone", "VRMode", "UprightSensor" }, read.ToArray());
+        Assert.IsFalse(driver.localOnly, "a remote copy has to derive the same value the wearer does");
+        Object.DestroyImmediate(controller);
     }
 
     // ---- the graft itself, over a whole conversion ----
@@ -618,10 +632,13 @@ public class VRC3CVRBaseGraftTests
     {
         var controller = ConvertWithBaseLayer(authored: true, convertLocomotionLayer: false);
         AssertCckLocomotionKept(controller);
-        // CVR's own locomotion sets the pose here, so AvatarUpright is not the animator's own output
-        // and can go on feeding Upright directly
+        // no graft, so Upright keeps the plain client-fed arrangement
         Assert.IsTrue(controller.parameters.Any(p => p.name == "Upright"));
         Assert.IsFalse(controller.layers.Any(l => l.name.StartsWith("VRC3CVR_Upright")));
+        var stream = convertedAvatar.GetComponent<ABI.CCK.Components.CVRParameterStream>();
+        CollectionAssert.Contains(
+            stream.entries.Select(entry => entry.type + " -> " + entry.parameterName).ToArray(),
+            "AvatarUpright -> Upright");
     }
 
     [Test]

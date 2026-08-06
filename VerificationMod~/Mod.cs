@@ -282,7 +282,7 @@ namespace VRC3CVRVerification
             {
                 var isVr = ABI_RC.Core.Savior.MetaPort.Instance != null && ABI_RC.Core.Savior.MetaPort.Instance.isUsingVr;
                 CheckParam(animator, "VRMode", isVr ? 1f : 0f, 0.01f, "S2 VRMode matches the running device");
-                CheckParam(animator, "Upright", 1f, 0.2f, "S3 Upright is ~1 while standing");
+                CheckParam(animator, UprightOf(animator), 1f, 0.2f, "S3 Upright is ~1 while standing");
             });
 
             // ---- G1/G2/G3: gesture weight semantics (inject CVR gesture values) ----
@@ -654,7 +654,7 @@ namespace VRC3CVRVerification
             var characterController = BetterBetterCharacterController.Instance;
             Run("S3 crouch start", () =>
             {
-                uprightStanding = ReadParam(animator, "Upright");
+                uprightStanding = ReadParam(animator, UprightOf(animator));
                 if (characterController != null)
                 {
                     characterController.crouching = true;
@@ -668,7 +668,7 @@ namespace VRC3CVRVerification
                     Note("S3 crouch injection skipped (no character controller)");
                     return;
                 }
-                var uprightCrouching = ReadParam(animator, "Upright");
+                var uprightCrouching = ReadParam(animator, UprightOf(animator));
                 Check(uprightCrouching < uprightStanding - 0.05f,
                     "S3 Upright drops while crouching (standing " + uprightStanding.ToString("0.00") + " -> crouching " + uprightCrouching.ToString("0.00") + ")");
                 characterController.crouching = false;
@@ -676,12 +676,12 @@ namespace VRC3CVRVerification
             yield return new WaitForSeconds(1.5f);
 
             // ---- M2: what Upright actually READS for each ChilloutVR stance (issue #28) ----
-            // S3 only proves Upright moves. The integration feeds VRChat's Upright from
-            // ChilloutVR's AvatarUpright stream, and VRChat's stock locomotion switches stance at
-            // specific values — 0.68/0.70 between standing and crouching, 0.41/0.43 between
-            // crouching and prone — so a ChilloutVR crouch has to LAND in VRChat's crouch band or
-            // the converted state machine picks the wrong stance. These are the numbers that decide
-            // whether the stream can be used directly or has to be remapped.
+            // S3 only proves Upright moves. VRChat's stock locomotion switches stance at specific
+            // values — 0.68/0.70 between standing and crouching, 0.41/0.43 between crouching and
+            // prone — so whatever supplies Upright has to LAND in the band for the stance the
+            // client is actually in, or the converted state machine picks the wrong one. A grafted
+            // conversion derives those values itself; a non-grafted one takes them from the
+            // AvatarUpright stream. This measures whichever is in play.
             Step("  M2 upright values");
             if (characterController == null)
             {
@@ -693,12 +693,12 @@ namespace VRC3CVRVerification
                 var uprightCrouch = float.NaN;
                 var uprightProne = float.NaN;
                 var proneInjected = false;
-                Run("M2 standing", () => uprightStand = ReadParam(animator, "Upright"));
+                Run("M2 standing", () => uprightStand = ReadParam(animator, UprightOf(animator)));
                 Run("M2 crouch on", () => characterController.crouching = true);
                 yield return new WaitForSeconds(1.5f);
                 Run("M2 crouch read", () =>
                 {
-                    uprightCrouch = ReadParam(animator, "Upright");
+                    uprightCrouch = ReadParam(animator, UprightOf(animator));
                     characterController.crouching = false;
                 });
                 yield return new WaitForSeconds(1.5f);
@@ -710,7 +710,7 @@ namespace VRC3CVRVerification
                     {
                         return;
                     }
-                    uprightProne = ReadParam(animator, "Upright");
+                    uprightProne = ReadParam(animator, UprightOf(animator));
                     TrySetBool(characterController, "prone", false);
                 });
                 yield return new WaitForSeconds(1.5f);
@@ -1139,7 +1139,7 @@ namespace VRC3CVRVerification
                      ": hips=" + hipsY.ToString("F4") +
                      " root=" + avatar.position.y.ToString("F4") +
                      " head=" + (head != null ? head.position.y.ToString("F4") : "n/a") +
-                     " Upright=" + ReadParam(animator, "Upright").ToString("F3") +
+                     " Upright=" + ReadParam(animator, UprightOf(animator)).ToString("F3") +
                      " state=" + StateNameOf(animator, 0) +
                      (float.IsNaN(standHips) ? "" : " dHips=" + (hipsY - standHips).ToString("F4")));
                 if (float.IsNaN(standHips)) standHips = hipsY;
@@ -1261,6 +1261,13 @@ namespace VRC3CVRVerification
         static bool HasParameter(Animator animator, string name)
         {
             return animator.parameters.Any(parameter => parameter.name == name);
+        }
+
+        // A grafted conversion derives Upright inside the animator, which makes it local (#-prefixed);
+        // without a graft the client still feeds the synced one under its plain name.
+        static string UprightOf(Animator animator)
+        {
+            return HasParameter(animator, "Upright") ? "Upright" : "#Upright";
         }
 
         static bool HasFeedLayer(Animator animator)
