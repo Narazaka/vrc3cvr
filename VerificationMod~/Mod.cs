@@ -919,6 +919,8 @@ namespace VRC3CVRVerification
                 }
             }
 
+            yield return StanceHeights(avatar, animator);
+
             Flush();
             _running = false;
         }
@@ -1108,8 +1110,114 @@ namespace VRC3CVRVerification
                       ") — RigidBodyLocalVelocity* cannot drive a converted locomotion layer");
             });
 
+            yield return StanceHeights(avatar, animator);
+
             Flush();
             _running = false;
+        }
+
+        // H: how far the body actually drops when crouching. Driving the same controllers in the
+        // editor lowers the hips by 0.43m (crouch) and 0.57m (prone), so measuring the bone here
+        // says whether the client keeps that or discards it. Runs on the converted avatars and on
+        // the native probe alike, which is what makes the three readings comparable.
+        IEnumerator StanceHeights(Transform avatar, Animator animator)
+        {
+            var characterController = BetterBetterCharacterController.Instance;
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            var head = animator.GetBoneTransform(HumanBodyBones.Head);
+            if (hips == null)
+            {
+                Run("H", () => Note("H not measured: the avatar has no hips bone"));
+                yield break;
+            }
+
+            var standHips = float.NaN;
+            void Read(string label)
+            {
+                var hipsY = hips.position.y;
+                Note("H " + label +
+                     ": hips=" + hipsY.ToString("F4") +
+                     " root=" + avatar.position.y.ToString("F4") +
+                     " head=" + (head != null ? head.position.y.ToString("F4") : "n/a") +
+                     " Upright=" + ReadParam(animator, "Upright").ToString("F3") +
+                     " state=" + StateNameOf(animator, 0) +
+                     (float.IsNaN(standHips) ? "" : " dHips=" + (hipsY - standHips).ToString("F4")));
+                if (float.IsNaN(standHips)) standHips = hipsY;
+            }
+
+            Step("  H stance heights");
+            yield return new WaitForSeconds(1.5f);
+            Run("H stand", () => Read("stand "));
+
+            var crouched = false;
+            Run("H crouch on", () =>
+            {
+                if (characterController == null) return;
+                characterController.crouching = true;
+                crouched = true;
+            });
+            yield return new WaitForSeconds(1.5f);
+            Run("H crouch", () =>
+            {
+                if (!crouched)
+                {
+                    Note("H crouch not measured: no character controller");
+                    return;
+                }
+                Read("crouch");
+                characterController.crouching = false;
+            });
+            yield return new WaitForSeconds(1.5f);
+
+            var proned = false;
+            Run("H prone on", () => proned = TrySetBool(characterController, "prone", true));
+            yield return new WaitForSeconds(1.5f);
+            Run("H prone", () =>
+            {
+                if (!proned)
+                {
+                    Note("H prone not measured: no writable 'prone' on the controller");
+                    return;
+                }
+                Read("prone ");
+                TrySetBool(characterController, "prone", false);
+            });
+            yield return new WaitForSeconds(1.5f);
+
+            Run("H body weights", () => Note("H " + DescribeBodySystemWeights()));
+        }
+
+        static string StateNameOf(Animator animator, int layer)
+        {
+            var hash = animator.GetCurrentAnimatorStateInfo(layer).shortNameHash;
+            foreach (var name in new[]
+            {
+                "Standing", "Standing_underwear", "Crouching", "Prone", "Locomotion", "LocFlying",
+                "Swimming", "Idle", "Crouch", "Stand", "RestoreTracking",
+            })
+            {
+                if (Animator.StringToHash(name) == hash) return name;
+            }
+            return "#" + hash;
+        }
+
+        // The IK system's own per-part weights, if this client version exposes them as statics.
+        static string DescribeBodySystemWeights()
+        {
+            var type = System.Type.GetType("ABI_RC.Systems.IK.BodySystem, Assembly-CSharp");
+            if (type == null)
+            {
+                return "BodySystem not found; per-part weights not read";
+            }
+            var values = type.GetFields(System.Reflection.BindingFlags.Public
+                    | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                .Where(f => f.Name.IndexOf("weight", StringComparison.OrdinalIgnoreCase) >= 0
+                            && (f.FieldType == typeof(float) || f.FieldType == typeof(bool)))
+                .Select(f => f.Name + "=" + f.GetValue(null))
+                .ToArray();
+            return values.Length == 0
+                ? "BodySystem exposes no static weight fields"
+                : "BodySystem " + string.Join(", ", values);
         }
 
         IEnumerator Gesture(Transform avatar, Animator animator, float value, string label, bool weightBarTall, bool weightGate, bool fistGate, float derivedWeight)
