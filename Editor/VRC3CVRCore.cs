@@ -181,6 +181,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             MakeVelocityMagnitudeFeedLayer();
             // After AdjustParameterNames, like the feed layers above, so the names are final.
             RemapVelocityToAvatarLocal();
+            // before the streams, which route AvatarUpright at whatever this leaves reading it
+            MakeUprightFeedLayer();
             MakeGameStateParameterStreams();
             InsertChilloutOverride();
 
@@ -928,6 +930,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         // Stream-fed parameters only run on the wearer's client; keeping them synced (no # prefix)
         // lets CVR's normal parameter sync carry the values to remotes (see MakeGameStateParameterStreams)
         if (feedGameStateParameters) preserveParameters.UnionWith(GameStateParameterStreams.Select(s => s.parameterName));
+        // a grafted avatar derives Upright rather than receiving it, so it stops being a synced
+        // input and becomes a driven local value (MakeUprightFeedLayer)
+        if (graftVrcBaseLocomotion) preserveParameters.Remove("Upright");
         if (!addActionMenuModAnnotations)
         {
             impulseParameters = new HashSet<string>();
@@ -4506,6 +4511,148 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         });
     }
 
+    const string UprightSensorParameter = "UprightSensor";
+
+    // Set while Upright is computed by the layer below instead of received from the client.
+    bool uprightIsDerived;
+
+    // ChilloutVR's AvatarUpright is the avatar's measured pose height -- an OUTPUT of the animator --
+    // where VRChat's Upright is view and tracking height, an INPUT to it. On desktop the pose is
+    // whatever the animator draws, so feeding the output back in as the input deadlocks: the stance
+    // machine will not crouch until Upright falls, and Upright cannot fall until it crouches. In VR
+    // the head is pinned to the headset and the hips follow the real head height, so AvatarUpright is
+    // a genuine input there and the loop never closes. Desktop therefore gets a discrete value built
+    // from the stance the client already knows, and VR keeps the continuous sensor -- which is what
+    // preserves a deliberate half-crouch that no stance flag describes.
+    //
+    // Every input has to be synced, or a remote copy would compute from zeroes: Crouching, Prone and
+    // VRMode already are, and the sensor takes over Upright's own sync slot.
+    void MakeUprightFeedLayer()
+    {
+        var upright = NonSyncParameterName("Upright");
+        var parameters = chilloutAnimatorController.parameters;
+        if (!feedGameStateParameters || !graftVrcBaseLocomotion || !parameters.Any(p => p.name == upright))
+        {
+            return;
+        }
+
+        foreach (var (input, type) in new[]
+        {
+            ("Crouching", AnimatorControllerParameterType.Bool),
+            ("Prone", AnimatorControllerParameterType.Bool),
+            ("VRMode", AnimatorControllerParameterType.Int),
+        })
+        {
+            if (!parameters.Any(p => p.name == input))
+            {
+                ArrayUtility.Add(ref parameters, new AnimatorControllerParameter { name = input, type = type });
+            }
+        }
+        ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+        {
+            name = UprightSensorParameter,
+            type = AnimatorControllerParameterType.Float,
+            defaultFloat = 1f,
+        });
+        var scratch = NonSyncParameterName("UprightCalc");
+        ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+        {
+            name = scratch,
+            type = AnimatorControllerParameterType.Float,
+        });
+        chilloutAnimatorController.parameters = parameters;
+
+        var declared = chilloutAnimatorController.parameters;
+        AnimatorDriverTask Task(AnimatorDriverTask.Operator op, string target, string a, string b, float bValue = 0f)
+        {
+            return new AnimatorDriverTask
+            {
+                op = op,
+                targetName = target,
+                targetType = AnimatorDriverTask.ParameterType.Float,
+                aType = AnimatorDriverTask.SourceType.Parameter,
+                aParamType = AnimatorDriverParameterType(declared, a),
+                aName = a,
+                bType = b == null ? AnimatorDriverTask.SourceType.Static : AnimatorDriverTask.SourceType.Parameter,
+                bParamType = b == null ? AnimatorDriverTask.ParameterType.Float : AnimatorDriverParameterType(declared, b),
+                bName = b ?? "",
+                bValue = bValue,
+            };
+        }
+
+        var tickClip = new AnimationClip { name = "VRC3CVR_UprightTick" };
+        tickClip.SetCurve("", typeof(Animator), NonSyncParameterName("UprightTick"), AnimationCurve.Constant(0f, 1f / 60f, 0f));
+        var recomputeState = new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = "Recompute",
+            writeDefaultValues = false,
+            motion = tickClip,
+            behaviours = new StateMachineBehaviour[]
+            {
+                new AnimatorDriver
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    localOnly = false,
+                    EnterTasks = new List<AnimatorDriverTask>
+                    {
+                        // 1 - 0.45*Crouching - 0.8*Prone + 0.45*Crouching*Prone, which lands on
+                        // standing 1, crouching 0.55, prone 0.2, and prone again when both are set
+                        Task(AnimatorDriverTask.Operator.Multiplication, upright, "Crouching", null, -0.45f),
+                        Task(AnimatorDriverTask.Operator.Multiplication, scratch, "Prone", null, -0.8f),
+                        Task(AnimatorDriverTask.Operator.Addition, upright, upright, scratch),
+                        Task(AnimatorDriverTask.Operator.Multiplication, scratch, "Crouching", "Prone"),
+                        Task(AnimatorDriverTask.Operator.Multiplication, scratch, scratch, null, 0.45f),
+                        Task(AnimatorDriverTask.Operator.Addition, upright, upright, scratch),
+                        Task(AnimatorDriverTask.Operator.Addition, upright, upright, null, 1f),
+                        // lerp on VRMode, which is 0 or 1: desktop keeps the value above, VR replaces
+                        // it with the sensor
+                        Task(AnimatorDriverTask.Operator.Multiplication, scratch, "VRMode", null, -1f),
+                        Task(AnimatorDriverTask.Operator.Addition, scratch, scratch, null, 1f),
+                        Task(AnimatorDriverTask.Operator.Multiplication, upright, upright, scratch),
+                        Task(AnimatorDriverTask.Operator.Multiplication, scratch, "VRMode", UprightSensorParameter),
+                        Task(AnimatorDriverTask.Operator.Addition, upright, upright, scratch),
+                    },
+                },
+            },
+        };
+        recomputeState.transitions = new AnimatorStateTransition[]
+        {
+            new AnimatorStateTransition
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                hasExitTime = true,
+                exitTime = 1f,
+                hasFixedDuration = true,
+                duration = 0f,
+                offset = 0f,
+                destinationState = recomputeState,
+            },
+        };
+        var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_Upright");
+        AddGeneratedLayer(new AnimatorControllerLayer
+        {
+            name = layerName,
+            defaultWeight = 1f,
+            blendingMode = AnimatorLayerBlendingMode.Override,
+            avatarMask = emptyMask,
+            stateMachine = new AnimatorStateMachine
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                name = layerName,
+                entryPosition = new Vector3(0, -100),
+                exitPosition = new Vector3(0, 200),
+                anyStatePosition = new Vector3(0, -300),
+                defaultState = recomputeState,
+                states = new ChildAnimatorState[]
+                {
+                    new ChildAnimatorState { state = recomputeState, position = new Vector3(0, 0) },
+                },
+            },
+        });
+        uprightIsDerived = true;
+    }
+
     // VRChat built-ins that ChilloutVR does not supply to the animator. The client's parameter
     // stream provides equivalent sources; each stream type's semantics were verified against the
     // decompiled client (DeviceMode: isUsingVr ? 1 : 0, matching VRMode).
@@ -4529,7 +4676,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var streamedEntries = new List<CVRParameterStreamEntry>();
         foreach (var (parameterName, streamType) in GameStateParameterStreams)
         {
-            if (!parameters.Any(p => p.name == parameterName))
+            var target = uprightIsDerived && streamType == CVRParameterStreamEntry.Type.AvatarUpright
+                ? UprightSensorParameter
+                : parameterName;
+            if (!parameters.Any(p => p.name == target))
             {
                 // the avatar does not use this parameter
                 continue;
@@ -4539,7 +4689,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 type = streamType,
                 targetType = CVRParameterStreamEntry.TargetType.AvatarAnimator,
                 applicationType = CVRParameterStreamEntry.ApplicationType.Override,
-                parameterName = parameterName,
+                parameterName = target,
             });
         }
         if (streamedEntries.Count == 0)

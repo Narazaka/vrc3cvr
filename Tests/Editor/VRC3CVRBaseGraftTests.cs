@@ -419,6 +419,74 @@ public class VRC3CVRBaseGraftTests
         Assert.AreEqual("LocIdle", ((BlendTree)state.motion).children[0].motion.name);
     }
 
+    // ---- the derived Upright ----
+
+    // Runs the driver's task list the way the client would, so the constants are checked by the
+    // numbers they produce rather than by being read back.
+    static float RunUprightTasks(System.Collections.Generic.List<ABI.CCK.Components.AnimatorDriverTask> tasks,
+        float crouching, float prone, float vrMode, float sensor)
+    {
+        var values = new System.Collections.Generic.Dictionary<string, float>
+        {
+            { "Crouching", crouching }, { "Prone", prone }, { "VRMode", vrMode },
+            { "UprightSensor", sensor }, { "#Upright", 0f }, { "#UprightCalc", 0f },
+        };
+        foreach (var task in tasks)
+        {
+            var a = values[task.aName];
+            var b = task.bType == ABI.CCK.Components.AnimatorDriverTask.SourceType.Static
+                ? task.bValue
+                : values[task.bName];
+            values[task.targetName] =
+                task.op == ABI.CCK.Components.AnimatorDriverTask.Operator.Multiplication ? a * b : a + b;
+        }
+        return values["#Upright"];
+    }
+
+    static System.Collections.Generic.List<ABI.CCK.Components.AnimatorDriverTask> BuildUprightFeedLayer()
+    {
+        var controller = new AnimatorController { name = "uprightFeed" };
+        controller.AddParameter("#Upright", AnimatorControllerParameterType.Float);
+        var core = new VRC3CVRCore();
+        typeof(VRC3CVRCore).GetField("chilloutAnimatorController", Flags).SetValue(core, controller);
+        typeof(VRC3CVRCore).GetField("graftVrcBaseLocomotion", Flags).SetValue(core, true);
+        typeof(VRC3CVRCore).GetField("generatedLayerNames", Flags).SetValue(core, new System.Collections.Generic.HashSet<string>());
+        typeof(VRC3CVRCore).GetMethod("MakeUprightFeedLayer", Flags).Invoke(core, null);
+
+        var layer = controller.layers.Single(l => l.name.StartsWith("VRC3CVR_Upright"));
+        var driver = (ABI.CCK.Components.AnimatorDriver)layer.stateMachine.states.Single().state.behaviours.Single();
+        Object.DestroyImmediate(controller);
+        return driver.EnterTasks;
+    }
+
+    [Test]
+    public void UprightFeedLayer_OnDesktopDerivesTheStanceValueAndInVrKeepsTheSensor()
+    {
+        var tasks = BuildUprightFeedLayer();
+
+        // desktop: the discrete value the stance flags describe
+        Assert.AreEqual(1.00f, RunUprightTasks(tasks, 0f, 0f, 0f, 0.42f), 1e-4f, "standing");
+        Assert.AreEqual(0.55f, RunUprightTasks(tasks, 1f, 0f, 0f, 0.42f), 1e-4f, "crouching");
+        Assert.AreEqual(0.20f, RunUprightTasks(tasks, 0f, 1f, 0f, 0.42f), 1e-4f, "prone");
+        Assert.AreEqual(0.20f, RunUprightTasks(tasks, 1f, 1f, 0f, 0.42f), 1e-4f, "crouching and prone at once");
+        // VR: the sensor, whatever the flags say, so a half-crouch survives
+        Assert.AreEqual(0.42f, RunUprightTasks(tasks, 0f, 0f, 1f, 0.42f), 1e-4f, "VR standing");
+        Assert.AreEqual(0.42f, RunUprightTasks(tasks, 1f, 0f, 1f, 0.42f), 1e-4f, "VR crouching");
+    }
+
+    [Test]
+    public void UprightFeedLayer_ReadsOnlySyncedInputs()
+    {
+        var tasks = BuildUprightFeedLayer();
+        var read = tasks
+            .SelectMany(t => new[] { t.aName, t.bType == ABI.CCK.Components.AnimatorDriverTask.SourceType.Static ? null : t.bName })
+            .Where(n => !string.IsNullOrEmpty(n))
+            .Distinct()
+            .Where(n => n != "#Upright" && n != "#UprightCalc");
+        // a remote copy runs the same layer, so anything local-only would compute from zeroes there
+        CollectionAssert.AreEquivalent(new[] { "Crouching", "Prone", "VRMode", "UprightSensor" }, read.ToArray());
+    }
+
     // ---- the graft itself, over a whole conversion ----
 
     const string GraftTestFolder = "Assets/VRC3CVR_BaseGraftTest";
@@ -548,7 +616,12 @@ public class VRC3CVRBaseGraftTests
     [Test]
     public void Convert_WithLocomotionConversionOff_KeepsChilloutVRsOwnLocomotion()
     {
-        AssertCckLocomotionKept(ConvertWithBaseLayer(authored: true, convertLocomotionLayer: false));
+        var controller = ConvertWithBaseLayer(authored: true, convertLocomotionLayer: false);
+        AssertCckLocomotionKept(controller);
+        // CVR's own locomotion sets the pose here, so AvatarUpright is not the animator's own output
+        // and can go on feeding Upright directly
+        Assert.IsTrue(controller.parameters.Any(p => p.name == "Upright"));
+        Assert.IsFalse(controller.layers.Any(l => l.name.StartsWith("VRC3CVR_Upright")));
     }
 
     [Test]
