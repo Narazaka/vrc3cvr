@@ -137,7 +137,7 @@ public class VRC3CVRActionFoldTests
         Assert.IsNotNull(actionMachine, "the Action machine was not folded into the locomotion layer");
         Assert.IsTrue(AllStatesOf(actionMachine).Any(state => state.name == EmoteStateName));
         Assert.IsNull(ChildMachineNamed(root, "Emotes"),
-            "ChilloutVR's own emote machine answers the same Emote values as the folded one");
+            "ChilloutVR's own emote machine was kept alongside the folded one");
 
         var hubTransitions = hub.transitions;
         AssertEntry(hubTransitions[0], actionMachine, "Emote", AnimatorConditionMode.Greater);
@@ -187,13 +187,22 @@ public class VRC3CVRActionFoldTests
         var actionMachine = ChildMachineNamed(root, "Action");
         Assert.IsNotNull(actionMachine, "the Action machine was not folded into ChilloutVR's own locomotion layer");
         Assert.IsNull(ChildMachineNamed(root, "Emotes"),
-            "ChilloutVR's own emote machine answers the same Emote values as the folded one");
+            "ChilloutVR's own emote machine was kept alongside the folded one");
         Assert.IsFalse(
             root.states.SelectMany(child => child.state.transitions)
                 .Any(t => !t.isExit && t.destinationStateMachine == null && t.destinationState == null),
             "a transition to the removed emote machine was left dangling");
 
-        AssertEntry(hub.transitions[0], actionMachine, "Emote", AnimatorConditionMode.Greater);
+        // ChilloutVR emotes out of each stance it can emote from, not out of the hub alone
+        foreach (var stance in new[] { "Standard Locomotion", "Crouching Locomotion", "Prone Locomotion" })
+        {
+            var state = root.states.Single(child => child.state.name == stance).state;
+            AssertEntry(state.transitions[0], actionMachine, "Emote", AnimatorConditionMode.Greater);
+            AssertEntry(state.transitions[1], actionMachine, "AFK", AnimatorConditionMode.If);
+        }
+        Assert.AreEqual(hub, root.states.Single(child => child.state.name == "Standard Locomotion").state,
+            "fixture: ChilloutVR's hub is no longer Standard Locomotion");
+
         Assert.AreEqual(hub, root.GetStateMachineTransitions(actionMachine).Single().destinationState);
     }
 }

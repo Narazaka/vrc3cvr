@@ -2307,10 +2307,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         targetWeight = vrcLocomotionControl.disableLocomotion ? 0f : 1f,
                     });
                 }
-                // The layer standing in for CVR's locomotion is exempt: the layer it replaces never
-                // touches the IK weights (landing included), so tracking controls carried across
-                // would fire where the platform expects none -- VRChat's stock landing states would
-                // seize the legs and hips from full-body trackers for an instant on every landing.
+                // Everything that ends up in the layer standing in for CVR's locomotion is exempt:
+                // the layer it replaces never touches the IK weights, so tracking controls carried
+                // across would fire where the platform expects none -- VRChat's stock landing
+                // states would seize the legs and hips from full-body trackers for an instant on
+                // every landing, and a folded emote would hold the head and hands for its length.
                 else if (behaviour is VRCAnimatorTrackingControl && convertVRCAnimatorTrackingControl
                     && (convertLocomotionTrackingControl || !processingIntegratedLocomotionLayer))
                 {
@@ -2850,9 +2851,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // unconditional transition back to the hub. The states that raised and dropped the playable
     // weight are left with nothing to say and go out with the rest of the VRC behaviours.
     // ChilloutVR's own Emotes machine goes too: it answers the same Emote 1-8 the folded machine
-    // does, and two machines driving the body off one value would fight over it. The AFK entry is
-    // only wired when the Action animator declares AFK, since stock answers it and a machine that
-    // never mentions it has no AFK branch to reach.
+    // does, and two machines driving the body off one value would fight over it. Its dispatch is
+    // inherited rather than dropped -- ChilloutVR dispatches from each stance it can emote out of,
+    // not from the hub alone, so every state that reached it reaches the folded machine instead.
+    // The AFK entry is only wired when the Action animator declares AFK, since stock answers it and
+    // a machine that never mentions it has no AFK branch to reach.
     void FoldActionMachine(AnimatorControllerLayer integratedLayer, AnimatorController actionController)
     {
         var machine = integratedLayer != null ? integratedLayer.stateMachine : null;
@@ -2863,7 +2866,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             return;
         }
 
-        RemoveCckEmotesMachine(machine);
+        var dispatchStates = new List<AnimatorState> { hub };
+        dispatchStates.AddRange(RemoveCckEmotesMachine(machine).Where(state => state != hub));
 
         // read before the clone, whose VRC behaviours the processing below throws away
         var blendDuration = ActionPrepareBlendDuration(actionController);
@@ -2899,38 +2903,52 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         // after the processing above, as MergeVrcAnimatorIntoChilloutAnimator rewires and for the
         // reason stated there
-        var rewiredFromHub = new List<AnimatorStateTransition>();
-        var onEmote = Timed(hub.AddTransition(actionMachine), blendDuration);
-        onEmote.AddCondition(AnimatorConditionMode.Greater, 0f, "Emote");
-        rewiredFromHub.Add(onEmote);
-
-        if (chilloutAnimatorController.parameters.Any(parameter => parameter.name == AfkParameterName))
+        var answersAfk = chilloutAnimatorController.parameters.Any(parameter => parameter.name == AfkParameterName);
+        foreach (var dispatch in dispatchStates)
         {
-            var onAfk = Timed(hub.AddTransition(actionMachine), blendDuration);
-            onAfk.AddCondition(AnimatorConditionMode.If, 0f, AfkParameterName);
-            rewiredFromHub.Add(onAfk);
+            var rewired = new List<AnimatorStateTransition>();
+            var onEmote = Timed(dispatch.AddTransition(actionMachine), blendDuration);
+            onEmote.AddCondition(AnimatorConditionMode.Greater, 0f, "Emote");
+            rewired.Add(onEmote);
+
+            if (answersAfk)
+            {
+                var onAfk = Timed(dispatch.AddTransition(actionMachine), blendDuration);
+                onAfk.AddCondition(AnimatorConditionMode.If, 0f, AfkParameterName);
+                rewired.Add(onAfk);
+            }
+
+            dispatch.transitions = PutFirst(dispatch.transitions, rewired);
         }
 
-        hub.transitions = PutFirst(hub.transitions, rewiredFromHub);
         machine.AddStateMachineTransition(actionMachine, hub);
     }
 
-    void RemoveCckEmotesMachine(AnimatorStateMachine machine)
+    // Returns the states that used to reach it.
+    IEnumerable<AnimatorState> RemoveCckEmotesMachine(AnimatorStateMachine machine)
     {
         var emotes = machine.stateMachines
             .Select(child => child.stateMachine)
             .FirstOrDefault(child => child != null && child.name == CckEmotesMachineName);
         if (emotes == null)
         {
-            return;
+            return Enumerable.Empty<AnimatorState>();
         }
+        var dispatchStates = new List<AnimatorState>();
         foreach (var child in machine.states)
         {
-            child.state.transitions = child.state.transitions
+            var kept = child.state.transitions
                 .Where(transition => transition.destinationStateMachine != emotes)
                 .ToArray();
+            if (kept.Length == child.state.transitions.Length)
+            {
+                continue;
+            }
+            child.state.transitions = kept;
+            dispatchStates.Add(child.state);
         }
         machine.RemoveStateMachine(emotes);
+        return dispatchStates;
     }
 
     const float DefaultActionBlendDuration = 0.25f;
