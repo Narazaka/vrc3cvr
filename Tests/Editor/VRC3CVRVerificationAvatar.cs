@@ -9,6 +9,7 @@ using VRC.SDK3.Avatars.ScriptableObjects;
 using VRC.SDK3.Dynamics.Constraint.Components;
 using VRC.SDK3.Dynamics.Contact.Components;
 using VRC.SDKBase;
+using TrackingType = VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType;
 
 // Generates a self-contained primitive humanoid avatar whose gimmicks make every in-game
 // verification item of the conversion observable (see the table in issue #17 / #21):
@@ -20,6 +21,7 @@ using VRC.SDKBase;
 //   L1 the Base layer's own idle clip still drives the body after the replacement
 //   L2 ChilloutVR's own walk clip took the place of its proxy_walk_forward placeholder
 //   L3 flight, salvaged out of the replaced CVR locomotion layer, is still reachable
+//   L4 landing plays ChilloutVR's landing clip smoothly, with no tracking-control IK seizure
 // Each group can be shown/hidden from the expressions menu so items can be checked one at a
 // time. Labels carry the expected behavior (in English: the built-in font has no CJK glyphs).
 // Lives in Tests/ so it ships with the repository but not with the distributed unitypackage.
@@ -657,6 +659,27 @@ public static class VRC3CVRVerificationAvatar
 
         var idle = new AnimationClip { name = "Base_CustomIdle" };
         idle.SetCurve("Panel/State/BaseIdleMarker", typeof(GameObject), "m_IsActive", AnimationCurve.Constant(0f, 1f / 60f, 1f));
+        // The hub also holds a real standing pose (LocIdle's first frame): with the marker curve
+        // alone the rig would stay in its bind pose, nearly a meter above the landing states'
+        // crouch, and that artificial gap would dominate any landing-smoothness measurement. Real
+        // avatars pose their hub, so the fixture has to as well.
+        var locIdle = AssetDatabase.LoadAssetAtPath<AnimationClip>(
+            "Assets/CVR.CCK/Assets/Avatar/Animations/Locomotion/LocIdle.anim");
+        var poseBindings = AnimationUtility.GetCurveBindings(locIdle);
+        var poseCurves = new AnimationCurve[poseBindings.Length];
+        for (var i = 0; i < poseBindings.Length; i++)
+        {
+            poseCurves[i] = AnimationCurve.Constant(0f, 1f / 60f,
+                AnimationUtility.GetEditorCurve(locIdle, poseBindings[i]).Evaluate(0f));
+        }
+        AnimationUtility.SetEditorCurves(idle, poseBindings, poseCurves);
+        // LocIdle's own settings so the root curves are applied the same way; the timing is the
+        // pose's own (one looping frame), not the source clip's
+        var idleSettings = AnimationUtility.GetAnimationClipSettings(locIdle);
+        idleSettings.loopTime = true;
+        idleSettings.startTime = 0f;
+        idleSettings.stopTime = 1f / 60f;
+        AnimationUtility.SetAnimationClipSettings(idle, idleSettings);
         AssetDatabase.CreateAsset(idle, assetFolder + "/Base_CustomIdle.anim");
 
         // Both the placeholder test and the substitution table key on the clip NAME, so an empty
@@ -684,15 +707,51 @@ public static class VRC3CVRVerificationAvatar
         locomotion.writeDefaultValues = true;
         stateMachine.defaultState = locomotion;
 
-        // Shaped like VRChat's stock JumpAndFall / RestoreTracking: a sub-state-machine entered
-        // while airborne, holding a state that exists only to be passed through.
+        // Shaped like VRChat's stock JumpAndFall: a fall state held while airborne, a zero-length
+        // QuickLand crossed on an exit time, and a RestoreTracking that exists only to be passed
+        // through -- each carrying the stock VRCAnimatorTrackingControl values.
         baseController.AddParameter("Grounded", AnimatorControllerParameterType.Bool);
         var standStill = ZeroLengthClip("proxy_stand_still");
         AssetDatabase.CreateAsset(standStill, assetFolder + "/proxy_stand_still.anim");
+        var fallShort = ZeroLengthClip("proxy_fall_short");
+        AssetDatabase.CreateAsset(fallShort, assetFolder + "/proxy_fall_short.anim");
+        var landQuick = ZeroLengthClip("proxy_land_quick");
+        AssetDatabase.CreateAsset(landQuick, assetFolder + "/proxy_land_quick.anim");
         var jumpAndFall = stateMachine.AddStateMachine("JumpAndFall");
+
+        var shortFall = jumpAndFall.AddState("Short Fall");
+        shortFall.motion = fallShort;
+        shortFall.writeDefaultValues = true;
+        jumpAndFall.defaultState = shortFall;
+        AddTrackingControl(shortFall,
+            head: TrackingType.Tracking, hands: TrackingType.Tracking,
+            hip: TrackingType.Animation, feet: TrackingType.Animation);
+
+        var quickLand = jumpAndFall.AddState("QuickLand");
+        quickLand.motion = landQuick;
+        quickLand.writeDefaultValues = true;
+        AddTrackingControl(quickLand,
+            head: TrackingType.Animation, hip: TrackingType.Animation, feet: TrackingType.Animation);
+
         var restoreTracking = jumpAndFall.AddState("RestoreTracking");
         restoreTracking.motion = standStill;
         restoreTracking.writeDefaultValues = true;
+        AddTrackingControl(restoreTracking,
+            head: TrackingType.Tracking, hands: TrackingType.Tracking,
+            hip: TrackingType.Tracking, feet: TrackingType.Tracking);
+
+        var land = shortFall.AddTransition(quickLand);
+        land.hasExitTime = false;
+        land.hasFixedDuration = true;
+        land.duration = 0.1f;
+        land.AddCondition(AnimatorConditionMode.If, 0f, "Grounded");
+
+        var settle = quickLand.AddTransition(restoreTracking);
+        settle.hasExitTime = true;
+        settle.exitTime = 1f;
+        settle.hasFixedDuration = true;
+        settle.duration = 0.1f;
+
         var leave = restoreTracking.AddExitTransition();
         leave.hasExitTime = true;
         leave.exitTime = 0f;
@@ -706,6 +765,22 @@ public static class VRC3CVRVerificationAvatar
         enterJump.AddCondition(AnimatorConditionMode.IfNot, 0f, "Grounded");
 
         return baseController;
+    }
+
+    // VRChat's stock states set left and right of a pair to the same value, so pairs are enough.
+    static void AddTrackingControl(AnimatorState state,
+        TrackingType head = TrackingType.NoChange,
+        TrackingType hands = TrackingType.NoChange,
+        TrackingType hip = TrackingType.NoChange,
+        TrackingType feet = TrackingType.NoChange)
+    {
+        var control = state.AddStateMachineBehaviour<VRCAnimatorTrackingControl>();
+        control.trackingHead = head;
+        control.trackingLeftHand = hands;
+        control.trackingRightHand = hands;
+        control.trackingHip = hip;
+        control.trackingLeftFoot = feet;
+        control.trackingRightFoot = feet;
     }
 
     // ---- FX controller ----

@@ -139,10 +139,21 @@ public class VRC3CVREndToEndTests
             string.Join(" ; ", ClipNamesOf(machine)));
         // the airborne pass-through gets the ChilloutVR clip's pose, so it stays short enough to
         // leave on its exit time
-        var restoreTracking = machine.stateMachines.Single(child => child.stateMachine.name == "JumpAndFall")
-            .stateMachine.states.Single().state;
+        var jumpAndFall = machine.stateMachines.Single(child => child.stateMachine.name == "JumpAndFall")
+            .stateMachine;
+        var restoreTracking = jumpAndFall.states.Single(child => child.state.name == "RestoreTracking").state;
         Assert.AreEqual("LocIdle_Pose", restoreTracking.motion.name);
         Assert.AreEqual(1f / 60f, ((AnimationClip)restoreTracking.motion).length, 1e-4f);
+        // the landing instead plays the real clip on the CCK JumpLand state's own timing
+        var quickLand = jumpAndFall.states.Single(child => child.state.name == "QuickLand").state;
+        Assert.AreEqual("LocJumpLand", quickLand.motion.name);
+        var settle = quickLand.transitions.Single();
+        Assert.AreEqual(0.5588235f, settle.exitTime, 1e-4f);
+        Assert.AreEqual(0.25f, settle.duration, 1e-4f);
+        // the replacement layer's tracking controls are dropped rather than converted to BodyControl
+        Assert.IsFalse(
+            jumpAndFall.states.SelectMany(child => child.state.behaviours).OfType<BodyControl>().Any(),
+            "a tracking control from the replacement locomotion layer became a BodyControl");
 
         Assert.IsTrue(machine.states.Any(child => child.state.name == "LocFlying"));
         Assert.IsTrue(machine.states.Any(child => child.state.name == "Swimming"));
@@ -170,10 +181,12 @@ public class VRC3CVREndToEndTests
         animator.SetBool("Grounded", true);
         animator.Update(0f);
         animator.SetBool("Grounded", false);
-        Assert.Less(FramesUntil("RestoreTracking"), 30, "the avatar never went airborne");
+        Assert.Less(FramesUntil("Short Fall"), 30, "the avatar never went airborne");
 
         animator.SetBool("Grounded", true);
-        Assert.Less(FramesUntil("Locomotion"), 40, "landing left the avatar stuck in the pass-through state");
+        // Short Fall -> QuickLand blend 6F; LocJumpLand runs to its 0.5588 crossing ~19F; 15F blend
+        // into RestoreTracking; its entry blend then its own crossing ~2F; 15F blend out: ~52F.
+        Assert.Less(FramesUntil("Locomotion"), 75, "landing left the avatar stuck in the landing chain");
     }
 
     static IEnumerable<string> ClipNamesOf(AnimatorStateMachine machine)

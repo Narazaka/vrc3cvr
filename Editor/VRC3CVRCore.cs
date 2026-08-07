@@ -2292,7 +2292,12 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         targetWeight = vrcLocomotionControl.disableLocomotion ? 0f : 1f,
                     });
                 }
-                else if (behaviour is VRCAnimatorTrackingControl && convertVRCAnimatorTrackingControl)
+                // The layer standing in for CVR's locomotion is exempt: the layer it replaces never
+                // touches the IK weights (landing included), so tracking controls carried across
+                // would fire where the platform expects none -- VRChat's stock landing states would
+                // seize the legs and hips from full-body trackers for an instant on every landing.
+                else if (behaviour is VRCAnimatorTrackingControl && convertVRCAnimatorTrackingControl
+                    && (convertLocomotionTrackingControl || !processingReplacementLocomotionLayer))
                 {
                     var vrcTrackingControl = behaviour as VRCAnimatorTrackingControl;
                     if (vrcTrackingControl.trackingHead != VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.NoChange ||
@@ -2495,9 +2500,80 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             foreach (var state in AllStatesOf(layer.stateMachine))
             {
+                if (PlayLandingClip(state))
+                {
+                    continue;
+                }
                 state.motion = SubstitutedMotion(state.motion, IsTimedPassThrough(state));
             }
         }
+    }
+
+    const string CckJumpLandClipName = "LocJumpLand";
+    const string CckJumpLandStateName = "JumpLand";
+
+    bool cckJumpLandExitSearched;
+    AnimatorStateTransition cckJumpLandExit;
+
+    // The one pass-through the pose treatment makes worse: LocJumpLand's first frame is the deep
+    // landing crouch, planted at a fixed root height unlike the feet-based standing states around
+    // it, so every blend through the pose drops the body and hauls it back up. ChilloutVR's own
+    // JumpLand instead plays the clip most of the way through and leaves on an exit time, which is
+    // what absorbs the crouch -- so the landing state gets the whole clip on that same timing.
+    bool PlayLandingClip(AnimatorState state)
+    {
+        if (!playLandingAnimation
+            || !IsTimedPassThrough(state)
+            || !(state.motion is AnimationClip clip)
+            || !placeholderClipSubstitutions.TryGetValue(clip.name, out var replacement)
+            || replacement != CckJumpLandClipName)
+        {
+            return false;
+        }
+        var cckExit = CckJumpLandExit();
+        var landing = SubstitutedClip(clip);
+        if (cckExit == null || landing == null)
+        {
+            return false;
+        }
+        state.motion = landing;
+        foreach (var transition in state.transitions)
+        {
+            if (!transition.hasExitTime)
+            {
+                continue;
+            }
+            transition.exitTime = cckExit.exitTime;
+            transition.duration = cckExit.duration;
+            transition.hasFixedDuration = cckExit.hasFixedDuration;
+        }
+        return true;
+    }
+
+    // Read from the CCK's shipped controller rather than hardcoded, so the timing follows whatever
+    // CCK version is installed.
+    AnimatorStateTransition CckJumpLandExit()
+    {
+        if (cckJumpLandExitSearched)
+        {
+            return cckJumpLandExit;
+        }
+        cckJumpLandExitSearched = true;
+        var cckController = AssetDatabase.LoadAssetAtPath<AnimatorController>($"{AnimatorPath}/AvatarAnimator.controller");
+        var cckLocomotionLayer = cckController == null
+            ? null
+            : cckController.layers.FirstOrDefault(layer => layer.name == CckLocomotionLayerName);
+        cckJumpLandExit = cckLocomotionLayer == null
+            ? null
+            : AllStatesOf(cckLocomotionLayer.stateMachine)
+                .Where(state => state.name == CckJumpLandStateName)
+                .SelectMany(state => state.transitions)
+                .FirstOrDefault(transition => transition.hasExitTime);
+        if (cckJumpLandExit == null)
+        {
+            Debug.LogWarning($"Could not read the {CckJumpLandStateName} exit timing from the CCK's AvatarAnimator.controller; landing pass-through states keep the pose treatment instead of playing {CckJumpLandClipName}");
+        }
+        return cckJumpLandExit;
     }
 
     // VRChat swaps each proxy_* for the real animation of the same name, and it is the real one's
@@ -2599,6 +2675,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     // Set while the CVR locomotion layer is dropped in favour of the avatar's own Base layer.
     bool vrcBaseReplacesCckLocomotion;
+
+    // Set while ProcessStateMachine walks the Base layer that takes the CVR locomotion layer's
+    // place.
+    bool processingReplacementLocomotionLayer;
 
     // Every salvaged mode is wired to the layer's default state, so a first layer without one
     // cannot take the CVR layer's place. Decided before that layer is dropped, or the avatar would be left
@@ -3049,7 +3129,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 Debug.Log("Layer \"" + layer.name + "\" with " + layer.stateMachine.states.Length + " states");
 
                 var parameters = newAnimatorController.parameters;
+                // the replacement takes the animator's first layer, decided below after processing
+                processingReplacementLocomotionLayer = thisAnimatorReplacesCckLocomotion && i == 0;
                 ProcessStateMachine(layer.stateMachine, layer.name, ref parameters);
+                processingReplacementLocomotionLayer = false;
                 newAnimatorController.parameters = parameters;
 
                 layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(animatorID, i, layer.avatarMask);

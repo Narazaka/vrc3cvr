@@ -11,6 +11,10 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring PlayableLayers => new istring("Playable Layers", "Playable Layers");
         public static istring ConvertLocomotionAnimator => new istring("Convert Locomotion Animator (NOT RECOMMEND)", "Locomotionレイヤーを変換 (非推奨)");
         public static istring ConvertLocomotionAnimatorDescription => new istring("Locomotion state machines will very likely not convert over correctly and this option is better left unticked for now", "Locomotionステートマシンは正しく変換されない可能性が高く、このオプションは今のところチェックを外しておくことをお勧めします");
+        public static istring PlayLandingAnimation => new istring("Play the landing animation", "着地アニメーションを再生する");
+        public static istring PlayLandingAnimationDescription => new istring("Without this the converted landing freezes to a single pose and the body dips sharply; this plays ChilloutVR's landing animation on its own timing instead.", "OFFだと変換後の着地がポーズ1枚固定になり体が急に沈むため、代わりにChilloutVRの着地アニメーションを本来のタイミングで再生します。");
+        public static istring ConvertLocomotionTrackingControl => new istring("Convert Tracking Control in the locomotion layer", "locomotionレイヤーのTracking Controlを変換する");
+        public static istring ConvertLocomotionTrackingControlDescription => new istring("Tracking Control, common in VRChat's landing states, causes full-body tracking jitter in ChilloutVR when converted.", "VRChatの着地ステートにありがちなTracking Controlを変換するとCVRでFBTががたつく原因になります。");
         public static istring ConvertAdditiveAnimator => new istring("Convert Additive Animator (additive blend layers)", "Additiveレイヤーを変換");
         public static istring ConvertAdditiveAnimatorDescription => new istring("Additive state machine is commonly used for additively blended animations on the base avatar. May cause bicycle pose on certain avatars.", "Additiveステートマシンは、ベースアバターの加算ブレンドアニメーションに一般的に使用されます。特定のアバターで自転車ポーズを引き起こす可能性があります。");
         public static istring ConvertGestureAnimator => new istring("Convert Gesture Animator (hands)", "Gestureレイヤーを変換 (手)");
@@ -239,7 +243,15 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             EditorGUI.indentLevel++;
 
             Toggle(nameof(VRC3CVRConvertConfig.convertLocomotionLayer), T.ConvertLocomotionAnimator, T.ConvertLocomotionAnimatorDescription);
-            
+
+            EditorGUI.indentLevel++;
+
+            Toggle(nameof(VRC3CVRConvertConfig.playLandingAnimation), T.PlayLandingAnimation, T.PlayLandingAnimationDescription);
+
+            Toggle(nameof(VRC3CVRConvertConfig.convertLocomotionTrackingControl), T.ConvertLocomotionTrackingControl, T.ConvertLocomotionTrackingControlDescription);
+
+            EditorGUI.indentLevel--;
+
             Toggle(nameof(VRC3CVRConvertConfig.convertAdditiveLayer), T.ConvertAdditiveAnimator, T.ConvertAdditiveAnimatorDescription);
 
             Toggle(nameof(VRC3CVRConvertConfig.convertGestureLayer), T.ConvertGestureAnimator, T.ConvertGestureAnimatorDescription);

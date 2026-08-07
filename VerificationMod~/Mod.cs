@@ -59,10 +59,11 @@ namespace VRC3CVRVerification
         readonly List<string> _report = new List<string>();
         float _gestureOverride = float.NaN;
 
-        // The input manager rewrites movementVector every frame, so the injected walk has to be
-        // applied after it runs; a postfix on its update is the only ordering that holds.
+        // The input manager rewrites movementVector and jump every frame, so injected input has to
+        // be applied after it runs; a postfix on its update is the only ordering that holds.
         internal static Vector3 MovementOverride = Vector3.zero;
         internal static bool InjectMovement;
+        internal static bool InjectJump;
 
         public override void OnInitializeMelon()
         {
@@ -71,20 +72,24 @@ namespace VRC3CVRVerification
             if (updateInput != null)
             {
                 HarmonyInstance.Patch(updateInput, postfix: new HarmonyMethod(typeof(VerificationMod).GetMethod(
-                    nameof(ForceMovement), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)));
-                MelonLogger.Msg("patched CVRInputManager.UpdateInput for movement injection");
+                    nameof(ForceInput), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)));
+                MelonLogger.Msg("patched CVRInputManager.UpdateInput for input injection");
             }
             else
             {
-                MelonLogger.Warning("CVRInputManager.UpdateInput not found; movement injection is unavailable");
+                MelonLogger.Warning("CVRInputManager.UpdateInput not found; input injection is unavailable");
             }
         }
 
-        static void ForceMovement(CVRInputManager __instance)
+        static void ForceInput(CVRInputManager __instance)
         {
             if (InjectMovement)
             {
                 __instance.movementVector = MovementOverride;
+            }
+            if (InjectJump)
+            {
+                __instance.jump = true;
             }
         }
 
@@ -920,6 +925,7 @@ namespace VRC3CVRVerification
             }
 
             yield return StanceHeights(avatar, animator);
+            yield return LandingProfile(avatar, animator);
 
             Flush();
             _running = false;
@@ -1111,6 +1117,7 @@ namespace VRC3CVRVerification
             });
 
             yield return StanceHeights(avatar, animator);
+            yield return LandingProfile(avatar, animator);
 
             Flush();
             _running = false;
@@ -1187,13 +1194,179 @@ namespace VRC3CVRVerification
             Run("H body weights", () => Note("H " + DescribeBodySystemWeights()));
         }
 
+        // J: the path the body takes through a landing. Pure measurement — there is no threshold to
+        // judge against yet, only a native reading to compare a converted one with, which is why the
+        // probe runs it too. Sampled per frame: the interesting part is the first few frames after
+        // touchdown, which a coarser series would average away.
+        IEnumerator LandingProfile(Transform avatar, Animator animator)
+        {
+            var characterController = BetterBetterCharacterController.Instance;
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            if (hips == null || characterController == null)
+            {
+                Run("J", () => Note("J not measured: " +
+                    (hips == null ? "the avatar has no hips bone" : "no character controller")));
+                yield break;
+            }
+            // the client's own ground state, if the animator carries it; a converted avatar that
+            // dropped the parameter would otherwise report a landing that never comes
+            var hasGroundedParam = HasParameter(animator, "Grounded");
+            bool Grounded() => hasGroundedParam ? animator.GetBool("Grounded") : characterController.IsGrounded();
+
+            Step("  J landing profile (3 jumps)");
+            Note("J series sample format t:hipsY:rootY:state:normalizedTime:grounded, samples separated by ';'" +
+                 (hasGroundedParam ? "" : " (ground state read off the character controller: no \"Grounded\" parameter)"));
+
+            for (var attempt = 1; attempt <= 3; attempt++)
+            {
+                Run("J" + attempt + " stand", () =>
+                {
+                    characterController.crouching = false;
+                    TrySetBool(characterController, "prone", false);
+                });
+                var settling = 0f;
+                while (settling < 3f && !Grounded())
+                {
+                    settling += Time.deltaTime;
+                    yield return null;
+                }
+                yield return new WaitForSeconds(1f);
+
+                var times = new List<float>();
+                var hipsHeights = new List<float>();
+                var series = new List<string>();
+                var elapsed = 0f;
+                var leftGround = false;
+                var landedAt = float.NaN;
+                var frames = 0;
+
+                InjectJump = true;
+                // released after a few frames: held down, the button is a second press the client
+                // reads as the double-jump that turns into flight
+                while (elapsed < 6f)
+                {
+                    yield return null;
+                    elapsed += Time.deltaTime;
+                    if (++frames >= 3)
+                    {
+                        InjectJump = false;
+                    }
+                    var now = elapsed;
+                    Run("J" + attempt + " sample", () =>
+                    {
+                        var grounded = Grounded();
+                        leftGround |= !grounded;
+                        if (leftGround && grounded && float.IsNaN(landedAt))
+                        {
+                            landedAt = now;
+                        }
+                        var hipsY = hips.position.y;
+                        times.Add(now);
+                        hipsHeights.Add(hipsY);
+                        var info = animator.GetCurrentAnimatorStateInfo(0);
+                        var state = StateName(info.shortNameHash);
+                        if (animator.IsInTransition(0))
+                        {
+                            state += ">" + StateName(animator.GetNextAnimatorStateInfo(0).shortNameHash);
+                        }
+                        series.Add(now.ToString("0.000") + ":" + hipsY.ToString("F4") + ":" +
+                            avatar.position.y.ToString("F4") + ":" + state + ":" +
+                            info.normalizedTime.ToString("0.000") + ":" + (grounded ? "1" : "0"));
+                    });
+                    if (!float.IsNaN(landedAt) && elapsed >= landedAt + 2f)
+                    {
+                        break;
+                    }
+                }
+                InjectJump = false;
+
+                Run("J" + attempt, () =>
+                {
+                    if (float.IsNaN(landedAt))
+                    {
+                        Note("J " + attempt + " no landing: the player " +
+                             (leftGround ? "left the ground but never came back within 6s" : "never left the ground"));
+                        return;
+                    }
+                    // the resting height AFTER the landing, not the airborne one: the sink is
+                    // measured against where the body ends up, which is what an eye compares against
+                    var steady = hipsHeights[hipsHeights.Count - 1];
+                    var lowest = float.MaxValue;
+                    var fastestDown = 0f;
+                    var fastestUp = 0f;
+                    var holdingFrom = float.NaN;
+                    var settled = float.NaN;
+                    for (var i = 0; i < times.Count; i++)
+                    {
+                        if (times[i] < landedAt)
+                        {
+                            continue;
+                        }
+                        lowest = Mathf.Min(lowest, hipsHeights[i]);
+                        if (i > 0 && times[i] > times[i - 1])
+                        {
+                            var speed = (hipsHeights[i] - hipsHeights[i - 1]) / (times[i] - times[i - 1]);
+                            fastestDown = Mathf.Min(fastestDown, speed);
+                            fastestUp = Mathf.Max(fastestUp, speed);
+                        }
+                        if (Mathf.Abs(hipsHeights[i] - steady) < 0.01f)
+                        {
+                            if (float.IsNaN(holdingFrom))
+                            {
+                                holdingFrom = times[i];
+                            }
+                            else if (float.IsNaN(settled) && times[i] - holdingFrom >= 0.2f)
+                            {
+                                settled = holdingFrom - landedAt;
+                            }
+                        }
+                        else
+                        {
+                            holdingFrom = float.NaN;
+                        }
+                    }
+                    Note("J " + attempt + " summary land=" + landedAt.ToString("0.000") +
+                         "s hipsMin=" + lowest.ToString("F4") +
+                         " steady=" + steady.ToString("F4") +
+                         " sink=" + (steady - lowest).ToString("F4") +
+                         " vDownMax=" + fastestDown.ToString("F3") +
+                         " vUpMax=" + fastestUp.ToString("F3") +
+                         " settle=" + (float.IsNaN(settled) ? "n/a" : settled.ToString("0.000") + "s") +
+                         " samples=" + times.Count);
+
+                    // full rate through the half second after touchdown, where the spike under
+                    // investigation lives; thinned elsewhere so the line stays one line
+                    var emitted = new List<string>();
+                    var lastEmitted = float.NegativeInfinity;
+                    for (var i = 0; i < times.Count; i++)
+                    {
+                        if ((times[i] < landedAt || times[i] > landedAt + 0.5f) && times[i] - lastEmitted < 0.1f)
+                        {
+                            continue;
+                        }
+                        lastEmitted = times[i];
+                        emitted.Add(series[i]);
+                    }
+                    Note("J " + attempt + " series " + string.Join(";", emitted));
+                });
+            }
+        }
+
         static string StateNameOf(Animator animator, int layer)
         {
-            var hash = animator.GetCurrentAnimatorStateInfo(layer).shortNameHash;
+            return StateName(animator.GetCurrentAnimatorStateInfo(layer).shortNameHash);
+        }
+
+        // Only the hash survives into the running game, so a name is recovered by hashing the ones
+        // worth recognising: VRChat's stock Base layer states and ChilloutVR's own locomotion layer.
+        static string StateName(int hash)
+        {
             foreach (var name in new[]
             {
                 "Standing", "Standing_underwear", "Crouching", "Prone", "Locomotion", "LocFlying",
                 "Swimming", "Idle", "Crouch", "Stand", "RestoreTracking",
+                "JumpStart", "JumpAir", "JumpLand", "Sitting",
+                "SmallHop", "Fall", "QuickLand", "HardLand", "Short Fall", "Long Fall", "RestoreToHop",
             })
             {
                 if (Animator.StringToHash(name) == hash) return name;

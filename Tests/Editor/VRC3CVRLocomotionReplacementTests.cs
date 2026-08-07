@@ -231,8 +231,40 @@ public class VRC3CVRLocomotionReplacementTests
         Object.DestroyImmediate(controller);
     }
 
+    // The landing is the one pass-through that plays its ChilloutVR clip in full, on the exit
+    // timing of the CCK's own JumpLand state -- the pose treatment would hold the landing crouch.
     [Test]
-    public void SubstitutePlaceholderClips_PosesAPassThroughStateWhateverItsExitTimeIs()
+    public void SubstitutePlaceholderClips_PlaysTheLandingClipInFullOnTheCckJumpLandTiming()
+    {
+        var proxy = VRC3CVRVerificationAvatar.ZeroLengthClip("proxy_land_quick");
+        var controller = MakeController("quickLand", proxy);
+        var state = controller.layers[0].stateMachine.states[0].state;
+        var exit = state.AddExitTransition();
+        exit.hasExitTime = true;
+        exit.exitTime = 1f;
+        exit.duration = 0.1f;
+        var conditional = state.AddExitTransition();
+        conditional.hasExitTime = false;
+        conditional.duration = 0.05f;
+
+        typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags)
+            .Invoke(new VRC3CVRCore(), new object[] { controller });
+
+        Assert.AreEqual("LocJumpLand", state.motion.name, "the landing does not play the real clip");
+        Assert.Greater(((AnimationClip)state.motion).length, 0.5f, "the landing clip was reduced to a pose");
+        var timed = state.transitions.Single(t => t.hasExitTime);
+        Assert.AreEqual(0.5588235f, timed.exitTime, 1e-4f);
+        Assert.AreEqual(0.25f, timed.duration, 1e-4f);
+        Assert.IsTrue(timed.hasFixedDuration);
+        Assert.AreEqual(0.05f, state.transitions.Single(t => !t.hasExitTime).duration, 1e-5f,
+            "a conditional transition was rewritten");
+
+        Object.DestroyImmediate(proxy);
+        Object.DestroyImmediate(controller);
+    }
+
+    [Test]
+    public void SubstitutePlaceholderClips_WithTheLandingAnimationOff_PosesTheLandingPassThrough()
     {
         var proxy = VRC3CVRVerificationAvatar.ZeroLengthClip("proxy_land_quick");
         var controller = MakeController("quickLand", proxy);
@@ -241,10 +273,12 @@ public class VRC3CVRLocomotionReplacementTests
         exit.hasExitTime = true;
         exit.exitTime = 1f;
 
+        var core = new VRC3CVRCore { playLandingAnimation = false };
         typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags)
-            .Invoke(new VRC3CVRCore(), new object[] { controller });
+            .Invoke(core, new object[] { controller });
 
         AssertIsPoseOf(state.motion, "LocJumpLand");
+        Assert.AreEqual(1f, state.transitions.Single().exitTime, "the exit time was rewritten");
 
         Object.DestroyImmediate(proxy);
         Object.DestroyImmediate(controller);
@@ -362,10 +396,13 @@ public class VRC3CVRLocomotionReplacementTests
 
     // ProcessStateMachine replaces proxies too, on its own map, and runs after the substitution
     // above -- so both have to pose a pass-through. layerName only feeds a warning message.
-    static void RunProcessStateMachine(AnimatorStateMachine machine)
+    static void RunProcessStateMachine(AnimatorStateMachine machine) =>
+        RunProcessStateMachine(new VRC3CVRCore(), machine);
+
+    static void RunProcessStateMachine(VRC3CVRCore core, AnimatorStateMachine machine)
     {
         typeof(VRC3CVRCore).GetMethod("ProcessStateMachine", Flags)
-            .Invoke(new VRC3CVRCore(), new object[] { machine, "TestLayer", new AnimatorControllerParameter[0] });
+            .Invoke(core, new object[] { machine, "TestLayer", new AnimatorControllerParameter[0] });
     }
 
     static AnimatorStateMachine MachineAround(AnimatorState state)
@@ -417,6 +454,56 @@ public class VRC3CVRLocomotionReplacementTests
             "an asset outside the conversion's own clone was rewritten");
         Assert.AreNotSame(shared, state.motion);
         Assert.AreEqual("LocIdle", ((BlendTree)state.motion).children[0].motion.name);
+    }
+
+    // ---- tracking control in the replacement locomotion layer ----
+
+    static AnimatorState StateWithTrackingControl()
+    {
+        var state = new AnimatorState { name = "QuickLand" };
+        var control = state.AddStateMachineBehaviour<VRCAnimatorTrackingControl>();
+        control.trackingHip = VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.Animation;
+        return state;
+    }
+
+    static VRC3CVRCore CoreOnReplacementLocomotionLayer(VRC3CVRCore core)
+    {
+        typeof(VRC3CVRCore).GetField("processingReplacementLocomotionLayer", Flags).SetValue(core, true);
+        return core;
+    }
+
+    [Test]
+    public void ProcessStateMachine_DropsTrackingControlInTheReplacementLocomotionLayer()
+    {
+        var state = StateWithTrackingControl();
+
+        RunProcessStateMachine(CoreOnReplacementLocomotionLayer(new VRC3CVRCore()), MachineAround(state));
+
+        Assert.IsEmpty(state.behaviours, "the replacement locomotion layer still adjusts IK weights");
+    }
+
+    [Test]
+    public void ProcessStateMachine_ConvertsTrackingControlOutsideTheReplacementLocomotionLayer()
+    {
+        var state = StateWithTrackingControl();
+
+        RunProcessStateMachine(MachineAround(state));
+
+        var body = (BodyControl)state.behaviours.Single();
+        var task = body.EnterTasks.Single();
+        Assert.AreEqual(BodyControlTask.BodyMask.Pelvis, task.target);
+        Assert.AreEqual(0f, task.targetWeight);
+    }
+
+    [Test]
+    public void ProcessStateMachine_WithConversionOptedIn_ConvertsTrackingControlInTheReplacementLayerToo()
+    {
+        var state = StateWithTrackingControl();
+        var core = CoreOnReplacementLocomotionLayer(new VRC3CVRCore { convertLocomotionTrackingControl = true });
+
+        RunProcessStateMachine(core, MachineAround(state));
+
+        Assert.IsInstanceOf<BodyControl>(state.behaviours.Single());
     }
 
     // ---- the derived Upright ----
