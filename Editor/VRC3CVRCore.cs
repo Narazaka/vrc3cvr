@@ -2842,6 +2842,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     const string FoldedActionMachineName = "Action";
     const string AfkParameterName = "AFK";
+    const string CancelEmoteParameterName = "CancelEmote";
 
     // VRChat runs Action on a playable of its own and fades that playable's weight in and out around
     // it; ChilloutVR has a single Override series, so the weight has to become structure. The machine
@@ -2855,7 +2856,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // inherited rather than dropped -- ChilloutVR dispatches from each stance it can emote out of,
     // not from the hub alone, so every state that reached it reaches the folded machine instead.
     // The AFK entry is only wired when the Action animator declares AFK, since stock answers it and
-    // a machine that never mentions it has no AFK branch to reach.
+    // a machine that never mentions it has no AFK branch to reach. CancelEmote -- the quick menu's
+    // cancel -- is answered the same way: every state whose own exit already answers Emote gets that
+    // exit duplicated once more against CancelEmote, so the cancel button reaches exactly where
+    // changing Emote would have.
     void FoldActionMachine(AnimatorControllerLayer integratedLayer, AnimatorController actionController)
     {
         var machine = integratedLayer != null ? integratedLayer.stateMachine : null;
@@ -2881,6 +2885,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         var actionMachine = clonedLayers[0].stateMachine;
         actionMachine.name = FoldedActionMachineName;
+        AddCancelEmoteEscapes(actionMachine);
 
         // registered before the processing below so this machine's conditions are adapted against
         // the types the merged controller already holds, and again after, since a converted Random
@@ -2922,6 +2927,29 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
 
         machine.AddStateMachineTransition(actionMachine, hub);
+    }
+
+    static void AddCancelEmoteEscapes(AnimatorStateMachine actionMachine)
+    {
+        foreach (var state in AllStatesOf(actionMachine))
+        {
+            var transitions = state.transitions;
+            var heldByEmote = transitions.FirstOrDefault(
+                transition => transition.conditions.Any(condition => condition.parameter == "Emote"));
+            if (heldByEmote == null)
+            {
+                continue;
+            }
+            var escape = Timed(new AnimatorStateTransition
+            {
+                destinationState = heldByEmote.destinationState,
+                destinationStateMachine = heldByEmote.destinationStateMachine,
+                isExit = heldByEmote.isExit,
+            }, heldByEmote.duration);
+            escape.AddCondition(AnimatorConditionMode.If, 0f, CancelEmoteParameterName);
+            ArrayUtility.Add(ref transitions, escape);
+            state.transitions = transitions;
+        }
     }
 
     // Returns the states that used to reach it.

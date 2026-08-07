@@ -205,5 +205,116 @@ public class VRC3CVRActionFoldTests
 
         Assert.AreEqual(hub, root.GetStateMachineTransitions(actionMachine).Single().destinationState);
     }
+
+    // ---- driven: Animator.Update advances state, never pose, so state checks need no PlayableGraph ----
+
+    static Animator DriveAnimator(GameObject avatar)
+    {
+        var animator = avatar.GetComponent<Animator>();
+        // the controller was assigned to a component that already existed, and outside play mode
+        // nothing rebinds it on its own -- until it does, the animator reports no layers at all
+        animator.Rebind();
+        return animator;
+    }
+
+    static int LocomotionLayerIndex(Animator animator) =>
+        Enumerable.Range(0, animator.layerCount).Single(index => animator.GetLayerName(index) == "Locomotion/Emotes");
+
+    const int DrivenFrameLimit = 240;
+
+    static int FramesUntil(Animator animator, int layer, string stateName, int limit = DrivenFrameLimit)
+    {
+        var frames = 0;
+        while (frames < limit &&
+               animator.GetCurrentAnimatorStateInfo(layer).shortNameHash != Animator.StringToHash(stateName))
+        {
+            animator.Update(1f / 60f);
+            frames++;
+        }
+        return frames;
+    }
+
+    static int FramesUntilNot(Animator animator, int layer, string stateName, int limit = DrivenFrameLimit)
+    {
+        var frames = 0;
+        while (frames < limit &&
+               animator.GetCurrentAnimatorStateInfo(layer).shortNameHash == Animator.StringToHash(stateName))
+        {
+            animator.Update(1f / 60f);
+            frames++;
+        }
+        return frames;
+    }
+
+    [Test]
+    public void Convert_WithEmoteSet_LeavesTheHubForTheFoldedActionMachine()
+    {
+        var controller = Convert(convertActionLayer: true);
+        var hub = LocomotionMachineOf(controller).defaultState;
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+
+        animator.SetFloat("Emote", 2f);
+        Assert.Less(FramesUntilNot(animator, layer, hub.name), 30,
+            "Emote never carried the avatar out of the hub and into the folded Action machine");
+    }
+
+    [Test]
+    public void Convert_WithEmoteCleared_ReturnsToTheHubThroughBlendOut()
+    {
+        var controller = Convert(convertActionLayer: true);
+        var root = LocomotionMachineOf(controller);
+        var hub = root.defaultState;
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+
+        animator.SetFloat("Emote", 2f);
+        Assert.Less(FramesUntil(animator, layer, EmoteStateName), DrivenFrameLimit,
+            "fixture: Emote never settled the avatar into the emote itself");
+        animator.SetFloat("Emote", 0f);
+        Assert.Less(FramesUntil(animator, layer, hub.name), DrivenFrameLimit,
+            "clearing Emote never carried the avatar back to the hub through BlendOut");
+    }
+
+    [Test]
+    public void Convert_WithCancelEmoteTriggered_ReturnsToTheHub()
+    {
+        var controller = Convert(convertActionLayer: true);
+        var root = LocomotionMachineOf(controller);
+        var hub = root.defaultState;
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+
+        animator.SetFloat("Emote", 2f);
+        Assert.Less(FramesUntil(animator, layer, EmoteStateName), DrivenFrameLimit,
+            "fixture: Emote never settled the avatar into the emote itself");
+
+        animator.SetFloat("Emote", 0f);
+        animator.SetTrigger("CancelEmote");
+        Assert.Less(FramesUntil(animator, layer, hub.name), 90,
+            "CancelEmote never returned the avatar to the hub");
+    }
+
+    [Test]
+    public void Convert_WithCrouchingActiveAndEmoteCancelled_RedispatchesToCrouchingAfterTheHub()
+    {
+        Convert(convertActionLayer: true, authoredBase: false);
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+
+        animator.SetFloat("Upright", 0.49f);
+        animator.SetBool("Crouching", true);
+        Assert.Less(FramesUntil(animator, layer, "Crouching Locomotion"), DrivenFrameLimit,
+            "fixture: Crouching never routed the avatar to its own locomotion stance");
+
+        animator.SetFloat("Emote", 2f);
+        Assert.Less(FramesUntil(animator, layer, EmoteStateName), DrivenFrameLimit,
+            "fixture: Emote never settled the avatar into the emote itself");
+
+        animator.SetFloat("Emote", 0f);
+        animator.SetTrigger("CancelEmote");
+        Assert.Less(FramesUntil(animator, layer, "Crouching Locomotion"), 90,
+            "cancelling the emote did not re-dispatch the hub back to Crouching");
+    }
 }
 #endif
