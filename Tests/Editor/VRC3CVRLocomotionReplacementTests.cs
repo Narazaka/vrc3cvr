@@ -468,7 +468,7 @@ public class VRC3CVRLocomotionReplacementTests
 
     static VRC3CVRCore CoreOnReplacementLocomotionLayer(VRC3CVRCore core)
     {
-        typeof(VRC3CVRCore).GetField("processingReplacementLocomotionLayer", Flags).SetValue(core, true);
+        typeof(VRC3CVRCore).GetField("processingIntegratedLocomotionLayer", Flags).SetValue(core, true);
         return core;
     }
 

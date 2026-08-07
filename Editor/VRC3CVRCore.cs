@@ -1387,6 +1387,21 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 continue;
             }
 
+            if (baseAnimatorID == VRCBaseAnimatorID.ACTION)
+            {
+                if (vrcActionFoldsIntoCckLocomotion)
+                {
+                    FoldActionMachine(
+                        chilloutAnimatorController.layers.FirstOrDefault(layer => layer.name == CckLocomotionLayerName),
+                        vrcAnimatorControllers[i]);
+                }
+                else
+                {
+                    Debug.LogWarning("Not converting the Action animator: every clip in it is one of VRChat's proxy_* placeholders, which the client swaps for its own animations at runtime. ChilloutVR's own emote machine is kept instead.");
+                }
+                continue;
+            }
+
             MergeVrcAnimatorIntoChilloutAnimator(vrcAnimatorControllers[i], baseAnimatorID);
         }
 
@@ -2297,7 +2312,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 // would fire where the platform expects none -- VRChat's stock landing states would
                 // seize the legs and hips from full-body trackers for an instant on every landing.
                 else if (behaviour is VRCAnimatorTrackingControl && convertVRCAnimatorTrackingControl
-                    && (convertLocomotionTrackingControl || !processingReplacementLocomotionLayer))
+                    && (convertLocomotionTrackingControl || !processingIntegratedLocomotionLayer))
                 {
                     var vrcTrackingControl = behaviour as VRCAnimatorTrackingControl;
                     if (vrcTrackingControl.trackingHead != VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.NoChange ||
@@ -2676,9 +2691,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // Set while the CVR locomotion layer is dropped in favour of the avatar's own Base layer.
     bool vrcBaseReplacesCckLocomotion;
 
-    // Set while ProcessStateMachine walks the Base layer that takes the CVR locomotion layer's
-    // place.
-    bool processingReplacementLocomotionLayer;
+    // Set while the VRC Action playable is folded into the integrated locomotion layer instead of
+    // being merged as layers of its own (FoldActionMachine).
+    bool vrcActionFoldsIntoCckLocomotion;
+
+    // Set while ProcessStateMachine walks a machine that ends up in the layer owning ChilloutVR's
+    // locomotion: the Base layer that takes it over, or a machine folded into it.
+    bool processingIntegratedLocomotionLayer;
 
     // Every salvaged mode is wired to the layer's default state, so a first layer without one
     // cannot take the CVR layer's place. Decided before that layer is dropped, or the avatar would be left
@@ -2719,6 +2738,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 {
                     salvagedMovementModeStates[state.name] = state;
                 }
+            }
+            if (vrcActionFoldsIntoCckLocomotion)
+            {
+                continue;
             }
             foreach (var childMachine in layer.stateMachine.stateMachines)
             {
@@ -2814,6 +2837,128 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         machine.anyStateTransitions = PutFirst(machine.anyStateTransitions, rewiredFromAnyState);
         hub.transitions = PutFirst(hub.transitions, rewiredFromHub);
+    }
+
+    const string FoldedActionMachineName = "Action";
+    const string AfkParameterName = "AFK";
+
+    // VRChat runs Action on a playable of its own and fades that playable's weight in and out around
+    // it; ChilloutVR has a single Override series, so the weight has to become structure. The machine
+    // moves in as a sub-state-machine of the layer that owns the body, the fade-in becomes a
+    // conditional transition from that layer's hub, and the machine's own Exit node -- which meant
+    // "restart" while it was a layer root and means "leave" as a child -- is caught by the parent's
+    // unconditional transition back to the hub. The states that raised and dropped the playable
+    // weight are left with nothing to say and go out with the rest of the VRC behaviours.
+    // ChilloutVR's own Emotes machine goes too: it answers the same Emote 1-8 the folded machine
+    // does, and two machines driving the body off one value would fight over it. The AFK entry is
+    // only wired when the Action animator declares AFK, since stock answers it and a machine that
+    // never mentions it has no AFK branch to reach.
+    void FoldActionMachine(AnimatorControllerLayer integratedLayer, AnimatorController actionController)
+    {
+        var machine = integratedLayer != null ? integratedLayer.stateMachine : null;
+        var hub = machine != null ? machine.defaultState : null;
+        if (hub == null)
+        {
+            Debug.LogWarning("Not converting the Action animator: the converted locomotion layer has no default state to dispatch emotes from.");
+            return;
+        }
+
+        RemoveCckEmotesMachine(machine);
+
+        // read before the clone, whose VRC behaviours the processing below throws away
+        var blendDuration = ActionPrepareBlendDuration(actionController);
+
+        var clonedActionController = new CopyAnimatorController(actionController).CopyController();
+        var clonedLayers = clonedActionController.layers;
+        if (clonedLayers.Length > 1)
+        {
+            Debug.LogWarning($"Not converting {clonedLayers.Length - 1} layer(s) of the Action animator past the first: VRChat kept them off the avatar by holding the Action playable's weight at zero, and the folded machine has no weight of its own to hold them back with.");
+        }
+
+        var actionMachine = clonedLayers[0].stateMachine;
+        actionMachine.name = FoldedActionMachineName;
+
+        // registered before the processing below so this machine's conditions are adapted against
+        // the types the merged controller already holds, and again after, since a converted Random
+        // driver declares parameters of its own (see MergeVrcAnimatorIntoChilloutAnimator)
+        new CopyAnimatorController(clonedActionController).CopyParametersTo(chilloutAnimatorController);
+        var parameters = clonedActionController.parameters;
+        processingIntegratedLocomotionLayer = true;
+        ProcessStateMachine(actionMachine, integratedLayer.name, ref parameters);
+        processingIntegratedLocomotionLayer = false;
+        clonedActionController.parameters = parameters;
+        new CopyAnimatorController(clonedActionController).CopyParametersTo(chilloutAnimatorController);
+
+        var childMachines = machine.stateMachines;
+        ArrayUtility.Add(ref childMachines, new ChildAnimatorStateMachine
+        {
+            stateMachine = actionMachine,
+            position = new Vector3(900f, 0f, 0f),
+        });
+        machine.stateMachines = childMachines;
+
+        // after the processing above, as MergeVrcAnimatorIntoChilloutAnimator rewires and for the
+        // reason stated there
+        var rewiredFromHub = new List<AnimatorStateTransition>();
+        var onEmote = Timed(hub.AddTransition(actionMachine), blendDuration);
+        onEmote.AddCondition(AnimatorConditionMode.Greater, 0f, "Emote");
+        rewiredFromHub.Add(onEmote);
+
+        if (chilloutAnimatorController.parameters.Any(parameter => parameter.name == AfkParameterName))
+        {
+            var onAfk = Timed(hub.AddTransition(actionMachine), blendDuration);
+            onAfk.AddCondition(AnimatorConditionMode.If, 0f, AfkParameterName);
+            rewiredFromHub.Add(onAfk);
+        }
+
+        hub.transitions = PutFirst(hub.transitions, rewiredFromHub);
+        machine.AddStateMachineTransition(actionMachine, hub);
+    }
+
+    void RemoveCckEmotesMachine(AnimatorStateMachine machine)
+    {
+        var emotes = machine.stateMachines
+            .Select(child => child.stateMachine)
+            .FirstOrDefault(child => child != null && child.name == CckEmotesMachineName);
+        if (emotes == null)
+        {
+            return;
+        }
+        foreach (var child in machine.states)
+        {
+            child.state.transitions = child.state.transitions
+                .Where(transition => transition.destinationStateMachine != emotes)
+                .ToArray();
+        }
+        machine.RemoveStateMachine(emotes);
+    }
+
+    const float DefaultActionBlendDuration = 0.25f;
+
+    // The entry blend the Action playable's own fade-in was worth.
+    static float ActionPrepareBlendDuration(AnimatorController actionController)
+    {
+        var machine = actionController.layers.Length > 0 ? actionController.layers[0].stateMachine : null;
+        var start = machine != null ? machine.defaultState : null;
+        if (start == null)
+        {
+            return DefaultActionBlendDuration;
+        }
+        foreach (var transition in start.transitions)
+        {
+            if (transition.destinationState == null)
+            {
+                continue;
+            }
+            foreach (var behaviour in transition.destinationState.behaviours)
+            {
+                if (behaviour is VRCPlayableLayerControl playableWeight && playableWeight.goalWeight == 1f)
+                {
+                    return playableWeight.blendDuration;
+                }
+            }
+        }
+        return DefaultActionBlendDuration;
     }
 
     static AnimatorStateTransition Timed(AnimatorStateTransition transition, float duration)
@@ -3130,9 +3275,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
                 var parameters = newAnimatorController.parameters;
                 // the replacement takes the animator's first layer, decided below after processing
-                processingReplacementLocomotionLayer = thisAnimatorReplacesCckLocomotion && i == 0;
+                processingIntegratedLocomotionLayer = thisAnimatorReplacesCckLocomotion && i == 0;
                 ProcessStateMachine(layer.stateMachine, layer.name, ref parameters);
-                processingReplacementLocomotionLayer = false;
+                processingIntegratedLocomotionLayer = false;
                 newAnimatorController.parameters = parameters;
 
                 layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(animatorID, i, layer.avatarMask);
@@ -3252,6 +3397,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         vrcBaseReplacesCckLocomotion = convertLocomotionLayer
             && HasAuthoredMotion(baseAnimatorController)
             && HasLocomotionHub(baseAnimatorController);
+
+        var actionAnimatorController = vrcAnimatorControllers.Length > (int)VRCBaseAnimatorID.ACTION
+            ? vrcAnimatorControllers[(int)VRCBaseAnimatorID.ACTION]
+            : null;
+        vrcActionFoldsIntoCckLocomotion = convertActionLayer && HasAuthoredMotion(actionAnimatorController);
 
         if (vrcBaseReplacesCckLocomotion)
         {
