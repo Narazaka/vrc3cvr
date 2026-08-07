@@ -59,10 +59,11 @@ namespace VRC3CVRVerification
         readonly List<string> _report = new List<string>();
         float _gestureOverride = float.NaN;
 
-        // The input manager rewrites movementVector every frame, so the injected walk has to be
-        // applied after it runs; a postfix on its update is the only ordering that holds.
+        // The input manager rewrites movementVector and jump every frame, so injected input has to
+        // be applied after it runs; a postfix on its update is the only ordering that holds.
         internal static Vector3 MovementOverride = Vector3.zero;
         internal static bool InjectMovement;
+        internal static bool InjectJump;
 
         public override void OnInitializeMelon()
         {
@@ -71,20 +72,24 @@ namespace VRC3CVRVerification
             if (updateInput != null)
             {
                 HarmonyInstance.Patch(updateInput, postfix: new HarmonyMethod(typeof(VerificationMod).GetMethod(
-                    nameof(ForceMovement), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)));
-                MelonLogger.Msg("patched CVRInputManager.UpdateInput for movement injection");
+                    nameof(ForceInput), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)));
+                MelonLogger.Msg("patched CVRInputManager.UpdateInput for input injection");
             }
             else
             {
-                MelonLogger.Warning("CVRInputManager.UpdateInput not found; movement injection is unavailable");
+                MelonLogger.Warning("CVRInputManager.UpdateInput not found; input injection is unavailable");
             }
         }
 
-        static void ForceMovement(CVRInputManager __instance)
+        static void ForceInput(CVRInputManager __instance)
         {
             if (InjectMovement)
             {
                 __instance.movementVector = MovementOverride;
+            }
+            if (InjectJump)
+            {
+                __instance.jump = true;
             }
         }
 
@@ -282,7 +287,7 @@ namespace VRC3CVRVerification
             {
                 var isVr = ABI_RC.Core.Savior.MetaPort.Instance != null && ABI_RC.Core.Savior.MetaPort.Instance.isUsingVr;
                 CheckParam(animator, "VRMode", isVr ? 1f : 0f, 0.01f, "S2 VRMode matches the running device");
-                CheckParam(animator, "Upright", 1f, 0.2f, "S3 Upright is ~1 while standing");
+                CheckParam(animator, UprightOf(animator), 1f, 0.2f, "S3 Upright is ~1 while standing");
             });
 
             // ---- G1/G2/G3: gesture weight semantics (inject CVR gesture values) ----
@@ -654,7 +659,7 @@ namespace VRC3CVRVerification
             var characterController = BetterBetterCharacterController.Instance;
             Run("S3 crouch start", () =>
             {
-                uprightStanding = ReadParam(animator, "Upright");
+                uprightStanding = ReadParam(animator, UprightOf(animator));
                 if (characterController != null)
                 {
                     characterController.crouching = true;
@@ -668,7 +673,7 @@ namespace VRC3CVRVerification
                     Note("S3 crouch injection skipped (no character controller)");
                     return;
                 }
-                var uprightCrouching = ReadParam(animator, "Upright");
+                var uprightCrouching = ReadParam(animator, UprightOf(animator));
                 Check(uprightCrouching < uprightStanding - 0.05f,
                     "S3 Upright drops while crouching (standing " + uprightStanding.ToString("0.00") + " -> crouching " + uprightCrouching.ToString("0.00") + ")");
                 characterController.crouching = false;
@@ -676,12 +681,12 @@ namespace VRC3CVRVerification
             yield return new WaitForSeconds(1.5f);
 
             // ---- M2: what Upright actually READS for each ChilloutVR stance (issue #28) ----
-            // S3 only proves Upright moves. The integration feeds VRChat's Upright from
-            // ChilloutVR's AvatarUpright stream, and VRChat's stock locomotion switches stance at
-            // specific values — 0.68/0.70 between standing and crouching, 0.41/0.43 between
-            // crouching and prone — so a ChilloutVR crouch has to LAND in VRChat's crouch band or
-            // the converted state machine picks the wrong stance. These are the numbers that decide
-            // whether the stream can be used directly or has to be remapped.
+            // S3 only proves Upright moves. VRChat's stock locomotion switches stance at specific
+            // values — 0.68/0.70 between standing and crouching, 0.41/0.43 between crouching and
+            // prone — so whatever supplies Upright has to LAND in the band for the stance the
+            // client is actually in, or the converted state machine picks the wrong one. A
+            // conversion that replaced the locomotion layer derives those values itself; one that
+            // kept CVR's takes them from the AvatarUpright stream. This measures whichever is in play.
             Step("  M2 upright values");
             if (characterController == null)
             {
@@ -693,12 +698,12 @@ namespace VRC3CVRVerification
                 var uprightCrouch = float.NaN;
                 var uprightProne = float.NaN;
                 var proneInjected = false;
-                Run("M2 standing", () => uprightStand = ReadParam(animator, "Upright"));
+                Run("M2 standing", () => uprightStand = ReadParam(animator, UprightOf(animator)));
                 Run("M2 crouch on", () => characterController.crouching = true);
                 yield return new WaitForSeconds(1.5f);
                 Run("M2 crouch read", () =>
                 {
-                    uprightCrouch = ReadParam(animator, "Upright");
+                    uprightCrouch = ReadParam(animator, UprightOf(animator));
                     characterController.crouching = false;
                 });
                 yield return new WaitForSeconds(1.5f);
@@ -710,7 +715,7 @@ namespace VRC3CVRVerification
                     {
                         return;
                     }
-                    uprightProne = ReadParam(animator, "Upright");
+                    uprightProne = ReadParam(animator, UprightOf(animator));
                     TrySetBool(characterController, "prone", false);
                 });
                 yield return new WaitForSeconds(1.5f);
@@ -841,6 +846,86 @@ namespace VRC3CVRVerification
             yield return new WaitForSeconds(0.5f);
             Run("toggle on check", () => CheckObject(avatar, "Panel/Gesture", target =>
                 Check(target.gameObject.activeSelf, "Show Gesture ON shows the gesture group")));
+
+            // ---- L1/L2/L3: the avatar's own Base locomotion, in place of CVR's own layer ----
+            // Which clip is actually playing is the only thing that says the replacement survived
+            // into the running game.
+            Step("  L1..L3 replaced locomotion");
+            var locomotionLayer = LayerIndex(animator, "Locomotion/Emotes");
+            if (locomotionLayer < 0)
+            {
+                Check(false, "L no \"Locomotion/Emotes\" layer on the converted animator (layers: " +
+                    string.Join(", ", Enumerable.Range(0, animator.layerCount).Select(animator.GetLayerName).ToArray()) +
+                    ") — was the avatar converted with the locomotion layer enabled?");
+            }
+            else
+            {
+                Run("L1", () =>
+                {
+                    var idleClip = DominantClip(animator, locomotionLayer, out var idleWeight);
+                    Check(idleClip == "Base_CustomIdle",
+                        "L1 standing still plays the avatar's own idle clip (\"" + idleClip +
+                        "\" at weight " + idleWeight.ToString("0.00") + ")");
+                });
+
+                var walkClip = "(not sampled)";
+                var walkWeight = 0f;
+                InjectMovement = true;
+                // out and back, so the player ends up roughly where it started
+                for (var i = 0; i < 120; i++)
+                {
+                    MovementOverride = new Vector3(0f, 0f, i < 60 ? 1f : -1f);
+                    yield return null;
+                    var sample = i;
+                    Run("L2 sample", () =>
+                    {
+                        // past the acceleration ramp, where the idle child still holds the blend
+                        if (sample < 30 || sample >= 60)
+                        {
+                            return;
+                        }
+                        var clip = DominantClip(animator, locomotionLayer, out var weight);
+                        if (weight >= walkWeight)
+                        {
+                            walkWeight = weight;
+                            walkClip = clip;
+                        }
+                    });
+                }
+                InjectMovement = false;
+                MovementOverride = Vector3.zero;
+                Run("L2", () => Check(walkClip == "LocWalkingForward",
+                    "L2 walking forward plays ChilloutVR's own walk clip, so the placeholder was substituted and the " +
+                    "velocity conversion drives the blend tree (\"" + walkClip + "\" at weight " + walkWeight.ToString("0.00") + ")"));
+                yield return new WaitForSeconds(1f);
+
+                var flightWasAllowed = TryGetBool(characterController, "FlightAllowedInWorld");
+                var flightInjected = false;
+                Run("L3 flight on", () => flightInjected = TryChangeFlight(characterController, true));
+                yield return new WaitForSeconds(1.5f);
+                if (!flightInjected)
+                {
+                    Run("L3", () => Note("L3 not measured: no usable flight control on the character controller"));
+                }
+                else
+                {
+                    Run("L3 flying", () => Check(
+                        animator.GetCurrentAnimatorStateInfo(locomotionLayer).shortNameHash == Animator.StringToHash("LocFlying"),
+                        "L3 flying enters the LocFlying state salvaged out of the replaced layer"));
+                    Run("L3 flight off", () => TryChangeFlight(characterController, false));
+                    yield return new WaitForSeconds(1.5f);
+                    Run("L3 landed", () => Check(
+                        animator.GetCurrentAnimatorStateInfo(locomotionLayer).shortNameHash == Animator.StringToHash("Locomotion"),
+                        "L3 leaving flight returns to the avatar's own locomotion state"));
+                }
+                if (flightWasAllowed.HasValue)
+                {
+                    Run("L3 restore", () => TrySetBool(characterController, "FlightAllowedInWorld", flightWasAllowed.Value));
+                }
+            }
+
+            yield return StanceHeights(avatar, animator);
+            yield return LandingProfile(avatar, animator);
 
             Flush();
             _running = false;
@@ -1031,8 +1116,281 @@ namespace VRC3CVRVerification
                       ") — RigidBodyLocalVelocity* cannot drive a converted locomotion layer");
             });
 
+            yield return StanceHeights(avatar, animator);
+            yield return LandingProfile(avatar, animator);
+
             Flush();
             _running = false;
+        }
+
+        // H: how far the body actually drops when crouching. Driving the same controllers in the
+        // editor lowers the hips by 0.43m (crouch) and 0.57m (prone), so measuring the bone here
+        // says whether the client keeps that or discards it. Runs on the converted avatars and on
+        // the native probe alike, which is what makes the three readings comparable.
+        IEnumerator StanceHeights(Transform avatar, Animator animator)
+        {
+            var characterController = BetterBetterCharacterController.Instance;
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            var head = animator.GetBoneTransform(HumanBodyBones.Head);
+            if (hips == null)
+            {
+                Run("H", () => Note("H not measured: the avatar has no hips bone"));
+                yield break;
+            }
+
+            var standHips = float.NaN;
+            void Read(string label)
+            {
+                var hipsY = hips.position.y;
+                Note("H " + label +
+                     ": hips=" + hipsY.ToString("F4") +
+                     " root=" + avatar.position.y.ToString("F4") +
+                     " head=" + (head != null ? head.position.y.ToString("F4") : "n/a") +
+                     " Upright=" + ReadParam(animator, UprightOf(animator)).ToString("F3") +
+                     " state=" + StateNameOf(animator, 0) +
+                     (float.IsNaN(standHips) ? "" : " dHips=" + (hipsY - standHips).ToString("F4")));
+                if (float.IsNaN(standHips)) standHips = hipsY;
+            }
+
+            Step("  H stance heights");
+            yield return new WaitForSeconds(1.5f);
+            Run("H stand", () => Read("stand "));
+
+            var crouched = false;
+            Run("H crouch on", () =>
+            {
+                if (characterController == null) return;
+                characterController.crouching = true;
+                crouched = true;
+            });
+            yield return new WaitForSeconds(1.5f);
+            Run("H crouch", () =>
+            {
+                if (!crouched)
+                {
+                    Note("H crouch not measured: no character controller");
+                    return;
+                }
+                Read("crouch");
+                characterController.crouching = false;
+            });
+            yield return new WaitForSeconds(1.5f);
+
+            var proned = false;
+            Run("H prone on", () => proned = TrySetBool(characterController, "prone", true));
+            yield return new WaitForSeconds(1.5f);
+            Run("H prone", () =>
+            {
+                if (!proned)
+                {
+                    Note("H prone not measured: no writable 'prone' on the controller");
+                    return;
+                }
+                Read("prone ");
+                TrySetBool(characterController, "prone", false);
+            });
+            yield return new WaitForSeconds(1.5f);
+
+            Run("H body weights", () => Note("H " + DescribeBodySystemWeights()));
+        }
+
+        // J: the path the body takes through a landing. Pure measurement — there is no threshold to
+        // judge against yet, only a native reading to compare a converted one with, which is why the
+        // probe runs it too. Sampled per frame: the interesting part is the first few frames after
+        // touchdown, which a coarser series would average away.
+        IEnumerator LandingProfile(Transform avatar, Animator animator)
+        {
+            var characterController = BetterBetterCharacterController.Instance;
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            if (hips == null || characterController == null)
+            {
+                Run("J", () => Note("J not measured: " +
+                    (hips == null ? "the avatar has no hips bone" : "no character controller")));
+                yield break;
+            }
+            // the client's own ground state, if the animator carries it; a converted avatar that
+            // dropped the parameter would otherwise report a landing that never comes
+            var hasGroundedParam = HasParameter(animator, "Grounded");
+            bool Grounded() => hasGroundedParam ? animator.GetBool("Grounded") : characterController.IsGrounded();
+
+            Step("  J landing profile (3 jumps)");
+            Note("J series sample format t:hipsY:rootY:state:normalizedTime:grounded, samples separated by ';'" +
+                 (hasGroundedParam ? "" : " (ground state read off the character controller: no \"Grounded\" parameter)"));
+
+            for (var attempt = 1; attempt <= 3; attempt++)
+            {
+                Run("J" + attempt + " stand", () =>
+                {
+                    characterController.crouching = false;
+                    TrySetBool(characterController, "prone", false);
+                });
+                var settling = 0f;
+                while (settling < 3f && !Grounded())
+                {
+                    settling += Time.deltaTime;
+                    yield return null;
+                }
+                yield return new WaitForSeconds(1f);
+
+                var times = new List<float>();
+                var hipsHeights = new List<float>();
+                var series = new List<string>();
+                var elapsed = 0f;
+                var leftGround = false;
+                var landedAt = float.NaN;
+                var frames = 0;
+
+                InjectJump = true;
+                // released after a few frames: held down, the button is a second press the client
+                // reads as the double-jump that turns into flight
+                while (elapsed < 6f)
+                {
+                    yield return null;
+                    elapsed += Time.deltaTime;
+                    if (++frames >= 3)
+                    {
+                        InjectJump = false;
+                    }
+                    var now = elapsed;
+                    Run("J" + attempt + " sample", () =>
+                    {
+                        var grounded = Grounded();
+                        leftGround |= !grounded;
+                        if (leftGround && grounded && float.IsNaN(landedAt))
+                        {
+                            landedAt = now;
+                        }
+                        var hipsY = hips.position.y;
+                        times.Add(now);
+                        hipsHeights.Add(hipsY);
+                        var info = animator.GetCurrentAnimatorStateInfo(0);
+                        var state = StateName(info.shortNameHash);
+                        if (animator.IsInTransition(0))
+                        {
+                            state += ">" + StateName(animator.GetNextAnimatorStateInfo(0).shortNameHash);
+                        }
+                        series.Add(now.ToString("0.000") + ":" + hipsY.ToString("F4") + ":" +
+                            avatar.position.y.ToString("F4") + ":" + state + ":" +
+                            info.normalizedTime.ToString("0.000") + ":" + (grounded ? "1" : "0"));
+                    });
+                    if (!float.IsNaN(landedAt) && elapsed >= landedAt + 2f)
+                    {
+                        break;
+                    }
+                }
+                InjectJump = false;
+
+                Run("J" + attempt, () =>
+                {
+                    if (float.IsNaN(landedAt))
+                    {
+                        Note("J " + attempt + " no landing: the player " +
+                             (leftGround ? "left the ground but never came back within 6s" : "never left the ground"));
+                        return;
+                    }
+                    // the resting height AFTER the landing, not the airborne one: the sink is
+                    // measured against where the body ends up, which is what an eye compares against
+                    var steady = hipsHeights[hipsHeights.Count - 1];
+                    var lowest = float.MaxValue;
+                    var fastestDown = 0f;
+                    var fastestUp = 0f;
+                    var holdingFrom = float.NaN;
+                    var settled = float.NaN;
+                    for (var i = 0; i < times.Count; i++)
+                    {
+                        if (times[i] < landedAt)
+                        {
+                            continue;
+                        }
+                        lowest = Mathf.Min(lowest, hipsHeights[i]);
+                        if (i > 0 && times[i] > times[i - 1])
+                        {
+                            var speed = (hipsHeights[i] - hipsHeights[i - 1]) / (times[i] - times[i - 1]);
+                            fastestDown = Mathf.Min(fastestDown, speed);
+                            fastestUp = Mathf.Max(fastestUp, speed);
+                        }
+                        if (Mathf.Abs(hipsHeights[i] - steady) < 0.01f)
+                        {
+                            if (float.IsNaN(holdingFrom))
+                            {
+                                holdingFrom = times[i];
+                            }
+                            else if (float.IsNaN(settled) && times[i] - holdingFrom >= 0.2f)
+                            {
+                                settled = holdingFrom - landedAt;
+                            }
+                        }
+                        else
+                        {
+                            holdingFrom = float.NaN;
+                        }
+                    }
+                    Note("J " + attempt + " summary land=" + landedAt.ToString("0.000") +
+                         "s hipsMin=" + lowest.ToString("F4") +
+                         " steady=" + steady.ToString("F4") +
+                         " sink=" + (steady - lowest).ToString("F4") +
+                         " vDownMax=" + fastestDown.ToString("F3") +
+                         " vUpMax=" + fastestUp.ToString("F3") +
+                         " settle=" + (float.IsNaN(settled) ? "n/a" : settled.ToString("0.000") + "s") +
+                         " samples=" + times.Count);
+
+                    // full rate through the half second after touchdown, where the spike under
+                    // investigation lives; thinned elsewhere so the line stays one line
+                    var emitted = new List<string>();
+                    var lastEmitted = float.NegativeInfinity;
+                    for (var i = 0; i < times.Count; i++)
+                    {
+                        if ((times[i] < landedAt || times[i] > landedAt + 0.5f) && times[i] - lastEmitted < 0.1f)
+                        {
+                            continue;
+                        }
+                        lastEmitted = times[i];
+                        emitted.Add(series[i]);
+                    }
+                    Note("J " + attempt + " series " + string.Join(";", emitted));
+                });
+            }
+        }
+
+        static string StateNameOf(Animator animator, int layer)
+        {
+            return StateName(animator.GetCurrentAnimatorStateInfo(layer).shortNameHash);
+        }
+
+        // Only the hash survives into the running game, so a name is recovered by hashing the ones
+        // worth recognising: VRChat's stock Base layer states and ChilloutVR's own locomotion layer.
+        static string StateName(int hash)
+        {
+            foreach (var name in new[]
+            {
+                "Standing", "Standing_underwear", "Crouching", "Prone", "Locomotion", "LocFlying",
+                "Swimming", "Idle", "Crouch", "Stand", "RestoreTracking",
+                "JumpStart", "JumpAir", "JumpLand", "Sitting",
+                "SmallHop", "Fall", "QuickLand", "HardLand", "Short Fall", "Long Fall", "RestoreToHop",
+            })
+            {
+                if (Animator.StringToHash(name) == hash) return name;
+            }
+            return "#" + hash;
+        }
+
+        // The IK system's own per-part weights, if this client version exposes them as statics.
+        static string DescribeBodySystemWeights()
+        {
+            var type = System.Type.GetType("ABI_RC.Systems.IK.BodySystem, Assembly-CSharp");
+            if (type == null)
+            {
+                return "BodySystem not found; per-part weights not read";
+            }
+            var values = type.GetFields(System.Reflection.BindingFlags.Public
+                    | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                .Where(f => f.Name.IndexOf("weight", StringComparison.OrdinalIgnoreCase) >= 0
+                            && (f.FieldType == typeof(float) || f.FieldType == typeof(bool)))
+                .Select(f => f.Name + "=" + f.GetValue(null))
+                .ToArray();
+            return values.Length == 0
+                ? "BodySystem exposes no static weight fields"
+                : "BodySystem " + string.Join(", ", values);
         }
 
         IEnumerator Gesture(Transform avatar, Animator animator, float value, string label, bool weightBarTall, bool weightGate, bool fistGate, float derivedWeight)
@@ -1078,6 +1436,14 @@ namespace VRC3CVRVerification
             return animator.parameters.Any(parameter => parameter.name == name);
         }
 
+        // A conversion that replaced the locomotion layer derives Upright inside the animator, which
+        // makes it local (#-prefixed); one that kept CVR's still has the client feed the synced one
+        // under its plain name.
+        static string UprightOf(Animator animator)
+        {
+            return HasParameter(animator, "Upright") ? "Upright" : "#Upright";
+        }
+
         static bool HasFeedLayer(Animator animator)
         {
             for (var i = 0; i < animator.layerCount; i++)
@@ -1101,6 +1467,76 @@ namespace VRC3CVRVerification
             Check(Mathf.Abs(value - expected) < tolerance, message + " (value " + value.ToString("0.00") + ")");
         }
 
+        static int LayerIndex(Animator animator, string name)
+        {
+            for (var i = 0; i < animator.layerCount; i++)
+            {
+                if (animator.GetLayerName(i) == name)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        // The clip holding most of the layer's blend, which for a locomotion blend tree is the one
+        // the wearer is actually seen doing.
+        static string DominantClip(Animator animator, int layer, out float weight)
+        {
+            var name = "(none)";
+            weight = 0f;
+            foreach (var info in animator.GetCurrentAnimatorClipInfo(layer))
+            {
+                if (info.clip != null && info.weight > weight)
+                {
+                    weight = info.weight;
+                    name = info.clip.name;
+                }
+            }
+            return name;
+        }
+
+        // ChilloutVR refuses flight in worlds that disallow it, so the permission is granted first.
+        // Reflected for the same reason as TrySetBool below.
+        static bool TryChangeFlight(object controller, bool flying)
+        {
+            if (controller == null)
+            {
+                return false;
+            }
+            TrySetBool(controller, "FlightAllowedInWorld", true);
+            System.Reflection.MethodInfo method;
+            try
+            {
+                method = controller.GetType().GetMethod("ChangeFlight", MemberFlags);
+            }
+            catch (System.Reflection.AmbiguousMatchException)
+            {
+                // an overload added by a later client version: no way to tell which one means this
+                return false;
+            }
+            if (method == null)
+            {
+                return false;
+            }
+            var parameters = method.GetParameters();
+            if (parameters.Length == 0 || parameters.Any(parameter => parameter.ParameterType != typeof(bool)))
+            {
+                return false;
+            }
+            var arguments = new object[parameters.Length];
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                // ChangeFlight(isFlying, forceUpdate): apply it now rather than on the next input
+                arguments[i] = i == 0 ? (object)flying : true;
+            }
+            method.Invoke(controller, arguments);
+            return true;
+        }
+
+        const System.Reflection.BindingFlags MemberFlags = System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+
         // Writes a bool member whose existence is not guaranteed across client versions, so a
         // renamed or absent field degrades to "not measured" instead of failing the build.
         static bool TrySetBool(object target, string name, bool value)
@@ -1109,22 +1545,41 @@ namespace VRC3CVRVerification
             {
                 return false;
             }
-            const System.Reflection.BindingFlags Flags = System.Reflection.BindingFlags.Public
-                | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
             var type = target.GetType();
-            var field = type.GetField(name, Flags);
+            var field = type.GetField(name, MemberFlags);
             if (field != null && field.FieldType == typeof(bool))
             {
                 field.SetValue(target, value);
                 return true;
             }
-            var property = type.GetProperty(name, Flags);
+            var property = type.GetProperty(name, MemberFlags);
             if (property != null && property.PropertyType == typeof(bool) && property.CanWrite)
             {
                 property.SetValue(target, value, null);
                 return true;
             }
             return false;
+        }
+
+        // Reads back what TrySetBool would write, so an injected setting can be put back afterwards.
+        static bool? TryGetBool(object target, string name)
+        {
+            if (target == null)
+            {
+                return null;
+            }
+            var type = target.GetType();
+            var field = type.GetField(name, MemberFlags);
+            if (field != null && field.FieldType == typeof(bool))
+            {
+                return (bool)field.GetValue(target);
+            }
+            var property = type.GetProperty(name, MemberFlags);
+            if (property != null && property.PropertyType == typeof(bool) && property.CanRead)
+            {
+                return (bool)property.GetValue(target, null);
+            }
+            return null;
         }
 
         // GetFloat only works on float parameters; bools and ints silently read back as 0

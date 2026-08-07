@@ -31,6 +31,10 @@ public class VRC3CVRConvertConfig
     public bool saveAssets = true;
 
     public bool convertLocomotionLayer = false;
+    // Both only take effect when the Base layer replaces the CVR locomotion layer,
+    // which convertLocomotionLayer gates.
+    public bool playLandingAnimation = true;
+    public bool convertLocomotionTrackingControl = false;
     public bool convertAdditiveLayer = false;
     public bool convertGestureLayer = true;
     public bool convertActionLayer = false;
@@ -68,6 +72,8 @@ public class VRC3CVRConvertConfig
         saveAssets = other.saveAssets;
 
         convertLocomotionLayer = other.convertLocomotionLayer;
+        playLandingAnimation = other.playLandingAnimation;
+        convertLocomotionTrackingControl = other.convertLocomotionTrackingControl;
         convertAdditiveLayer = other.convertAdditiveLayer;
         convertGestureLayer = other.convertGestureLayer;
         convertActionLayer = other.convertActionLayer;

@@ -181,6 +181,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             MakeVelocityMagnitudeFeedLayer();
             // After AdjustParameterNames, like the feed layers above, so the names are final.
             RemapVelocityToAvatarLocal();
+            // Before the streams, twice over: they route AvatarUpright at whatever this leaves
+            // reading it, and this is what declares VRMode, without which they emit no DeviceMode
+            // entry at all -- and an unfed VRMode reads 0, silently discretising Upright in VR.
+            MakeUprightFeedLayer();
             MakeGameStateParameterStreams();
             InsertChilloutOverride();
 
@@ -862,9 +866,18 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         { "ScaleFactor", 1f },
         { "ScaleFactorInverse", 1f },
         { "EyeHeightAsPercent", 1f },
+        // zero is the prone band, so an unset Upright shows a frame of lying down on load
+        { "Upright", 1f },
     };
 
     HashSet<string> preserveParameters;
+
+    // A humanoid clip's muscle, IK-goal and root-motion curves are bound exactly like a curve that
+    // writes an animator parameter -- typeof(Animator), empty path -- and Unity hands some of them
+    // back under names it cannot resolve ("unknown_*"), which no allow-list can enumerate. Whether
+    // the animator declares a parameter of that name is the only thing that tells the two apart.
+    // Snapshotted before the declarations are renamed, since the curves still carry the old names.
+    HashSet<string> declaredParameterNames = new HashSet<string>();
 
     static HashSet<string> _muscleNames;
     static HashSet<string> muscleNames
@@ -921,6 +934,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         // Stream-fed parameters only run on the wearer's client; keeping them synced (no # prefix)
         // lets CVR's normal parameter sync carry the values to remotes (see MakeGameStateParameterStreams)
         if (feedGameStateParameters) preserveParameters.UnionWith(GameStateParameterStreams.Select(s => s.parameterName));
+        // an avatar whose locomotion replaced CVR's derives Upright rather than receiving it, so it
+        // stops being a synced input and becomes a driven local value (MakeUprightFeedLayer, same guard)
+        if (feedGameStateParameters && vrcBaseReplacesCckLocomotion) preserveParameters.Remove("Upright");
         if (!addActionMenuModAnnotations)
         {
             impulseParameters = new HashSet<string>();
@@ -934,6 +950,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     void AdjustParameterNamesOnAnimator()
     {
         var parameters = chilloutAnimatorController.parameters;
+        declaredParameterNames = parameters.Select(p => p.name).ToHashSet();
         for (var i = 0; i < parameters.Length; ++i)
         {
             var t = GetRenameParameterType(parameters[i].name);
@@ -1153,7 +1170,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var j = 0;
         foreach (var binding in bindings)
         {
-            if (binding.type == typeof(Animator))
+            if (binding.type == typeof(Animator) && declaredParameterNames.Contains(binding.propertyName))
             {
                 var t = GetRenameParameterType(binding.propertyName);
                 if (t != RenameParameterType.None)
@@ -1291,6 +1308,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     void WalkParameterNames(System.Func<string, string> renamer)
     {
         parameterRenamer = renamer;
+        declaredParameterNames = chilloutAnimatorController.parameters.Select(p => p.name).ToHashSet();
         try
         {
             foreach (var layer in chilloutAnimatorController.layers)
@@ -1353,6 +1371,21 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             }
 
             VRCBaseAnimatorID baseAnimatorID = (VRCBaseAnimatorID)i;
+
+            // A declined replacement leaves the CVR locomotion layer in place, so this one has to
+            // go (CreateEmptyChilloutAnimator explains why the two cannot coexist). Reaching here
+            // with the replacement off means the user asked for the conversion and the gate turned
+            // it down: an unassigned Base layer left a null behind and the check above already
+            // skipped it.
+            if (baseAnimatorID == VRCBaseAnimatorID.BASE && !vrcBaseReplacesCckLocomotion)
+            {
+                Debug.LogWarning("Not converting the Base animator: "
+                    + (HasAuthoredMotion(vrcAnimatorControllers[i])
+                        ? "its first layer has no default state, so the salvaged movement modes would have nothing to hang off"
+                        : "every clip in it is one of VRChat's proxy_* placeholders, which the client swaps for its own animations at runtime")
+                    + ". ChilloutVR's own locomotion layer is kept instead.");
+                continue;
+            }
 
             MergeVrcAnimatorIntoChilloutAnimator(vrcAnimatorControllers[i], baseAnimatorID);
         }
@@ -2008,13 +2041,40 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     {
         { "proxy_stand_still", "LocIdle.anim" },
         { "proxy_idle", "LocIdle.anim" },
-        { "proxy_idle_2", "LocIdle.anim" },
-        { "proxy_idle_3", "LocIdle.anim" },
+        { "proxy_idle2", "LocIdle.anim" },
+        { "proxy_idle3", "LocIdle.anim" },
         { "proxy_run_forward", "LocRunningForward.anim" },
         { "proxy_run_backward", "LocRunningBackward.anim" },
     };
 
-    Motion ReplaceProxyAnimationClip(Motion clip)
+    // Copies before replacing, for the reason given on SubstitutedMotion.
+    BlendTree ProxySubstitutedBlendTree(BlendTree tree, bool poseOnly)
+    {
+        var children = tree.children;
+        var changed = false;
+        for (var i = 0; i < children.Length; i++)
+        {
+            if (!(children[i].motion is AnimationClip))
+            {
+                continue;
+            }
+            var replacement = ReplaceProxyAnimationClip(children[i].motion, poseOnly);
+            if (replacement != children[i].motion)
+            {
+                children[i].motion = replacement;
+                changed = true;
+            }
+        }
+        if (!changed)
+        {
+            return tree;
+        }
+        var owned = CopyAnimatorController.CopyBlendTree(null, tree, false);
+        owned.children = children;
+        return owned;
+    }
+
+    Motion ReplaceProxyAnimationClip(Motion clip, bool poseOnly)
     {
         if (!clip) return clip;
 
@@ -2022,12 +2082,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         if (handClipMap.TryGetValue(clip.name, out var getClip))
         {
             var replacement = getClip();
-            return replacement ? replacement : clip;
+            return replacement ? (poseOnly ? PoseClipOf(replacement) : replacement) : clip;
         }
 
         if (proxyLocomotionClipMap.TryGetValue(clip.name, out var locomotionFile))
         {
-            return (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/{locomotionFile}", typeof(AnimationClip));
+            var locomotion = (AnimationClip)AssetDatabase.LoadAssetAtPath($"{LocomotionAnimationPath}/{locomotionFile}", typeof(AnimationClip));
+            return poseOnly && locomotion ? PoseClipOf(locomotion) : locomotion;
         }
 
         return clip;
@@ -2058,6 +2119,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             // In DerivedParameter mode weight references are kept; the parameter is fed from
             // GestureLeft (MakeGestureWeightFeedLayers) and renamed later by AdjustParameterNames
 
+            var passThrough = IsTimedPassThrough(state);
             if (state.motion is BlendTree)
             {
                 BlendTree blendTree = (BlendTree)state.motion;
@@ -2067,21 +2129,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     FoldGestureWeightOnBlendTree(blendTree);
                 }
 
-                ChildMotion[] blendTreeMotions = blendTree.children;
-
-                for (int i = 0; i < blendTreeMotions.Count(); i++)
-                {
-                    if (blendTreeMotions[i].motion is AnimationClip)
-                    {
-                        blendTreeMotions[i].motion = ReplaceProxyAnimationClip(blendTreeMotions[i].motion);
-                    }
-                }
-
-                blendTree.children = blendTreeMotions;
+                // a tree is as long as its children, so a pass-through state's children have to be
+                // reduced to poses too or the state gets the length back through them
+                state.motion = ProxySubstitutedBlendTree(blendTree, passThrough);
             }
             else if (state.motion is AnimationClip)
             {
-                state.motion = ReplaceProxyAnimationClip(state.motion);
+                state.motion = ReplaceProxyAnimationClip(state.motion, passThrough);
             }
 
             var parameters2 = parameters;
@@ -2238,7 +2292,12 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         targetWeight = vrcLocomotionControl.disableLocomotion ? 0f : 1f,
                     });
                 }
-                else if (behaviour is VRCAnimatorTrackingControl && convertVRCAnimatorTrackingControl)
+                // The layer standing in for CVR's locomotion is exempt: the layer it replaces never
+                // touches the IK weights (landing included), so tracking controls carried across
+                // would fire where the platform expects none -- VRChat's stock landing states would
+                // seize the legs and hips from full-body trackers for an instant on every landing.
+                else if (behaviour is VRCAnimatorTrackingControl && convertVRCAnimatorTrackingControl
+                    && (convertLocomotionTrackingControl || !processingReplacementLocomotionLayer))
                 {
                     var vrcTrackingControl = behaviour as VRCAnimatorTrackingControl;
                     if (vrcTrackingControl.trackingHead != VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.NoChange ||
@@ -2337,6 +2396,468 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         if (behaviour == null) return false;
         var ns = behaviour.GetType().Namespace;
         return ns != null && (ns == "VRC" || ns.StartsWith("VRC."));
+    }
+
+    // A clip VRChat ships rather than the avatar's author: the proxy_* placeholders the client
+    // swaps for its own internal animations at runtime, and anything inside the VRChat packages.
+    // The real walk lives in the client, so a converted avatar gains nothing by carrying these.
+    static bool IsVrchatPlaceholderClip(AnimationClip clip)
+    {
+        if (clip == null)
+        {
+            return true;
+        }
+        if (clip.name.StartsWith("proxy_", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        var path = AssetDatabase.GetAssetPath(clip) ?? "";
+        return path.IndexOf("com.vrchat.", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    static bool HasAuthoredMotion(AnimatorController controller)
+    {
+        if (controller == null)
+        {
+            return false;
+        }
+        foreach (var layer in controller.layers)
+        {
+            foreach (var state in AllStatesOf(layer.stateMachine))
+            {
+                if (MotionHasAuthoredClip(state.motion))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    static bool MotionHasAuthoredClip(Motion motion)
+    {
+        if (motion is AnimationClip clip)
+        {
+            return !IsVrchatPlaceholderClip(clip);
+        }
+        if (motion is BlendTree tree)
+        {
+            foreach (var child in tree.children)
+            {
+                if (MotionHasAuthoredClip(child.motion))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // VRChat's placeholders and the ChilloutVR animations that stand in the same place. The client
+    // swaps proxy_* for its own internal animations at runtime, so carrying them across would ship
+    // VRChat's preview clips as the avatar's walk. The CCK's own set is this platform's equivalent.
+    static readonly Dictionary<string, string> placeholderClipSubstitutions = new Dictionary<string, string>
+    {
+        { "proxy_stand_still", "LocIdle" },
+        { "proxy_idle", "LocIdle" },
+        { "proxy_idle2", "LocIdle" },
+        { "proxy_idle3", "LocIdle" },
+        { "proxy_stand_still2", "LocIdle" },
+        { "proxy_stand_still3", "LocIdle" },
+        { "proxy_walk_forward", "LocWalkingForward" },
+        { "proxy_walk_backward", "LocWalkingBackwards" },
+        { "proxy_strafe_right", "LocWalkingStrafeRight" },
+        { "proxy_strafe_right_45", "LocWalkingStrafeRightForwards" },
+        { "proxy_strafe_right_135", "LocWalkingStrafeRightBackwards" },
+        { "proxy_run_forward", "LocRunningForward" },
+        { "proxy_sprint_forward", "LocRunningForward" },
+        { "proxy_run_backward", "LocRunningBackward" },
+        { "proxy_run_strafe_right", "LocRunningStrafeRight" },
+        { "proxy_run_strafe_right_45", "LocRunningStrafeRightForwards" },
+        { "proxy_run_strafe_right_135", "LocRunningStrafeRightBackwards" },
+        { "proxy_crouch_still", "LocCrouchIdle" },
+        { "proxy_crouch_walk_forward", "LocCrouchForward" },
+        { "proxy_crouch_walk_right", "LocCrouchRight" },
+        { "proxy_crouch_walk_right_45", "LocCrouchForward" },
+        { "proxy_crouch_walk_right_135", "LocCrouchBackward" },
+        { "proxy_low_crawl_still", "LocProneIdle" },
+        { "proxy_low_crawl_idle", "LocProneIdle" },
+        { "proxy_low_crawl_forward", "LocProneForward" },
+        { "proxy_low_crawl_right", "LocProneRight" },
+        { "proxy_fall_short", "LocJumpAir" },
+        { "proxy_fall_long", "LocJumpAir" },
+        { "proxy_landing", "LocJumpLand" },
+        { "proxy_land_quick", "LocJumpLand" },
+        { "proxy_sit", "LocSitting" },
+        { "proxy_sit2", "LocSitting" },
+    };
+
+    const string CckLocomotionClipPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Locomotion/";
+
+    void SubstitutePlaceholderClips(AnimatorController controller)
+    {
+        foreach (var layer in controller.layers)
+        {
+            foreach (var state in AllStatesOf(layer.stateMachine))
+            {
+                if (PlayLandingClip(state))
+                {
+                    continue;
+                }
+                state.motion = SubstitutedMotion(state.motion, IsTimedPassThrough(state));
+            }
+        }
+    }
+
+    const string CckJumpLandClipName = "LocJumpLand";
+    const string CckJumpLandStateName = "JumpLand";
+
+    bool cckJumpLandExitSearched;
+    AnimatorStateTransition cckJumpLandExit;
+
+    // The one pass-through the pose treatment makes worse: LocJumpLand's first frame is the deep
+    // landing crouch, planted at a fixed root height unlike the feet-based standing states around
+    // it, so every blend through the pose drops the body and hauls it back up. ChilloutVR's own
+    // JumpLand instead plays the clip most of the way through and leaves on an exit time, which is
+    // what absorbs the crouch -- so the landing state gets the whole clip on that same timing.
+    bool PlayLandingClip(AnimatorState state)
+    {
+        if (!playLandingAnimation
+            || !IsTimedPassThrough(state)
+            || !(state.motion is AnimationClip clip)
+            || !placeholderClipSubstitutions.TryGetValue(clip.name, out var replacement)
+            || replacement != CckJumpLandClipName)
+        {
+            return false;
+        }
+        var cckExit = CckJumpLandExit();
+        var landing = SubstitutedClip(clip);
+        if (cckExit == null || landing == null)
+        {
+            return false;
+        }
+        state.motion = landing;
+        foreach (var transition in state.transitions)
+        {
+            if (!transition.hasExitTime)
+            {
+                continue;
+            }
+            transition.exitTime = cckExit.exitTime;
+            transition.duration = cckExit.duration;
+            transition.hasFixedDuration = cckExit.hasFixedDuration;
+        }
+        return true;
+    }
+
+    // Read from the CCK's shipped controller rather than hardcoded, so the timing follows whatever
+    // CCK version is installed.
+    AnimatorStateTransition CckJumpLandExit()
+    {
+        if (cckJumpLandExitSearched)
+        {
+            return cckJumpLandExit;
+        }
+        cckJumpLandExitSearched = true;
+        var cckController = AssetDatabase.LoadAssetAtPath<AnimatorController>($"{AnimatorPath}/AvatarAnimator.controller");
+        var cckLocomotionLayer = cckController == null
+            ? null
+            : cckController.layers.FirstOrDefault(layer => layer.name == CckLocomotionLayerName);
+        cckJumpLandExit = cckLocomotionLayer == null
+            ? null
+            : AllStatesOf(cckLocomotionLayer.stateMachine)
+                .Where(state => state.name == CckJumpLandStateName)
+                .SelectMany(state => state.transitions)
+                .FirstOrDefault(transition => transition.hasExitTime);
+        if (cckJumpLandExit == null)
+        {
+            Debug.LogWarning($"Could not read the {CckJumpLandStateName} exit timing from the CCK's AvatarAnimator.controller; landing pass-through states keep the pose treatment instead of playing {CckJumpLandClipName}");
+        }
+        return cckJumpLandExit;
+    }
+
+    // VRChat swaps each proxy_* for the real animation of the same name, and it is the real one's
+    // length the layer was timed against. There is no standing animation, so the stand_still family
+    // resolves to a static pose of next to no length -- which is what lets a state exist purely to be
+    // passed through on an exit time: JumpAndFall's RestoreTracking, QuickLand, a custom decision
+    // chain. proxy_landing is the one SDK proxy with real length (1.03s), precisely because
+    // HardLand's exit time of 0.6 had to be authored against it. So the placeholder lengths mirror
+    // the real ones, and a state whose placeholder has no length with an exit time riding on it wants
+    // the ChilloutVR clip's pose rather than the clip.
+    static bool IsTimedPassThrough(AnimatorState state) =>
+        state.motion != null
+        && state.motion.averageDuration == 0f
+        && state.transitions.Any(transition => transition.hasExitTime);
+
+    readonly Dictionary<AnimationClip, AnimationClip> poseClips = new Dictionary<AnimationClip, AnimationClip>();
+
+    // The clip's first frame, held for one frame rather than none: a zero-length clip is run as a one
+    // second loop, so its exit time only comes round once a second, where one frame comes round every
+    // frame -- still in reach under an entry transition, which suppresses the check while it blends.
+    AnimationClip PoseClipOf(AnimationClip source)
+    {
+        if (source == null)
+        {
+            return null;
+        }
+        if (poseClips.TryGetValue(source, out var cached))
+        {
+            return cached;
+        }
+        var bindings = AnimationUtility.GetCurveBindings(source);
+        var held = new AnimationCurve[bindings.Length];
+        for (var i = 0; i < bindings.Length; i++)
+        {
+            held[i] = AnimationCurve.Constant(0f, 1f / 60f,
+                AnimationUtility.GetEditorCurve(source, bindings[i]).Evaluate(0f));
+        }
+        var pose = new AnimationClip { name = source.name + "_Pose", frameRate = source.frameRate };
+        AnimationUtility.SetEditorCurves(pose, bindings, held);
+        // A clip's settings decide how its root curves are applied, and the CCK sets them per clip:
+        // LocJumpLand sinks the root on landing and leans on KeepOriginalPositionY to place the body
+        // anyway. Held at defaults, the pose would take that sunken RootT.y as a real displacement
+        // and bury the avatar. The timing is the only part of the source's settings that cannot come
+        // across, since the pose is one frame rather than the whole clip. Written after the curves:
+        // setting them first lets the curves overwrite stopTime.
+        var settings = AnimationUtility.GetAnimationClipSettings(source);
+        settings.loopTime = true;
+        settings.startTime = 0f;
+        settings.stopTime = 1f / 60f;
+        AnimationUtility.SetAnimationClipSettings(pose, settings);
+        poseClips[source] = pose;
+        return pose;
+    }
+
+    Motion SubstitutedMotion(Motion motion, bool poseOnly)
+    {
+        if (motion is AnimationClip clip)
+        {
+            var substituted = SubstitutedClip(clip);
+            return substituted == null ? clip : poseOnly ? PoseClipOf(substituted) : substituted;
+        }
+        if (motion is BlendTree tree)
+        {
+            var children = tree.children;
+            var changed = false;
+            for (var i = 0; i < children.Length; i++)
+            {
+                var substituted = SubstitutedMotion(children[i].motion, poseOnly);
+                if (substituted != children[i].motion)
+                {
+                    children[i].motion = substituted;
+                    changed = true;
+                }
+            }
+            if (!changed)
+            {
+                return tree;
+            }
+            // CopyAnimatorController shares rather than copies any blend tree that lives in an
+            // asset of its own, so the tree reached here can still be the avatar's -- or another
+            // controller's. The substitution goes into a copy the conversion owns.
+            var owned = CopyAnimatorController.CopyBlendTree(null, tree, false);
+            owned.children = children;
+            return owned;
+        }
+        return motion;
+    }
+
+    AnimationClip SubstitutedClip(AnimationClip clip)
+    {
+        if (clip == null || !placeholderClipSubstitutions.TryGetValue(clip.name, out var replacement))
+        {
+            return null;
+        }
+        return AssetDatabase.LoadAssetAtPath<AnimationClip>(CckLocomotionClipPath + replacement + ".anim");
+    }
+
+    const string CckLocomotionLayerName = "Locomotion/Emotes";
+
+    // Set while the CVR locomotion layer is dropped in favour of the avatar's own Base layer.
+    bool vrcBaseReplacesCckLocomotion;
+
+    // Set while ProcessStateMachine walks the Base layer that takes the CVR locomotion layer's
+    // place.
+    bool processingReplacementLocomotionLayer;
+
+    // Every salvaged mode is wired to the layer's default state, so a first layer without one
+    // cannot take the CVR layer's place. Decided before that layer is dropped, or the avatar would be left
+    // with neither locomotion.
+    static bool HasLocomotionHub(AnimatorController controller)
+    {
+        if (controller == null || controller.layers.Length == 0)
+        {
+            return false;
+        }
+        var machine = controller.layers[0].stateMachine;
+        return machine != null && machine.defaultState != null;
+    }
+
+    const string CckFlyingStateName = "LocFlying";
+    const string CckSwimmingStateName = "Swimming";
+    const string CckEmotesMachineName = "Emotes";
+
+    Dictionary<string, AnimatorState> salvagedMovementModeStates = new Dictionary<string, AnimatorState>();
+    AnimatorStateMachine salvagedEmotesMachine;
+
+    // The parts of the CVR locomotion layer nothing in a converted Base layer can answer: the two
+    // movement modes VRChat has no concept of, and the quick-menu emotes, whose Emote/CancelEmote
+    // parameters stay declared and would otherwise drive nothing.
+    void SalvageCckMovementModeStates(AnimatorControllerLayer[] cckLayers)
+    {
+        salvagedMovementModeStates = new Dictionary<string, AnimatorState>();
+        salvagedEmotesMachine = null;
+        foreach (var layer in cckLayers)
+        {
+            if (layer.name != CckLocomotionLayerName)
+            {
+                continue;
+            }
+            foreach (var state in AllStatesOf(layer.stateMachine))
+            {
+                if (state.name == CckFlyingStateName || state.name == CckSwimmingStateName)
+                {
+                    salvagedMovementModeStates[state.name] = state;
+                }
+            }
+            foreach (var childMachine in layer.stateMachine.stateMachines)
+            {
+                if (childMachine.stateMachine != null && childMachine.stateMachine.name == CckEmotesMachineName)
+                {
+                    salvagedEmotesMachine = childMachine.stateMachine;
+                }
+            }
+        }
+    }
+
+    // The CVR locomotion layer is a hub-and-spoke: its default state carries a transition to each
+    // mode and every mode leads back to it, the one exception being flight, which is reached from
+    // AnyState because it has to interrupt whatever stance is running. That wiring is reproduced
+    // here with the avatar's own default state as the hub. Emotes keep their nested machine, whose
+    // states leave through its Exit node -- which only goes anywhere because the hub-bound
+    // transition below is registered for the machine on its parent.
+    void RewireCckMovementModes(AnimatorControllerLayer locomotionLayer)
+    {
+        var machine = locomotionLayer.stateMachine;
+        var hub = machine != null ? machine.defaultState : null;
+        if (hub == null)
+        {
+            return;
+        }
+
+        var rewiredFromAnyState = new List<AnimatorStateTransition>();
+        var rewiredFromHub = new List<AnimatorStateTransition>();
+        var ownAnyStateTransitionCount = machine.anyStateTransitions.Length;
+        var states = machine.states;
+        var y = 0f;
+
+        AnimatorState Adopt(string stateName)
+        {
+            if (!salvagedMovementModeStates.TryGetValue(stateName, out var state) || state == null)
+            {
+                return null;
+            }
+            ArrayUtility.Add(ref states, new ChildAnimatorState { state = state, position = new Vector3(600f, y, 0f) });
+            y += 100f;
+            // whatever this used to lead to went out with the rest of the CVR locomotion layer
+            state.transitions = new AnimatorStateTransition[0];
+            return state;
+        }
+
+        var flying = Adopt(CckFlyingStateName);
+        var swimming = Adopt(CckSwimmingStateName);
+        machine.states = states;
+
+        if (flying != null)
+        {
+            var enter = Timed(machine.AddAnyStateTransition(flying), 0f);
+            // without this a Flying that stays true restarts the state every frame
+            enter.canTransitionToSelf = false;
+            enter.AddCondition(AnimatorConditionMode.If, 0f, "Flying");
+            rewiredFromAnyState.Add(enter);
+
+            Timed(flying.AddTransition(hub), 0.1f).AddCondition(AnimatorConditionMode.IfNot, 0f, "Flying");
+
+            if (ownAnyStateTransitionCount > 0)
+            {
+                Debug.LogWarning($"The Base animator's first layer has {ownAnyStateTransitionCount} AnyState transition(s) of its own. ChilloutVR's flight state is entered from AnyState and does not suppress them, so while flying any of them whose conditions hold -- an airborne one especially -- fires out of flight, which is re-entered on the next frame. The avatar will flicker between flying and its own airborne animation.");
+            }
+        }
+
+        if (swimming != null)
+        {
+            var enter = Timed(hub.AddTransition(swimming), 0.25f);
+            enter.AddCondition(AnimatorConditionMode.If, 0f, "Swimming");
+            rewiredFromHub.Add(enter);
+
+            Timed(swimming.AddTransition(hub), 0.25f).AddCondition(AnimatorConditionMode.IfNot, 0f, "Swimming");
+        }
+
+        if (salvagedEmotesMachine != null)
+        {
+            var childMachines = machine.stateMachines;
+            ArrayUtility.Add(ref childMachines, new ChildAnimatorStateMachine
+            {
+                stateMachine = salvagedEmotesMachine,
+                position = new Vector3(600f, y, 0f),
+            });
+            machine.stateMachines = childMachines;
+
+            var enter = Timed(hub.AddTransition(salvagedEmotesMachine), 0f);
+            enter.AddCondition(AnimatorConditionMode.Greater, 0f, "Emote");
+            rewiredFromHub.Add(enter);
+
+            // unconditional, as CVR has it: an emote that ends lands back on the hub and the hub
+            // re-dispatches on the next frame, which is what lets the stance it started from resume
+            machine.AddStateMachineTransition(salvagedEmotesMachine, hub);
+        }
+
+        machine.anyStateTransitions = PutFirst(machine.anyStateTransitions, rewiredFromAnyState);
+        hub.transitions = PutFirst(hub.transitions, rewiredFromHub);
+    }
+
+    static AnimatorStateTransition Timed(AnimatorStateTransition transition, float duration)
+    {
+        transition.hasExitTime = false;
+        transition.exitTime = 0f;
+        transition.duration = duration;
+        transition.hasFixedDuration = true;
+        return transition;
+    }
+
+    // Ahead of whatever the avatar's own layer already had: these answer game states it was never
+    // written for, and one of its own conditions holding would otherwise shadow them.
+    static AnimatorStateTransition[] PutFirst(AnimatorStateTransition[] all, List<AnimatorStateTransition> rewired) =>
+        rewired.Concat(all.Where(transition => !rewired.Contains(transition))).ToArray();
+
+    static IEnumerable<AnimatorState> AllStatesOf(AnimatorStateMachine machine)
+    {
+        if (machine == null)
+        {
+            yield break;
+        }
+        var stack = new Stack<AnimatorStateMachine>();
+        var seen = new HashSet<AnimatorStateMachine>();
+        stack.Push(machine);
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (current == null || !seen.Add(current))
+            {
+                continue;
+            }
+            foreach (var child in current.states)
+            {
+                if (child.state != null)
+                {
+                    yield return child.state;
+                }
+            }
+            foreach (var sub in current.stateMachines)
+            {
+                stack.Push(sub.stateMachine);
+            }
+        }
     }
 
     static AnimatorDriverTask.ParameterType AnimatorDriverParameterType(AnimatorControllerParameter[] parameters, string name)
@@ -2576,6 +3097,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         var newAnimatorController = new CopyAnimatorController(originalAnimatorController).CopyController();
 
+        var thisAnimatorReplacesCckLocomotion = animatorID == VRCBaseAnimatorID.BASE && vrcBaseReplacesCckLocomotion;
+        if (thisAnimatorReplacesCckLocomotion)
+        {
+            // The deep clone above and never originalAnimatorController: this rewrites clip
+            // references in place, and the avatar's own animator asset must not be touched.
+            SubstitutePlaceholderClips(newAnimatorController);
+        }
+
         // Register this animator's own parameters before processing its transitions below;
         // otherwise a parameter only this animator declares (e.g. IsLocal) is unknown until
         // CopyControllerTo merges it in later, and its conditions go out unadapted. Idempotent.
@@ -2600,7 +3129,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 Debug.Log("Layer \"" + layer.name + "\" with " + layer.stateMachine.states.Length + " states");
 
                 var parameters = newAnimatorController.parameters;
+                // the replacement takes the animator's first layer, decided below after processing
+                processingReplacementLocomotionLayer = thisAnimatorReplacesCckLocomotion && i == 0;
                 ProcessStateMachine(layer.stateMachine, layer.name, ref parameters);
+                processingReplacementLocomotionLayer = false;
                 newAnimatorController.parameters = parameters;
 
                 layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(animatorID, i, layer.avatarMask);
@@ -2615,6 +3147,16 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 controllerLayers[i] = layer;
                 layersModified = true;
             }
+        }
+        // After the loop above, so the conditions this adds are already in CVR's own vocabulary
+        // and must not go through ProcessStateMachine's VRChat-to-CVR adaptation.
+        if (thisAnimatorReplacesCckLocomotion && controllerLayers.Length > 0)
+        {
+            controllerLayers[0].name = CckLocomotionLayerName;
+            // the CVR layer this replaces ran the IK pass; VRChat's stock Base layer does not
+            controllerLayers[0].iKPass = true;
+            RewireCckMovementModes(controllerLayers[0]);
+            layersModified = true;
         }
         if (layersModified)
         {
@@ -2685,22 +3227,46 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         List<AnimatorControllerLayer> newLayers = new List<AnimatorControllerLayer>();
 
-        string[] allowedLayerNames;
+        List<string> allowedLayerNames = new List<string> { CckLocomotionLayerName };
 
         if (convertGestureLayer && vrcAvatarDescriptor.baseAnimationLayers[(int)VRCBaseAnimatorID.GESTURE].animatorController)
         {
             Debug.Log("Deleting CVR hand layers...");
-            allowedLayerNames = new string[] { "Locomotion/Emotes" };
         }
         else
         {
             Debug.Log("Not deleting CVR hand layers...");
-            allowedLayerNames = new string[] { "Locomotion/Emotes", "LeftHand", "RightHand" };
+            allowedLayerNames.Add("LeftHand");
+            allowedLayerNames.Add("RightHand");
+        }
+
+        // ChilloutVR has no playable layers, so one Override layer series owns the body pose:
+        // merged above this one a VRC Base layer could only replace it, never supplement it, and
+        // CVR's movement sliders and stance buttons would then be answered nowhere. An avatar that
+        // ships locomotion of its own therefore takes the layer over instead of stacking onto it.
+        // Most Base layers are nothing but proxy_* references, and swapping CVR's locomotion for
+        // those would be a downgrade, so HasAuthoredMotion is the gate.
+        var baseAnimatorController = vrcAnimatorControllers.Length > (int)VRCBaseAnimatorID.BASE
+            ? vrcAnimatorControllers[(int)VRCBaseAnimatorID.BASE]
+            : null;
+        vrcBaseReplacesCckLocomotion = convertLocomotionLayer
+            && HasAuthoredMotion(baseAnimatorController)
+            && HasLocomotionHub(baseAnimatorController);
+
+        if (vrcBaseReplacesCckLocomotion)
+        {
+            Debug.Log("The Base animator has locomotion of its own - replacing the CVR locomotion layer with it");
+            SalvageCckMovementModeStates(existingLayers);
+            allowedLayerNames.Remove(CckLocomotionLayerName);
+        }
+        else
+        {
+            Debug.Log("Keeping the CVR locomotion layer");
         }
 
         foreach (AnimatorControllerLayer layer in existingLayers)
         {
-            if (Array.IndexOf(allowedLayerNames, layer.name) != -1)
+            if (allowedLayerNames.Contains(layer.name))
             {
                 newLayers.Add(layer);
             }
@@ -4033,6 +4599,149 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         });
     }
 
+    const string UprightSensorParameter = "UprightSensor";
+
+    // Set while Upright is computed by the layer below instead of received from the client.
+    bool uprightIsDerived;
+
+    // ChilloutVR's AvatarUpright is the avatar's measured pose height -- an OUTPUT of the animator --
+    // where VRChat's Upright is view and tracking height, an INPUT to it. On desktop the pose is
+    // whatever the animator draws, so feeding the output back in as the input deadlocks: the stance
+    // machine will not crouch until Upright falls, and Upright cannot fall until it crouches. In VR
+    // the head is pinned to the headset and the hips follow the real head height, so AvatarUpright is
+    // a genuine input there and the loop never closes. Desktop therefore gets a discrete value built
+    // from the stance the client already knows, and VR keeps the continuous sensor -- which is what
+    // preserves a deliberate half-crouch that no stance flag describes.
+    //
+    // Every input has to be synced, or a remote copy would compute from zeroes: Crouching, Prone and
+    // VRMode already are, and the sensor takes over Upright's own sync slot.
+    void MakeUprightFeedLayer()
+    {
+        var upright = NonSyncParameterName("Upright");
+        var parameters = chilloutAnimatorController.parameters;
+        if (!feedGameStateParameters || !vrcBaseReplacesCckLocomotion || !parameters.Any(p => p.name == upright))
+        {
+            return;
+        }
+
+        foreach (var (input, type) in new[]
+        {
+            ("Crouching", AnimatorControllerParameterType.Bool),
+            ("Prone", AnimatorControllerParameterType.Bool),
+            ("VRMode", AnimatorControllerParameterType.Int),
+        })
+        {
+            if (!parameters.Any(p => p.name == input))
+            {
+                ArrayUtility.Add(ref parameters, new AnimatorControllerParameter { name = input, type = type });
+            }
+        }
+        var scratch = NonSyncParameterName("UprightCalc");
+        foreach (var (derived, defaultFloat) in new[] { (UprightSensorParameter, 1f), (scratch, 0f) })
+        {
+            if (!parameters.Any(p => p.name == derived))
+            {
+                ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+                {
+                    name = derived,
+                    type = AnimatorControllerParameterType.Float,
+                    defaultFloat = defaultFloat,
+                });
+            }
+        }
+        chilloutAnimatorController.parameters = parameters;
+
+        var declared = chilloutAnimatorController.parameters;
+        AnimatorDriverTask Task(AnimatorDriverTask.Operator op, string target, string a, string b, float bValue = 0f)
+        {
+            return new AnimatorDriverTask
+            {
+                op = op,
+                targetName = target,
+                targetType = AnimatorDriverTask.ParameterType.Float,
+                aType = AnimatorDriverTask.SourceType.Parameter,
+                aParamType = AnimatorDriverParameterType(declared, a),
+                aName = a,
+                bType = b == null ? AnimatorDriverTask.SourceType.Static : AnimatorDriverTask.SourceType.Parameter,
+                bParamType = b == null ? AnimatorDriverTask.ParameterType.Float : AnimatorDriverParameterType(declared, b),
+                bName = b ?? "",
+                bValue = bValue,
+            };
+        }
+
+        var tickClip = new AnimationClip { name = "VRC3CVR_UprightTick" };
+        tickClip.SetCurve("", typeof(Animator), NonSyncParameterName("UprightTick"), AnimationCurve.Constant(0f, 1f / 60f, 0f));
+        var recomputeState = new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = "Recompute",
+            writeDefaultValues = false,
+            motion = tickClip,
+            behaviours = new StateMachineBehaviour[]
+            {
+                new AnimatorDriver
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    localOnly = false,
+                    EnterTasks = new List<AnimatorDriverTask>
+                    {
+                        // 1 - 0.45*Crouching - 0.8*Prone + 0.45*Crouching*Prone, which lands on
+                        // standing 1, crouching 0.55, prone 0.2, and prone again when both are set
+                        Task(AnimatorDriverTask.Operator.Multiplication, upright, "Crouching", null, -0.45f),
+                        Task(AnimatorDriverTask.Operator.Multiplication, scratch, "Prone", null, -0.8f),
+                        Task(AnimatorDriverTask.Operator.Addition, upright, upright, scratch),
+                        Task(AnimatorDriverTask.Operator.Multiplication, scratch, "Crouching", "Prone"),
+                        Task(AnimatorDriverTask.Operator.Multiplication, scratch, scratch, null, 0.45f),
+                        Task(AnimatorDriverTask.Operator.Addition, upright, upright, scratch),
+                        Task(AnimatorDriverTask.Operator.Addition, upright, upright, null, 1f),
+                        // lerp on VRMode, which is 0 or 1: desktop keeps the value above, VR replaces
+                        // it with the sensor
+                        Task(AnimatorDriverTask.Operator.Multiplication, scratch, "VRMode", null, -1f),
+                        Task(AnimatorDriverTask.Operator.Addition, scratch, scratch, null, 1f),
+                        Task(AnimatorDriverTask.Operator.Multiplication, upright, upright, scratch),
+                        Task(AnimatorDriverTask.Operator.Multiplication, scratch, "VRMode", UprightSensorParameter),
+                        Task(AnimatorDriverTask.Operator.Addition, upright, upright, scratch),
+                    },
+                },
+            },
+        };
+        recomputeState.transitions = new AnimatorStateTransition[]
+        {
+            new AnimatorStateTransition
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                hasExitTime = true,
+                exitTime = 1f,
+                hasFixedDuration = true,
+                duration = 0f,
+                offset = 0f,
+                destinationState = recomputeState,
+            },
+        };
+        var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_Upright");
+        AddGeneratedLayer(new AnimatorControllerLayer
+        {
+            name = layerName,
+            defaultWeight = 1f,
+            blendingMode = AnimatorLayerBlendingMode.Override,
+            avatarMask = emptyMask,
+            stateMachine = new AnimatorStateMachine
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                name = layerName,
+                entryPosition = new Vector3(0, -100),
+                exitPosition = new Vector3(0, 200),
+                anyStatePosition = new Vector3(0, -300),
+                defaultState = recomputeState,
+                states = new ChildAnimatorState[]
+                {
+                    new ChildAnimatorState { state = recomputeState, position = new Vector3(0, 0) },
+                },
+            },
+        });
+        uprightIsDerived = true;
+    }
+
     // VRChat built-ins that ChilloutVR does not supply to the animator. The client's parameter
     // stream provides equivalent sources; each stream type's semantics were verified against the
     // decompiled client (DeviceMode: isUsingVr ? 1 : 0, matching VRMode).
@@ -4056,7 +4765,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var streamedEntries = new List<CVRParameterStreamEntry>();
         foreach (var (parameterName, streamType) in GameStateParameterStreams)
         {
-            if (!parameters.Any(p => p.name == parameterName))
+            var target = uprightIsDerived && streamType == CVRParameterStreamEntry.Type.AvatarUpright
+                ? UprightSensorParameter
+                : parameterName;
+            if (!parameters.Any(p => p.name == target))
             {
                 // the avatar does not use this parameter
                 continue;
@@ -4066,7 +4778,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 type = streamType,
                 targetType = CVRParameterStreamEntry.TargetType.AvatarAnimator,
                 applicationType = CVRParameterStreamEntry.ApplicationType.Override,
-                parameterName = parameterName,
+                parameterName = target,
             });
         }
         if (streamedEntries.Count == 0)

@@ -68,6 +68,9 @@ CCK Control Panel, or drive both programmatically — the CCK exposes
 `ContentBuilderAPI.BuildAndUpload(assetInfo, BuildConfig.Default, uploadInfo, new LegalAssurance(true, true), ct)`,
 which needs no UI (see issue #23).
 
+Tick **Convert locomotion animator**: it is off by default, and the L checks are about the
+avatar's own Base layer, which the conversion only looks at when it is on.
+
 Upload once, then **reuse the same content ids on every later run**: an upload replaces whatever
 id it is given, and CVR accounts have a limited number of content slots, so uploading fresh each
 time burns them. The ids identify personal CVR content and are deliberately not stored in this
@@ -121,15 +124,19 @@ The suite switches to each avatar in turn and injects everything it needs — no
 Results are appended to `<ChilloutVR>\VRC3CVR_VerificationReport.txt` as `PASS` / `FAIL` /
 `INFO` lines, per avatar, and progress goes to the MelonLoader console as `[step]` lines.
 
+- **Uninstall when the run is over**: delete `Mods\VRC3CVRVerification.dll` and
+  `VRC3CVR_AutoVerify.flag`. A leftover flag re-runs the suite on every later launch, and the
+  mod's per-frame input injection fights any manual, by-hand verification session.
+
 ### 2.5 Reading the results
 
-- **Watch for the terminal marker, not for the file going quiet.** Each avatar's block ends with
-  `INFO done <timestamp>`, so a suite run is finished once that line appears once per avatar —
-  polling for "no growth for a while" adds that whole quiet period to the detection delay and can
-  leave the game running long after there is anything to wait for:
+- **Watch for the terminal marker, not for the file going quiet.** The suite ends with a single
+  `INFO done <timestamp>` line after the last avatar — polling for "no growth for a while" adds
+  that whole quiet period to the detection delay and can leave the game running long after there
+  is anything to wait for:
   ```
   f="<ChilloutVR>/VRC3CVR_VerificationReport.txt"
-  until [ "$(grep -c '^INFO done' "$f")" -ge 2 ]; do sleep 2; done
+  until [ "$(grep -c '^INFO done' "$f")" -ge 1 ]; do sleep 2; done
   ```
 - The report is written **per avatar**, so a hang in a later avatar cannot lose earlier results
 - A coroutine cannot `try`/`catch` across a `yield`, so every synchronous block runs through a

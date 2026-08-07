@@ -11,6 +11,10 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring PlayableLayers => new istring("Playable Layers", "Playable Layers");
         public static istring ConvertLocomotionAnimator => new istring("Convert Locomotion Animator (NOT RECOMMEND)", "Locomotionレイヤーを変換 (非推奨)");
         public static istring ConvertLocomotionAnimatorDescription => new istring("Locomotion state machines will very likely not convert over correctly and this option is better left unticked for now", "Locomotionステートマシンは正しく変換されない可能性が高く、このオプションは今のところチェックを外しておくことをお勧めします");
+        public static istring PlayLandingAnimation => new istring("Play the landing animation", "着地アニメーションを再生する");
+        public static istring PlayLandingAnimationDescription => new istring("Without this the converted landing freezes to a single pose and the body dips sharply; this plays ChilloutVR's landing animation on its own timing instead.", "OFFだと変換後の着地がポーズ1枚固定になり体が急に沈むため、代わりにChilloutVRの着地アニメーションを本来のタイミングで再生します。");
+        public static istring ConvertLocomotionTrackingControl => new istring("Convert Tracking Control in the locomotion layer", "locomotionレイヤーのTracking Controlを変換する");
+        public static istring ConvertLocomotionTrackingControlDescription => new istring("Tracking Control, common in VRChat's landing states, causes full-body tracking jitter in ChilloutVR when converted.", "VRChatの着地ステートにありがちなTracking Controlを変換するとCVRでFBTががたつく原因になります。");
         public static istring ConvertAdditiveAnimator => new istring("Convert Additive Animator (additive blend layers)", "Additiveレイヤーを変換");
         public static istring ConvertAdditiveAnimatorDescription => new istring("Additive state machine is commonly used for additively blended animations on the base avatar. May cause bicycle pose on certain avatars.", "Additiveステートマシンは、ベースアバターの加算ブレンドアニメーションに一般的に使用されます。特定のアバターで自転車ポーズを引き起こす可能性があります。");
         public static istring ConvertGestureAnimator => new istring("Convert Gesture Animator (hands)", "Gestureレイヤーを変換 (手)");
@@ -30,10 +34,10 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring GestureWeightConversionMode => new istring("GestureLeftWeight/GestureRightWeight conversion", "GestureLeftWeight/GestureRightWeightの変換方式");
         public static istring GestureWeightModeFold => new istring("No latency (a few rare usages incompatible)", "遅延なし (一部の稀な使い方で非互換)");
         public static istring GestureWeightModeDerived => new istring("Covers every usage (1 frame latency)", "すべての使い方に対応 (1フレーム遅延)");
-        public static istring GestureWeightConversionModeDescription => new istring("Both modes reproduce VRChat's weight behavior (0 while Neutral, the squeeze amount while Fist, fixed 1 for other gestures). \"No latency\" reacts instantly; it only falls short when a weight-driven motion time state or 2D blend tree also runs outside Fist, where it cannot reproduce that fixed 1 (while Fist it stays accurate). \"Covers every usage\" reproduces that too, but reactions lag one frame (about 16 ms). The default is fine for most avatars.", "どちらもVRChatのweight挙動（Neutralで0、Fistで握り込み量、他ジェスチャーで1固定）を再現します。「遅延なし」は即座に反応します。再現できないのは、weightで駆動するmotion time・2DブレンドツリーがFist以外のジェスチャー中にも動く場合の固定1だけです（Fist中は正確）。「すべての使い方に対応」はそれも再現しますが、反応が1フレーム（約16ms）遅れます。通常は既定の「遅延なし」で問題ありません。");
+        public static istring GestureWeightConversionModeDescription => new istring("\"No latency\" reacts instantly but misses one rare usage (weight-driven motion outside Fist). \"Covers every usage\" handles it too, one frame late. The default is fine for most avatars.", "「遅延なし」は即応ですが、Fist以外でweight駆動が動く稀な使い方のみ非対応。「すべての使い方に対応」はそれも再現しますが1フレーム遅れます。通常は既定のままで問題ありません。");
         public static istring GameStateParameters => new istring("Game State Parameters", "ゲーム状態パラメータ");
         public static istring FeedGameStateParameters => new istring("Feed MuteSelf / VRMode / Upright", "MuteSelf / VRMode / Upright を供給");
-        public static istring FeedGameStateParametersDescription => new istring("Feeds these VRChat built-ins from the game via CVR Parameter Stream on the wearer's client, and keeps them synced so remote viewers see the values too (sync cost: VRMode/Upright 32 bits each, MuteSelf joins the 8-bit bool packing; only when the avatar uses them).", "これらのVRChat組み込みパラメータをCVR Parameter Streamで装着者クライアントから供給し、同期対象にすることでリモートにも値を届けます（同期コスト: VRMode/Upright 各32bit、MuteSelfはBoolの8bitパックに相乗り。アバターが使用している場合のみ）。");
+        public static istring FeedGameStateParametersDescription => new istring("Feeds VRChat's VRMode / MuteSelf / Upright from the game state and syncs them to remote viewers (only the ones the avatar uses; costs sync bits).", "VRChat組み込みのVRMode / MuteSelf / Uprightをゲーム状態から供給し、リモートにも同期します（アバターが使うもののみ。同期容量を消費します）。");
         public static istring VRCContacts => new istring("VRC Contacts", "VRC Contact");
         public static istring ConvertVRCContactSendersAndReceivers => new istring("Convert VRC Contact Senders and Receivers to CVR Pointer and CVR Advanced Avatar Trigger", "VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換");
         public static istring ConvertVRCContactSendersAndReceiversDescription => new istring("Unlike VRC Contact, CVR Pointer and Trigger only change values when the contact collides. This difference may cause compatibility issues.", "VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。");
@@ -49,7 +53,7 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring UseHierarchicalDropdownMenuName => new istring("Use hierarchical dropdown menu name", "ドロップダウンメニュー名も階層化");
         public static istring AddActionMenuModAnnotations => new istring("Add Action Menu Mod annotations", "Action Menu Mod用の種別タグを付与");
         public static istring ConvertVrcConstraints => new istring("Convert VRC Constraints", "VRC Constraintsを変換");
-        public static istring ConvertVrcConstraintsDescription => new istring("Converts VRC Constraints to Unity Constraints, including animated constraint properties. VRC-specific features (FreezeToWorld, SolveInLocalSpace, execution order control) have no Unity equivalent and are dropped with warnings.", "VRC ConstraintsをUnity Constraintsに変換します（アニメーションされたプロパティも変換）。VRC固有機能（FreezeToWorld、SolveInLocalSpace、実行順序制御）はUnityに相当機能がないため警告つきで破棄されます。");
+        public static istring ConvertVrcConstraintsDescription => new istring("Converts VRC Constraints to Unity Constraints. VRC-only features (FreezeToWorld etc.) are dropped with warnings.", "VRC ConstraintsをUnity Constraintsに変換します。VRC固有機能（FreezeToWorld等）は警告つきで破棄されます。");
         public static istring ConvertVrcHeadChops => new istring("Convert VRC Head Chops", "VRC Head Chopを変換");
         public static istring ConvertVrcHeadChopsDescription => new istring("Only commonly used scales of 0 or 1 are converted.", "よく使われるスケールが0か1のもののみ変換します。");
         public static istring ConvertVrcSpatialAudioSources => new istring("Convert VRC Spatial Audio Sources", "VRC Spatial Audio Sourceを変換");
@@ -239,7 +243,15 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             EditorGUI.indentLevel++;
 
             Toggle(nameof(VRC3CVRConvertConfig.convertLocomotionLayer), T.ConvertLocomotionAnimator, T.ConvertLocomotionAnimatorDescription);
-            
+
+            EditorGUI.indentLevel++;
+
+            Toggle(nameof(VRC3CVRConvertConfig.playLandingAnimation), T.PlayLandingAnimation, T.PlayLandingAnimationDescription);
+
+            Toggle(nameof(VRC3CVRConvertConfig.convertLocomotionTrackingControl), T.ConvertLocomotionTrackingControl, T.ConvertLocomotionTrackingControlDescription);
+
+            EditorGUI.indentLevel--;
+
             Toggle(nameof(VRC3CVRConvertConfig.convertAdditiveLayer), T.ConvertAdditiveAnimator, T.ConvertAdditiveAnimatorDescription);
 
             Toggle(nameof(VRC3CVRConvertConfig.convertGestureLayer), T.ConvertGestureAnimator, T.ConvertGestureAnimatorDescription);
