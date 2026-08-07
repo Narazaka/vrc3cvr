@@ -934,9 +934,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         // Stream-fed parameters only run on the wearer's client; keeping them synced (no # prefix)
         // lets CVR's normal parameter sync carry the values to remotes (see MakeGameStateParameterStreams)
         if (feedGameStateParameters) preserveParameters.UnionWith(GameStateParameterStreams.Select(s => s.parameterName));
-        // a grafted avatar derives Upright rather than receiving it, so it stops being a synced
-        // input and becomes a driven local value (MakeUprightFeedLayer, same guard)
-        if (feedGameStateParameters && graftVrcBaseLocomotion) preserveParameters.Remove("Upright");
+        // an avatar whose locomotion replaced CVR's derives Upright rather than receiving it, so it
+        // stops being a synced input and becomes a driven local value (MakeUprightFeedLayer, same guard)
+        if (feedGameStateParameters && vrcBaseReplacesCckLocomotion) preserveParameters.Remove("Upright");
         if (!addActionMenuModAnnotations)
         {
             impulseParameters = new HashSet<string>();
@@ -1372,11 +1372,12 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
             VRCBaseAnimatorID baseAnimatorID = (VRCBaseAnimatorID)i;
 
-            // A declined graft leaves the CVR locomotion layer in place, so this one has to go
-            // (CreateEmptyChilloutAnimator explains why the two cannot coexist). Reaching here with
-            // the graft off means the user asked for the conversion and the gate turned it down: an
-            // unassigned Base layer left a null behind and the check above already skipped it.
-            if (baseAnimatorID == VRCBaseAnimatorID.BASE && !graftVrcBaseLocomotion)
+            // A declined replacement leaves the CVR locomotion layer in place, so this one has to
+            // go (CreateEmptyChilloutAnimator explains why the two cannot coexist). Reaching here
+            // with the replacement off means the user asked for the conversion and the gate turned
+            // it down: an unassigned Base layer left a null behind and the check above already
+            // skipped it.
+            if (baseAnimatorID == VRCBaseAnimatorID.BASE && !vrcBaseReplacesCckLocomotion)
             {
                 Debug.LogWarning("Not converting the Base animator: "
                     + (HasAuthoredMotion(vrcAnimatorControllers[i])
@@ -2597,10 +2598,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     const string CckLocomotionLayerName = "Locomotion/Emotes";
 
     // Set while the CVR locomotion layer is dropped in favour of the avatar's own Base layer.
-    bool graftVrcBaseLocomotion;
+    bool vrcBaseReplacesCckLocomotion;
 
     // Every salvaged mode is wired to the layer's default state, so a first layer without one
-    // cannot take the graft. Decided before the CVR layer is dropped, or the avatar would be left
+    // cannot take the CVR layer's place. Decided before that layer is dropped, or the avatar would be left
     // with neither locomotion.
     static bool HasLocomotionHub(AnimatorController controller)
     {
@@ -2655,7 +2656,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // here with the avatar's own default state as the hub. Emotes keep their nested machine, whose
     // states leave through its Exit node -- which only goes anywhere because the hub-bound
     // transition below is registered for the machine on its parent.
-    void GraftCckMovementModes(AnimatorControllerLayer locomotionLayer)
+    void RewireCckMovementModes(AnimatorControllerLayer locomotionLayer)
     {
         var machine = locomotionLayer.stateMachine;
         var hub = machine != null ? machine.defaultState : null;
@@ -2664,8 +2665,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             return;
         }
 
-        var graftedFromAnyState = new List<AnimatorStateTransition>();
-        var graftedFromHub = new List<AnimatorStateTransition>();
+        var rewiredFromAnyState = new List<AnimatorStateTransition>();
+        var rewiredFromHub = new List<AnimatorStateTransition>();
         var ownAnyStateTransitionCount = machine.anyStateTransitions.Length;
         var states = machine.states;
         var y = 0f;
@@ -2693,7 +2694,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             // without this a Flying that stays true restarts the state every frame
             enter.canTransitionToSelf = false;
             enter.AddCondition(AnimatorConditionMode.If, 0f, "Flying");
-            graftedFromAnyState.Add(enter);
+            rewiredFromAnyState.Add(enter);
 
             Timed(flying.AddTransition(hub), 0.1f).AddCondition(AnimatorConditionMode.IfNot, 0f, "Flying");
 
@@ -2707,7 +2708,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             var enter = Timed(hub.AddTransition(swimming), 0.25f);
             enter.AddCondition(AnimatorConditionMode.If, 0f, "Swimming");
-            graftedFromHub.Add(enter);
+            rewiredFromHub.Add(enter);
 
             Timed(swimming.AddTransition(hub), 0.25f).AddCondition(AnimatorConditionMode.IfNot, 0f, "Swimming");
         }
@@ -2724,15 +2725,15 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
             var enter = Timed(hub.AddTransition(salvagedEmotesMachine), 0f);
             enter.AddCondition(AnimatorConditionMode.Greater, 0f, "Emote");
-            graftedFromHub.Add(enter);
+            rewiredFromHub.Add(enter);
 
             // unconditional, as CVR has it: an emote that ends lands back on the hub and the hub
             // re-dispatches on the next frame, which is what lets the stance it started from resume
             machine.AddStateMachineTransition(salvagedEmotesMachine, hub);
         }
 
-        machine.anyStateTransitions = PutFirst(machine.anyStateTransitions, graftedFromAnyState);
-        hub.transitions = PutFirst(hub.transitions, graftedFromHub);
+        machine.anyStateTransitions = PutFirst(machine.anyStateTransitions, rewiredFromAnyState);
+        hub.transitions = PutFirst(hub.transitions, rewiredFromHub);
     }
 
     static AnimatorStateTransition Timed(AnimatorStateTransition transition, float duration)
@@ -2746,8 +2747,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     // Ahead of whatever the avatar's own layer already had: these answer game states it was never
     // written for, and one of its own conditions holding would otherwise shadow them.
-    static AnimatorStateTransition[] PutFirst(AnimatorStateTransition[] all, List<AnimatorStateTransition> grafted) =>
-        grafted.Concat(all.Where(transition => !grafted.Contains(transition))).ToArray();
+    static AnimatorStateTransition[] PutFirst(AnimatorStateTransition[] all, List<AnimatorStateTransition> rewired) =>
+        rewired.Concat(all.Where(transition => !rewired.Contains(transition))).ToArray();
 
     static IEnumerable<AnimatorState> AllStatesOf(AnimatorStateMachine machine)
     {
@@ -3016,8 +3017,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         var newAnimatorController = new CopyAnimatorController(originalAnimatorController).CopyController();
 
-        var graftingThisAnimator = animatorID == VRCBaseAnimatorID.BASE && graftVrcBaseLocomotion;
-        if (graftingThisAnimator)
+        var thisAnimatorReplacesCckLocomotion = animatorID == VRCBaseAnimatorID.BASE && vrcBaseReplacesCckLocomotion;
+        if (thisAnimatorReplacesCckLocomotion)
         {
             // The deep clone above and never originalAnimatorController: this rewrites clip
             // references in place, and the avatar's own animator asset must not be touched.
@@ -3066,12 +3067,12 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
         // After the loop above, so the conditions this adds are already in CVR's own vocabulary
         // and must not go through ProcessStateMachine's VRChat-to-CVR adaptation.
-        if (graftingThisAnimator && controllerLayers.Length > 0)
+        if (thisAnimatorReplacesCckLocomotion && controllerLayers.Length > 0)
         {
             controllerLayers[0].name = CckLocomotionLayerName;
             // the CVR layer this replaces ran the IK pass; VRChat's stock Base layer does not
             controllerLayers[0].iKPass = true;
-            GraftCckMovementModes(controllerLayers[0]);
+            RewireCckMovementModes(controllerLayers[0]);
             layersModified = true;
         }
         if (layersModified)
@@ -3165,11 +3166,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var baseAnimatorController = vrcAnimatorControllers.Length > (int)VRCBaseAnimatorID.BASE
             ? vrcAnimatorControllers[(int)VRCBaseAnimatorID.BASE]
             : null;
-        graftVrcBaseLocomotion = convertLocomotionLayer
+        vrcBaseReplacesCckLocomotion = convertLocomotionLayer
             && HasAuthoredMotion(baseAnimatorController)
             && HasLocomotionHub(baseAnimatorController);
 
-        if (graftVrcBaseLocomotion)
+        if (vrcBaseReplacesCckLocomotion)
         {
             Debug.Log("The Base animator has locomotion of its own - replacing the CVR locomotion layer with it");
             SalvageCckMovementModeStates(existingLayers);
@@ -4535,7 +4536,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     {
         var upright = NonSyncParameterName("Upright");
         var parameters = chilloutAnimatorController.parameters;
-        if (!feedGameStateParameters || !graftVrcBaseLocomotion || !parameters.Any(p => p.name == upright))
+        if (!feedGameStateParameters || !vrcBaseReplacesCckLocomotion || !parameters.Any(p => p.name == upright))
         {
             return;
         }

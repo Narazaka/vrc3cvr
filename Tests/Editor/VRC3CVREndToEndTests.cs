@@ -118,11 +118,11 @@ public class VRC3CVREndToEndTests
             "the derived Upright is still costing sync bits");
     }
 
-    // VRC3CVRBaseGraftTests already proves the graft mechanism on purpose-built controllers; this
-    // only asks whether the verification avatar — the one that gets uploaded and checked in game —
-    // really came out of the conversion grafted.
+    // VRC3CVRLocomotionReplacementTests already proves the replacement mechanism on purpose-built
+    // controllers; this only asks whether the verification avatar — the one that gets uploaded and
+    // checked in game — really came out of the conversion with the replacement applied.
     [Test]
-    public void ConvertVerificationAvatar_GraftsItsOwnLocomotionOntoTheChilloutVRLayer()
+    public void ConvertVerificationAvatar_ReplacesTheChilloutVRLayerWithItsOwnLocomotion()
     {
         var avatar = Convert(VRC3CVRConvertConfig.GestureWeightConversionMode.FoldToGestureLeft);
         var controller = ControllerOf(avatar);

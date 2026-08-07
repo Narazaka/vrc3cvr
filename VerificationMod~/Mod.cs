@@ -679,9 +679,9 @@ namespace VRC3CVRVerification
             // S3 only proves Upright moves. VRChat's stock locomotion switches stance at specific
             // values — 0.68/0.70 between standing and crouching, 0.41/0.43 between crouching and
             // prone — so whatever supplies Upright has to LAND in the band for the stance the
-            // client is actually in, or the converted state machine picks the wrong one. A grafted
-            // conversion derives those values itself; a non-grafted one takes them from the
-            // AvatarUpright stream. This measures whichever is in play.
+            // client is actually in, or the converted state machine picks the wrong one. A
+            // conversion that replaced the locomotion layer derives those values itself; one that
+            // kept CVR's takes them from the AvatarUpright stream. This measures whichever is in play.
             Step("  M2 upright values");
             if (characterController == null)
             {
@@ -842,10 +842,10 @@ namespace VRC3CVRVerification
             Run("toggle on check", () => CheckObject(avatar, "Panel/Gesture", target =>
                 Check(target.gameObject.activeSelf, "Show Gesture ON shows the gesture group")));
 
-            // ---- L1/L2/L3: the avatar's own Base locomotion, grafted onto CVR's own layer ----
-            // Which clip is actually playing is the only thing that says the graft survived into
-            // the running game.
-            Step("  L1..L3 grafted locomotion");
+            // ---- L1/L2/L3: the avatar's own Base locomotion, in place of CVR's own layer ----
+            // Which clip is actually playing is the only thing that says the replacement survived
+            // into the running game.
+            Step("  L1..L3 replaced locomotion");
             var locomotionLayer = LayerIndex(animator, "Locomotion/Emotes");
             if (locomotionLayer < 0)
             {
@@ -1263,8 +1263,9 @@ namespace VRC3CVRVerification
             return animator.parameters.Any(parameter => parameter.name == name);
         }
 
-        // A grafted conversion derives Upright inside the animator, which makes it local (#-prefixed);
-        // without a graft the client still feeds the synced one under its plain name.
+        // A conversion that replaced the locomotion layer derives Upright inside the animator, which
+        // makes it local (#-prefixed); one that kept CVR's still has the client feed the synced one
+        // under its plain name.
         static string UprightOf(Animator animator)
         {
             return HasParameter(animator, "Upright") ? "Upright" : "#Upright";

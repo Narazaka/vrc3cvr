@@ -17,7 +17,7 @@ using VRC.SDKBase;
 //   (forward vs strafe at an off-axis heading) / S1 MuteSelf / S2 VRMode / S3 Upright
 //   C1..C6 the six constraint types / C7 Target Transform redirect
 //   C8 same-type merge / C9 animated constraint properties (menu toggle)
-//   L1 the Base layer's own idle clip still drives the body after the graft
+//   L1 the Base layer's own idle clip still drives the body after the replacement
 //   L2 ChilloutVR's own walk clip took the place of its proxy_walk_forward placeholder
 //   L3 flight, salvaged out of the replaced CVR locomotion layer, is still reachable
 // Each group can be shown/hidden from the expressions menu so items can be checked one at a

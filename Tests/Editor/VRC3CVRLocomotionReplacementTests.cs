@@ -9,7 +9,7 @@ using UnityEngine;
 using ABI.CCK.Components;
 using VRC.SDK3.Avatars.Components;
 
-public class VRC3CVRBaseGraftTests
+public class VRC3CVRLocomotionReplacementTests
 {
     const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static;
 
@@ -158,10 +158,10 @@ public class VRC3CVRBaseGraftTests
     {
         EnsureTestFolder();
         var proxy = new AnimationClip { name = "proxy_walk_forward" };
-        AssetDatabase.CreateAsset(proxy, GraftTestFolder + "/proxy_walk_forward.anim");
+        AssetDatabase.CreateAsset(proxy, ReplacementTestFolder + "/proxy_walk_forward.anim");
         var shared = new BlendTree { name = "SharedTree" };
         shared.AddChild(proxy);
-        AssetDatabase.CreateAsset(shared, GraftTestFolder + "/SharedTree.asset");
+        AssetDatabase.CreateAsset(shared, ReplacementTestFolder + "/SharedTree.asset");
         var controller = MakeController("shared", shared);
 
         typeof(VRC3CVRCore).GetMethod("SubstitutePlaceholderClips", Flags)
@@ -405,10 +405,10 @@ public class VRC3CVRBaseGraftTests
     {
         EnsureTestFolder();
         var proxy = new AnimationClip { name = "proxy_stand_still" };
-        AssetDatabase.CreateAsset(proxy, GraftTestFolder + "/proxy_stand_still.anim");
+        AssetDatabase.CreateAsset(proxy, ReplacementTestFolder + "/proxy_stand_still.anim");
         var shared = new BlendTree { name = "SharedTree" };
         shared.AddChild(proxy);
-        AssetDatabase.CreateAsset(shared, GraftTestFolder + "/SharedTree.asset");
+        AssetDatabase.CreateAsset(shared, ReplacementTestFolder + "/SharedTree.asset");
         var state = new AnimatorState { name = "S", motion = shared };
 
         RunProcessStateMachine(MachineAround(state));
@@ -450,7 +450,7 @@ public class VRC3CVRBaseGraftTests
     {
         var core = new VRC3CVRCore();
         typeof(VRC3CVRCore).GetField("chilloutAnimatorController", Flags).SetValue(core, controller);
-        typeof(VRC3CVRCore).GetField("graftVrcBaseLocomotion", Flags).SetValue(core, true);
+        typeof(VRC3CVRCore).GetField("vrcBaseReplacesCckLocomotion", Flags).SetValue(core, true);
         typeof(VRC3CVRCore).GetField("generatedLayerNames", Flags).SetValue(core, new System.Collections.Generic.HashSet<string>());
         typeof(VRC3CVRCore).GetMethod("MakeUprightFeedLayer", Flags).Invoke(core, null);
 
@@ -501,9 +501,9 @@ public class VRC3CVRBaseGraftTests
         Object.DestroyImmediate(controller);
     }
 
-    // ---- the graft itself, over a whole conversion ----
+    // ---- the replacement itself, over a whole conversion ----
 
-    const string GraftTestFolder = "Assets/VRC3CVR_BaseGraftTest";
+    const string ReplacementTestFolder = "Assets/VRC3CVR_LocomotionReplacementTest";
     const string GroundStateName = "AvatarGroundLocomotion";
     const string AvatarOwnAnyStateParameter = "AvatarOwnFlag";
 
@@ -512,9 +512,9 @@ public class VRC3CVRBaseGraftTests
 
     static void EnsureTestFolder()
     {
-        if (!AssetDatabase.IsValidFolder(GraftTestFolder))
+        if (!AssetDatabase.IsValidFolder(ReplacementTestFolder))
         {
-            AssetDatabase.CreateFolder("Assets", System.IO.Path.GetFileName(GraftTestFolder));
+            AssetDatabase.CreateFolder("Assets", System.IO.Path.GetFileName(ReplacementTestFolder));
         }
     }
 
@@ -525,18 +525,18 @@ public class VRC3CVRBaseGraftTests
         if (convertedAvatar != null) Object.DestroyImmediate(convertedAvatar);
         originalAvatar = null;
         convertedAvatar = null;
-        AssetDatabase.DeleteAsset(GraftTestFolder);
+        AssetDatabase.DeleteAsset(ReplacementTestFolder);
     }
 
     AnimatorController ConvertWithBaseLayer(bool authored, bool convertLocomotionLayer, bool hubless = false)
     {
-        var descriptor = VRC3CVRVerificationAvatar.Generate(GraftTestFolder);
+        var descriptor = VRC3CVRVerificationAvatar.Generate(ReplacementTestFolder);
         originalAvatar = descriptor.gameObject;
 
         // not proxy_stand_still: the generated avatar already writes one of those into this folder
         var clip = new AnimationClip { name = authored ? "AuthoredWalk" : "proxy_idle" };
-        AssetDatabase.CreateAsset(clip, GraftTestFolder + "/" + clip.name + ".anim");
-        var baseController = AnimatorController.CreateAnimatorControllerAtPath(GraftTestFolder + "/Base.controller");
+        AssetDatabase.CreateAsset(clip, ReplacementTestFolder + "/" + clip.name + ".anim");
+        var baseController = AnimatorController.CreateAnimatorControllerAtPath(ReplacementTestFolder + "/Base.controller");
         baseController.AddParameter(AvatarOwnAnyStateParameter, AnimatorControllerParameterType.Bool);
         var baseMachine = baseController.layers[0].stateMachine;
         if (hubless)
@@ -585,8 +585,8 @@ public class VRC3CVRBaseGraftTests
     static AnimatorControllerLayer LocomotionLayerOf(AnimatorController controller) =>
         controller.layers.Single(layer => layer.name == "Locomotion/Emotes");
 
-    // Checks the invariant both declined-graft paths share: the CVR locomotion layer stays and the
-    // Base animator is dropped whole, never both.
+    // Checks the invariant both declined-replacement paths share: the CVR locomotion layer stays
+    // and the Base animator is dropped whole, never both.
     static void AssertCckLocomotionKept(AnimatorController controller)
     {
         var machine = LocomotionLayerOf(controller).stateMachine;
@@ -632,7 +632,7 @@ public class VRC3CVRBaseGraftTests
     {
         var controller = ConvertWithBaseLayer(authored: true, convertLocomotionLayer: false);
         AssertCckLocomotionKept(controller);
-        // no graft, so Upright keeps the plain client-fed arrangement
+        // no replacement, so Upright keeps the plain client-fed arrangement
         Assert.IsTrue(controller.parameters.Any(p => p.name == "Upright"));
         Assert.IsFalse(controller.layers.Any(l => l.name.StartsWith("VRC3CVR_Upright")));
         var stream = convertedAvatar.GetComponent<ABI.CCK.Components.CVRParameterStream>();
@@ -650,7 +650,7 @@ public class VRC3CVRBaseGraftTests
         Assert.AreEqual(1,
             controller.layers.SelectMany(layer => AllStatesOf(layer.stateMachine))
                 .Count(state => state.name == "LocFlying"),
-            "a salvaged state was grafted even though the graft was declined");
+            "a salvaged state was wired in even though the replacement was declined");
     }
 
     [Test]
