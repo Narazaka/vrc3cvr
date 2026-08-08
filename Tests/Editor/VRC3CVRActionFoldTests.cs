@@ -35,10 +35,11 @@ public class VRC3CVRActionFoldTests
 
     // The shape stock Action has: a default state that waits, a Prepare that raises the playable
     // weight, the emote itself, and a BlendOut that drops the weight and leaves through Exit.
-    static AnimatorController MakeActionController(bool authored)
+    static AnimatorController MakeActionController(bool authored, bool declareVrcEmote = false)
     {
         var controller = AnimatorController.CreateAnimatorControllerAtPath(ActionFoldTestFolder + "/Action.controller");
-        controller.AddParameter("Emote", AnimatorControllerParameterType.Int);
+        var emoteParameter = declareVrcEmote ? "VRCEmote" : "Emote";
+        controller.AddParameter(emoteParameter, AnimatorControllerParameterType.Int);
         controller.AddParameter("AFK", AnimatorControllerParameterType.Bool);
 
         var clip = new AnimationClip { name = authored ? "MyOwnWave" : "proxy_stand_wave" };
@@ -59,9 +60,9 @@ public class VRC3CVRActionFoldTests
         var blendOut = machine.AddState("BlendOut");
         blendOut.AddStateMachineBehaviour<VRCPlayableLayerControl>().goalWeight = 0f;
 
-        wait.AddTransition(prepare).AddCondition(AnimatorConditionMode.Greater, 0f, "Emote");
-        prepare.AddTransition(emote).AddCondition(AnimatorConditionMode.Equals, 2f, "Emote");
-        emote.AddTransition(blendOut).AddCondition(AnimatorConditionMode.NotEqual, 2f, "Emote");
+        wait.AddTransition(prepare).AddCondition(AnimatorConditionMode.Greater, 0f, emoteParameter);
+        prepare.AddTransition(emote).AddCondition(AnimatorConditionMode.Equals, 2f, emoteParameter);
+        emote.AddTransition(blendOut).AddCondition(AnimatorConditionMode.NotEqual, 2f, emoteParameter);
         blendOut.AddExitTransition().hasExitTime = true;
 
         controller.AddLayer("ActionSecondLayer");
@@ -70,7 +71,7 @@ public class VRC3CVRActionFoldTests
         return controller;
     }
 
-    AnimatorController Convert(bool convertActionLayer, bool authoredAction = true, bool authoredBase = true)
+    AnimatorController Convert(bool convertActionLayer, bool authoredAction = true, bool authoredBase = true, bool declareVrcEmote = false)
     {
         var descriptor = VRC3CVRVerificationAvatar.Generate(ActionFoldTestFolder);
         originalAvatar = descriptor.gameObject;
@@ -88,7 +89,7 @@ public class VRC3CVRActionFoldTests
         {
             type = VRCAvatarDescriptor.AnimLayerType.Action,
             isDefault = false,
-            animatorController = MakeActionController(authoredAction),
+            animatorController = MakeActionController(authoredAction, declareVrcEmote),
         };
         descriptor.baseAnimationLayers = layers;
 
@@ -206,6 +207,36 @@ public class VRC3CVRActionFoldTests
         Assert.AreEqual(hub, root.GetStateMachineTransitions(actionMachine).Single().destinationState);
     }
 
+    [Test]
+    public void Convert_WithAnAuthoredActionAnimator_OnlyDuplicatesTheNotEqualExitAgainstCancelEmote()
+    {
+        var actionMachine = ChildMachineNamed(LocomotionMachineOf(Convert(convertActionLayer: true)), "Action");
+
+        bool HasCancelEmoteEscape(string stateName) =>
+            AllStatesOf(actionMachine).Single(state => state.name == stateName).transitions
+                .Any(transition => transition.conditions.Any(condition => condition.parameter == "CancelEmote"));
+
+        Assert.IsTrue(HasCancelEmoteEscape(EmoteStateName), "the NotEqual exit was not duplicated against CancelEmote");
+        Assert.IsFalse(HasCancelEmoteEscape("Prepare"), "an entry-only (Equals) transition gained a CancelEmote escape");
+        Assert.IsFalse(HasCancelEmoteEscape("WaitForActionOrAFK"), "an entry-only (Greater) transition gained a CancelEmote escape");
+    }
+
+    [Test]
+    public void Convert_WithVRCEmoteDeclared_WiresTheHubEntryAndCancelEmoteEscapeToVRCEmote()
+    {
+        var controller = Convert(convertActionLayer: true, declareVrcEmote: true);
+        var root = LocomotionMachineOf(controller);
+        var hub = root.defaultState;
+        var actionMachine = ChildMachineNamed(root, "Action");
+
+        AssertEntry(hub.transitions[0], actionMachine, "VRCEmote", AnimatorConditionMode.Greater);
+
+        var standWave = AllStatesOf(actionMachine).Single(state => state.name == EmoteStateName);
+        Assert.IsTrue(
+            standWave.transitions.Any(transition => transition.conditions.Any(condition => condition.parameter == "CancelEmote")),
+            "the VRCEmote-declaring machine's NotEqual exit was not duplicated against CancelEmote");
+    }
+
     // ---- driven: Animator.Update advances state, never pose, so state checks need no PlayableGraph ----
 
     static Animator DriveAnimator(GameObject avatar)
@@ -221,6 +252,11 @@ public class VRC3CVRActionFoldTests
         Enumerable.Range(0, animator.layerCount).Single(index => animator.GetLayerName(index) == "Locomotion/Emotes");
 
     const int DrivenFrameLimit = 240;
+
+    // measured: ~62-63F to reach the target with the CancelEmote escape wired, ~120-121F without it
+    // (the leftover auto-escape alone) -- the midpoint clears the fast path with room to spare while
+    // staying well under the slow one, so calibration drift in either measurement cannot collide it
+    const int CancelEmoteFrameBound = (60 + 120) / 2;
 
     static int FramesUntil(Animator animator, int layer, string stateName, int limit = DrivenFrameLimit)
     {
@@ -262,18 +298,23 @@ public class VRC3CVRActionFoldTests
     [Test]
     public void Convert_WithEmoteCleared_ReturnsToTheHubThroughBlendOut()
     {
-        var controller = Convert(convertActionLayer: true);
+        // VRCEmote (unlike the merged Emote) stays Int, so its NotEqual exit is not adapted away --
+        // holding it at 2 has to keep the avatar there for this test to prove anything
+        var controller = Convert(convertActionLayer: true, declareVrcEmote: true);
         var root = LocomotionMachineOf(controller);
         var hub = root.defaultState;
         var animator = DriveAnimator(convertedAvatar);
         var layer = LocomotionLayerIndex(animator);
 
-        animator.SetFloat("Emote", 2f);
+        animator.SetInteger("VRCEmote", 2);
         Assert.Less(FramesUntil(animator, layer, EmoteStateName), DrivenFrameLimit,
-            "fixture: Emote never settled the avatar into the emote itself");
-        animator.SetFloat("Emote", 0f);
+            "fixture: VRCEmote never settled the avatar into the emote itself");
+        Assert.AreEqual(DrivenFrameLimit, FramesUntil(animator, layer, hub.name),
+            "the avatar reached the hub without VRCEmote ever leaving 2");
+
+        animator.SetInteger("VRCEmote", 0);
         Assert.Less(FramesUntil(animator, layer, hub.name), DrivenFrameLimit,
-            "clearing Emote never carried the avatar back to the hub through BlendOut");
+            "clearing VRCEmote never carried the avatar back to the hub through BlendOut");
     }
 
     [Test]
@@ -291,7 +332,7 @@ public class VRC3CVRActionFoldTests
 
         animator.SetFloat("Emote", 0f);
         animator.SetTrigger("CancelEmote");
-        Assert.Less(FramesUntil(animator, layer, hub.name), 90,
+        Assert.Less(FramesUntil(animator, layer, hub.name), CancelEmoteFrameBound,
             "CancelEmote never returned the avatar to the hub");
     }
 
@@ -313,7 +354,7 @@ public class VRC3CVRActionFoldTests
 
         animator.SetFloat("Emote", 0f);
         animator.SetTrigger("CancelEmote");
-        Assert.Less(FramesUntil(animator, layer, "Crouching Locomotion"), 90,
+        Assert.Less(FramesUntil(animator, layer, "Crouching Locomotion"), CancelEmoteFrameBound,
             "cancelling the emote did not re-dispatch the hub back to Crouching");
     }
 }

@@ -830,6 +830,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         "Grounded",
         "Emote",
         "CancelEmote",
+        "VRCEmote",
         "GestureLeft",
         "GestureRight",
         "GestureLeftIdx",
@@ -2843,6 +2844,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     const string FoldedActionMachineName = "Action";
     const string AfkParameterName = "AFK";
     const string CancelEmoteParameterName = "CancelEmote";
+    const string VrcEmoteParameterName = "VRCEmote";
+    const string EmoteParameterName = "Emote";
 
     // VRChat runs Action on a playable of its own and fades that playable's weight in and out around
     // it; ChilloutVR has a single Override series, so the weight has to become structure. The machine
@@ -2856,10 +2859,16 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // inherited rather than dropped -- ChilloutVR dispatches from each stance it can emote out of,
     // not from the hub alone, so every state that reached it reaches the folded machine instead.
     // The AFK entry is only wired when the Action animator declares AFK, since stock answers it and
-    // a machine that never mentions it has no AFK branch to reach. CancelEmote -- the quick menu's
-    // cancel -- is answered the same way: every state whose own exit already answers Emote gets that
-    // exit duplicated once more against CancelEmote, so the cancel button reaches exactly where
-    // changing Emote would have.
+    // a machine that never mentions it has no AFK branch to reach. The emote number is read under
+    // whichever name the Action controller itself declares -- VRCEmote when it does, Emote otherwise
+    // -- rather than renamed to ChilloutVR's Emote, since the avatar's own custom expression menu
+    // converts to an Advanced Avatar Settings entry that still drives VRCEmote by that name, and a
+    // rename would leave that entry and ChilloutVR's own quick menu both driving the same value
+    // unguarded. CancelEmote -- the quick menu's cancel -- is answered by duplicating each state's
+    // own NotEqual exit against that same parameter (the exit an emote number changing away already
+    // uses), so the cancel button reaches exactly where deselecting the emote would have; states that
+    // only gate entry are left alone, since duplicating those would consume a cancel by advancing
+    // into the machine instead of leaving it.
     void FoldActionMachine(AnimatorControllerLayer integratedLayer, AnimatorController actionController)
     {
         var machine = integratedLayer != null ? integratedLayer.stateMachine : null;
@@ -2869,6 +2878,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             Debug.LogWarning("Not converting the Action animator: the converted locomotion layer has no default state to dispatch emotes from.");
             return;
         }
+
+        var emoteParameterName = actionController.parameters.Any(parameter => parameter.name == VrcEmoteParameterName)
+            ? VrcEmoteParameterName
+            : EmoteParameterName;
 
         var dispatchStates = new List<AnimatorState> { hub };
         dispatchStates.AddRange(RemoveCckEmotesMachine(machine).Where(state => state != hub));
@@ -2885,7 +2898,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         var actionMachine = clonedLayers[0].stateMachine;
         actionMachine.name = FoldedActionMachineName;
-        AddCancelEmoteEscapes(actionMachine);
+        AddCancelEmoteEscapes(actionMachine, emoteParameterName);
 
         // registered before the processing below so this machine's conditions are adapted against
         // the types the merged controller already holds, and again after, since a converted Random
@@ -2913,7 +2926,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             var rewired = new List<AnimatorStateTransition>();
             var onEmote = Timed(dispatch.AddTransition(actionMachine), blendDuration);
-            onEmote.AddCondition(AnimatorConditionMode.Greater, 0f, "Emote");
+            onEmote.AddCondition(AnimatorConditionMode.Greater, 0f, emoteParameterName);
             rewired.Add(onEmote);
 
             if (answersAfk)
@@ -2929,13 +2942,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         machine.AddStateMachineTransition(actionMachine, hub);
     }
 
-    static void AddCancelEmoteEscapes(AnimatorStateMachine actionMachine)
+    static void AddCancelEmoteEscapes(AnimatorStateMachine actionMachine, string emoteParameterName)
     {
         foreach (var state in AllStatesOf(actionMachine))
         {
             var transitions = state.transitions;
             var heldByEmote = transitions.FirstOrDefault(
-                transition => transition.conditions.Any(condition => condition.parameter == "Emote"));
+                transition => transition.conditions.Any(condition =>
+                    condition.parameter == emoteParameterName && condition.mode == AnimatorConditionMode.NotEqual));
             if (heldByEmote == null)
             {
                 continue;
