@@ -1527,7 +1527,7 @@ namespace VRC3CVRVerification
                 "JumpStart", "JumpAir", "JumpLand", "Sitting",
                 "SmallHop", "Fall", "QuickLand", "HardLand", "Short Fall", "Long Fall", "RestoreToHop",
                 "Standard Locomotion", "Crouching Locomotion", "Prone Locomotion",
-                "WaitForAction", "Prepare", "Emote2", "BlendOut", "SitPose",
+                "WaitForAction", "Prepare", "Emote2", "Emote5", "BlendOut", "SitPose",
             })
             {
                 if (Animator.StringToHash(name) == hash) return name;
