@@ -1032,6 +1032,17 @@ public static class VRC3CVRVerificationAvatar
                 networkSynced = true,
             };
         }
+        VRCExpressionParameters.Parameter Int(string name, float defaultValue)
+        {
+            return new VRCExpressionParameters.Parameter
+            {
+                name = name,
+                valueType = VRCExpressionParameters.ValueType.Int,
+                defaultValue = defaultValue,
+                saved = false,
+                networkSynced = true,
+            };
+        }
         var parameters = ScriptableObject.CreateInstance<VRCExpressionParameters>();
         parameters.name = "VerificationParameters";
         parameters.parameters = new VRCExpressionParameters.Parameter[]
@@ -1040,6 +1051,7 @@ public static class VRC3CVRVerificationAvatar
             Bool("ShowGesture", 1f),
             Bool("ShowState", 1f),
             Bool("ShowConstraints", 1f),
+            Int("VRCEmote", 0f),
         };
         AssetDatabase.CreateAsset(parameters, assetFolder + "/VerificationParameters.asset");
         return parameters;

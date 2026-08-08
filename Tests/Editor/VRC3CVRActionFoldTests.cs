@@ -237,6 +237,61 @@ public class VRC3CVRActionFoldTests
             "the VRCEmote-declaring machine's NotEqual exit was not duplicated against CancelEmote");
     }
 
+    const string VrcEmoteCompatLayerPrefix = "VRC3CVR_VRCEmoteCompat";
+
+    [Test]
+    public void Convert_WithoutVRCEmoteDeclared_DoesNotInjectTheCompatFeedLayer()
+    {
+        var controller = Convert(convertActionLayer: true);
+        Assert.IsFalse(controller.layers.Any(layer => layer.name.StartsWith(VrcEmoteCompatLayerPrefix)),
+            "the compat feed layer was injected even though the fold reads Emote directly");
+    }
+
+    [Test]
+    public void Convert_WithVRCEmoteDeclared_InjectsACompatFeedLayerThatMirrorsCcksEmoteBands()
+    {
+        var controller = Convert(convertActionLayer: true, declareVrcEmote: true);
+        var layer = controller.layers.Single(l => l.name.StartsWith(VrcEmoteCompatLayerPrefix));
+        Assert.AreEqual(1f, layer.defaultWeight, "the compat feed layer does not run at full weight");
+
+        float EnterValue(AnimatorState state) => ((AnimatorDriver)state.behaviours.Single()).EnterTasks.Single().aValue;
+        float ExitValue(AnimatorState state) => ((AnimatorDriver)state.behaviours.Single()).ExitTasks.Single().aValue;
+
+        var idle = layer.stateMachine.defaultState;
+        Assert.AreEqual("Idle", idle.name);
+        Assert.IsEmpty(idle.behaviours, "Idle writes VRCEmote on its own enter, clobbering a custom menu that drives it directly");
+
+        // highest band first, mirroring CCK's own ordered Greater cascade
+        CollectionAssert.AreEqual(
+            new[] { "Emote8", "Emote7", "Emote6", "Emote5", "Emote4", "Emote3", "Emote2", "Emote1" },
+            idle.transitions.Select(t => t.destinationState.name).ToArray(),
+            "the entry bands are not ordered highest-first");
+        CollectionAssert.AreEqual(
+            new[] { 7f, 6f, 5f, 4f, 3f, 2f, 1f, 0f },
+            idle.transitions.Select(t => t.conditions.Single().threshold).ToArray());
+        Assert.IsTrue(idle.transitions.All(t =>
+            t.conditions.Single().parameter == "Emote" && t.conditions.Single().mode == AnimatorConditionMode.Greater));
+
+        for (var n = 1; n <= 8; n++)
+        {
+            var state = layer.stateMachine.states.Single(child => child.state.name == "Emote" + n).state;
+            Assert.AreEqual((float)n, EnterValue(state), "Emote" + n + " enter");
+            Assert.AreEqual(0f, ExitValue(state), "Emote" + n + " exit");
+            Assert.IsTrue(state.transitions.All(t => t.destinationState == idle), "Emote" + n + " leaves anywhere but idle");
+
+            var less = state.transitions.Single(t => t.conditions.Single().mode == AnimatorConditionMode.Less).conditions.Single();
+            Assert.AreEqual("Emote", less.parameter);
+            Assert.AreEqual((float)n, less.threshold);
+
+            var greater = state.transitions.Single(t => t.conditions.Single().mode == AnimatorConditionMode.Greater).conditions.Single();
+            Assert.AreEqual("Emote", greater.parameter);
+            Assert.AreEqual((float)n, greater.threshold);
+
+            Assert.IsTrue(state.transitions.Any(t => t.conditions.Single().parameter == "CancelEmote" && t.conditions.Single().mode == AnimatorConditionMode.If),
+                "Emote" + n + " has no CancelEmote escape");
+        }
+    }
+
     // ---- driven: Animator.Update advances state, never pose, so state checks need no PlayableGraph ----
 
     static Animator DriveAnimator(GameObject avatar)
@@ -252,11 +307,6 @@ public class VRC3CVRActionFoldTests
         Enumerable.Range(0, animator.layerCount).Single(index => animator.GetLayerName(index) == "Locomotion/Emotes");
 
     const int DrivenFrameLimit = 240;
-
-    // measured: ~62-63F to reach the target with the CancelEmote escape wired, ~120-121F without it
-    // (the leftover auto-escape alone) -- the midpoint clears the fast path with room to spare while
-    // staying well under the slow one, so calibration drift in either measurement cannot collide it
-    const int CancelEmoteFrameBound = (60 + 120) / 2;
 
     static int FramesUntil(Animator animator, int layer, string stateName, int limit = DrivenFrameLimit)
     {
@@ -320,26 +370,27 @@ public class VRC3CVRActionFoldTests
     [Test]
     public void Convert_WithCancelEmoteTriggered_ReturnsToTheHub()
     {
-        var controller = Convert(convertActionLayer: true);
+        var controller = Convert(convertActionLayer: true, declareVrcEmote: true);
         var root = LocomotionMachineOf(controller);
         var hub = root.defaultState;
         var animator = DriveAnimator(convertedAvatar);
         var layer = LocomotionLayerIndex(animator);
 
-        animator.SetFloat("Emote", 2f);
+        animator.SetInteger("VRCEmote", 2);
         Assert.Less(FramesUntil(animator, layer, EmoteStateName), DrivenFrameLimit,
-            "fixture: Emote never settled the avatar into the emote itself");
+            "fixture: VRCEmote never settled the avatar into the emote itself");
+        Assert.AreEqual(DrivenFrameLimit, FramesUntil(animator, layer, hub.name),
+            "the avatar reached the hub without VRCEmote ever leaving 2 or CancelEmote ever firing");
 
-        animator.SetFloat("Emote", 0f);
         animator.SetTrigger("CancelEmote");
-        Assert.Less(FramesUntil(animator, layer, hub.name), CancelEmoteFrameBound,
+        Assert.Less(FramesUntil(animator, layer, hub.name), DrivenFrameLimit,
             "CancelEmote never returned the avatar to the hub");
     }
 
     [Test]
     public void Convert_WithCrouchingActiveAndEmoteCancelled_RedispatchesToCrouchingAfterTheHub()
     {
-        Convert(convertActionLayer: true, authoredBase: false);
+        Convert(convertActionLayer: true, authoredBase: false, declareVrcEmote: true);
         var animator = DriveAnimator(convertedAvatar);
         var layer = LocomotionLayerIndex(animator);
 
@@ -348,14 +399,36 @@ public class VRC3CVRActionFoldTests
         Assert.Less(FramesUntil(animator, layer, "Crouching Locomotion"), DrivenFrameLimit,
             "fixture: Crouching never routed the avatar to its own locomotion stance");
 
+        animator.SetInteger("VRCEmote", 2);
+        Assert.Less(FramesUntil(animator, layer, EmoteStateName), DrivenFrameLimit,
+            "fixture: VRCEmote never settled the avatar into the emote itself");
+        Assert.AreEqual(DrivenFrameLimit, FramesUntil(animator, layer, "Crouching Locomotion"),
+            "the avatar re-dispatched to Crouching without VRCEmote ever leaving 2 or CancelEmote ever firing");
+
+        animator.SetInteger("VRCEmote", 0);
+        animator.SetTrigger("CancelEmote");
+        Assert.Less(FramesUntil(animator, layer, "Crouching Locomotion"), DrivenFrameLimit,
+            "cancelling the emote did not re-dispatch the hub back to Crouching");
+    }
+
+    // ---- driven: the Emote-to-VRCEmote compat feed layer bridges ChilloutVR's own quick menu ----
+
+    [Test]
+    public void Convert_WithVRCEmoteDeclared_QuickMenuEmoteBridgesIntoTheFoldedMachine()
+    {
+        var controller = Convert(convertActionLayer: true, declareVrcEmote: true);
+        var hub = LocomotionMachineOf(controller).defaultState;
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+
         animator.SetFloat("Emote", 2f);
         Assert.Less(FramesUntil(animator, layer, EmoteStateName), DrivenFrameLimit,
-            "fixture: Emote never settled the avatar into the emote itself");
+            "ChilloutVR's own quick-menu Emote never bridged into VRCEmote and settled the avatar into the emote");
 
-        animator.SetFloat("Emote", 0f);
         animator.SetTrigger("CancelEmote");
-        Assert.Less(FramesUntil(animator, layer, "Crouching Locomotion"), CancelEmoteFrameBound,
-            "cancelling the emote did not re-dispatch the hub back to Crouching");
+        animator.SetFloat("Emote", 0f);
+        Assert.Less(FramesUntil(animator, layer, hub.name), DrivenFrameLimit,
+            "CancelEmote never returned the avatar to the hub");
     }
 }
 #endif

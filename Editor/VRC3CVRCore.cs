@@ -179,6 +179,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             AdjustParameterNames();
             MakeGestureWeightFeedLayers();
             MakeVelocityMagnitudeFeedLayer();
+            MakeVrcEmoteCompatFeedLayer();
             // After AdjustParameterNames, like the feed layers above, so the names are final.
             RemapVelocityToAvatarLocal();
             // Before the streams, twice over: they route AvatarUpright at whatever this leaves
@@ -830,7 +831,6 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         "Grounded",
         "Emote",
         "CancelEmote",
-        "VRCEmote",
         "GestureLeft",
         "GestureRight",
         "GestureLeftIdx",
@@ -2697,6 +2697,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // being merged as layers of its own (FoldActionMachine).
     bool vrcActionFoldsIntoCckLocomotion;
 
+    // Set while FoldActionMachine reads VRCEmote rather than Emote (MakeVrcEmoteCompatFeedLayer).
+    bool vrcActionFoldReadsVrcEmote;
+
     // Set while ProcessStateMachine walks a machine that ends up in the layer owning ChilloutVR's
     // locomotion: the Base layer that takes it over, or a machine folded into it.
     bool processingIntegratedLocomotionLayer;
@@ -2829,7 +2832,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             machine.stateMachines = childMachines;
 
             var enter = Timed(hub.AddTransition(salvagedEmotesMachine), 0f);
-            enter.AddCondition(AnimatorConditionMode.Greater, 0f, "Emote");
+            enter.AddCondition(AnimatorConditionMode.Greater, 0f, EmoteParameterName);
             rewiredFromHub.Add(enter);
 
             // unconditional, as CVR has it: an emote that ends lands back on the hub and the hub
@@ -2854,10 +2857,12 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // "restart" while it was a layer root and means "leave" as a child -- is caught by the parent's
     // unconditional transition back to the hub. The states that raised and dropped the playable
     // weight are left with nothing to say and go out with the rest of the VRC behaviours.
-    // ChilloutVR's own Emotes machine goes too: it answers the same Emote 1-8 the folded machine
-    // does, and two machines driving the body off one value would fight over it. Its dispatch is
-    // inherited rather than dropped -- ChilloutVR dispatches from each stance it can emote out of,
-    // not from the hub alone, so every state that reached it reaches the folded machine instead.
+    // ChilloutVR's own Emotes machine goes too: it answers the same quick-menu Emote the folded
+    // machine now also answers -- directly when the fold reads Emote itself, or through the
+    // Emote-to-VRCEmote compat feed layer below when it reads VRCEmote instead -- and two machines
+    // driving the body off the same value would fight over it. Its dispatch is inherited rather than
+    // dropped -- ChilloutVR dispatches from each stance it can emote out of, not from the hub alone,
+    // so every state that reached it reaches the folded machine instead.
     // The AFK entry is only wired when the Action animator declares AFK, since stock answers it and
     // a machine that never mentions it has no AFK branch to reach. The emote number is read under
     // whichever name the Action controller itself declares -- VRCEmote when it does, Emote otherwise
@@ -2882,6 +2887,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var emoteParameterName = actionController.parameters.Any(parameter => parameter.name == VrcEmoteParameterName)
             ? VrcEmoteParameterName
             : EmoteParameterName;
+        vrcActionFoldReadsVrcEmote = emoteParameterName == VrcEmoteParameterName;
 
         var dispatchStates = new List<AnimatorState> { hub };
         dispatchStates.AddRange(RemoveCckEmotesMachine(machine).Where(state => state != hub));
@@ -4950,6 +4956,106 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             },
         });
         uprightIsDerived = true;
+    }
+
+    const string VrcEmoteCompatLayerName = "VRC3CVR_VRCEmoteCompat";
+    const int VrcEmoteCount = 8;
+
+    // Bridges ChilloutVR's own quick-menu Emote onto VRCEmote for a fold that reads VRCEmote, so
+    // removing ChilloutVR's own Emotes machine (FoldActionMachine) does not silence that menu.
+    void MakeVrcEmoteCompatFeedLayer()
+    {
+        if (!vrcActionFoldReadsVrcEmote)
+        {
+            return;
+        }
+
+        var declared = chilloutAnimatorController.parameters;
+        var vrcEmoteType = AnimatorDriverParameterType(declared, VrcEmoteParameterName);
+
+        AnimatorDriverTask SetVrcEmote(float value) => new AnimatorDriverTask
+        {
+            op = AnimatorDriverTask.Operator.Set,
+            targetName = VrcEmoteParameterName,
+            targetType = vrcEmoteType,
+            aType = AnimatorDriverTask.SourceType.Static,
+            aValue = value,
+        };
+
+        var idle = new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = "Idle",
+            writeDefaultValues = false,
+        };
+
+        // Enter sets VRCEmote; exit clears it back to 0 -- edge-triggered on this state's own span,
+        // so a custom menu that drives VRCEmote directly while Emote sits at 0 is left alone.
+        AnimatorState MakeEmoteState(string name, float vrcEmoteValue) => new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = name,
+            writeDefaultValues = false,
+            behaviours = new StateMachineBehaviour[]
+            {
+                new AnimatorDriver
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    localOnly = true,
+                    EnterTasks = new List<AnimatorDriverTask> { SetVrcEmote(vrcEmoteValue) },
+                    ExitTasks = new List<AnimatorDriverTask> { SetVrcEmote(0f) },
+                },
+            },
+        };
+
+        AnimatorStateTransition MakeTransition(AnimatorState destination, AnimatorConditionMode mode, float threshold, string parameter) =>
+            Timed(new AnimatorStateTransition
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                destinationState = destination,
+                conditions = new AnimatorCondition[]
+                {
+                    new AnimatorCondition { mode = mode, parameter = parameter, threshold = threshold },
+                },
+            }, 0f);
+
+        var emoteStates = Enumerable.Range(1, VrcEmoteCount).Select(n => MakeEmoteState("Emote" + n, n)).ToArray();
+
+        // highest band first, mirroring the ordered Greater cascade CCK's own Emotes machine dispatches with
+        idle.transitions = Enumerable.Range(1, VrcEmoteCount).Reverse()
+            .Select(n => MakeTransition(emoteStates[n - 1], AnimatorConditionMode.Greater, n - 1, EmoteParameterName))
+            .ToArray();
+
+        for (var n = 1; n <= VrcEmoteCount; n++)
+        {
+            emoteStates[n - 1].transitions = new[]
+            {
+                MakeTransition(idle, AnimatorConditionMode.Less, n, EmoteParameterName),
+                MakeTransition(idle, AnimatorConditionMode.Greater, n, EmoteParameterName),
+                MakeTransition(idle, AnimatorConditionMode.If, 0f, CancelEmoteParameterName),
+            };
+        }
+
+        var layerName = chilloutAnimatorController.MakeUniqueLayerName(VrcEmoteCompatLayerName);
+        AddGeneratedLayer(new AnimatorControllerLayer
+        {
+            name = layerName,
+            defaultWeight = 1f,
+            blendingMode = AnimatorLayerBlendingMode.Override,
+            avatarMask = emptyMask,
+            stateMachine = new AnimatorStateMachine
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                name = layerName,
+                entryPosition = new Vector3(0, -100),
+                exitPosition = new Vector3(0, 200),
+                anyStatePosition = new Vector3(0, -300),
+                defaultState = idle,
+                states = new[] { idle }.Concat(emoteStates)
+                    .Select((state, i) => new ChildAnimatorState { state = state, position = new Vector3(0, i * 100) })
+                    .ToArray(),
+            },
+        });
     }
 
     // VRChat built-ins that ChilloutVR does not supply to the animator. The client's parameter
