@@ -952,19 +952,47 @@ namespace VRC3CVRVerification
             yield return new WaitForSeconds(1f);
             var hubState = Now();
 
+            // Emote, CancelEmote and Sitting are core parameters, which ChangeAnimatorParam does not
+            // route: the client owns them and hands them to the animator itself. So they are set
+            // where the client sets them -- TriggerEmote is the quick menu's own emote button, and
+            // the rest are the animator manager's own properties.
+            var manager = PlayerSetup.Instance.AnimatorManager;
+
             // ---- E1: the quick menu's Emote, which reaches a fold that reads VRCEmote through the
             // compat feed layer rather than directly ----
-            Run("E1 emote on", () => PlayerSetup.Instance.ChangeAnimatorParam("Emote", 2f));
-            yield return new WaitForSeconds(2f);
+            // sampled per frame, because how long the client holds the emote number is what decides
+            // whether a fold that reads it as a level can see it at all
+            var trace = new List<string>();
+            var lastReading = "";
+            var elapsed = 0f;
+            Run("E1 emote on", () => PlayerSetup.Instance.TriggerEmote(2f));
+            while (elapsed < 3f)
+            {
+                yield return null;
+                elapsed += Time.deltaTime;
+                var now = elapsed;
+                Run("E1 sample", () =>
+                {
+                    var reading = ReadParam(animator, "Emote").ToString("0.00") + ":" +
+                        ReadParam(animator, VrcEmoteOf(animator)).ToString("0") + ":" + Now() + ":" + Playing();
+                    if (reading != lastReading)
+                    {
+                        lastReading = reading;
+                        trace.Add(now.ToString("0.000") + ":" + reading);
+                    }
+                });
+            }
             Run("E1", () =>
             {
+                Note("E1 trace t:Emote:VRCEmote:state:clip, one sample per change — " + string.Join(";", trace.ToArray()));
                 Check(Now() == "Emote2", "E1 quick menu Emote 2 reaches the folded Action machine's emote state (state \"" +
-                    Now() + "\", VRCEmote " + ReadParam(animator, VrcEmoteOf(animator)).ToString("0") + ")");
+                    Now() + "\", Emote " + ReadParam(animator, "Emote").ToString("0.00") +
+                    ", VRCEmote " + ReadParam(animator, VrcEmoteOf(animator)).ToString("0") + ")");
                 Check(Playing() == "Emote2", "E1 the emote's own clip is what drives the body (clip \"" + Playing() + "\")");
             });
 
             // ---- E2: deselecting the emote ----
-            Run("E2 emote off", () => PlayerSetup.Instance.ChangeAnimatorParam("Emote", 0f));
+            Run("E2 emote off", () => manager.Emote = 0);
             // BlendOut leaves on its own exit time, so the return is not immediate
             yield return new WaitForSeconds(3f);
             Run("E2", () =>
@@ -974,26 +1002,22 @@ namespace VRC3CVRVerification
                 Check(Playing() != "Emote2", "E2 the emote's clip left the body (clip \"" + Playing() + "\")");
             });
 
-            // ---- E3: the quick menu's cancel. CancelEmote is a trigger, which ChangeAnimatorParam
-            // cannot write, so it goes onto the animator directly ----
-            Run("E3 emote on", () => PlayerSetup.Instance.ChangeAnimatorParam("Emote", 2f));
-            yield return new WaitForSeconds(2f);
+            // ---- E3: the quick menu's cancel ----
+            Run("E3 emote on", () => PlayerSetup.Instance.TriggerEmote(2f));
+            yield return new WaitForSeconds(1.5f);
             var startedEmote = false;
-            var cancelInjected = false;
             Run("E3 cancel", () =>
             {
                 startedEmote = Now() == "Emote2";
-                cancelInjected = TryTrigger(animator, "CancelEmote");
+                manager.CancelEmote = true;
             });
             yield return new WaitForSeconds(3f);
             Run("E3", () =>
             {
                 var emoteAfter = ReadParam(animator, "Emote");
-                if (!cancelInjected || !startedEmote)
+                if (!startedEmote)
                 {
-                    Note("E3 not measured: " + (cancelInjected
-                        ? "the emote never started (state \"" + Now() + "\")"
-                        : "no CancelEmote trigger on the animator"));
+                    Note("E3 not measured: the emote never started (state \"" + Now() + "\")");
                     return;
                 }
                 Check(Now() == hubState, "E3 CancelEmote returns the body to the locomotion hub (state \"" +
@@ -1003,12 +1027,12 @@ namespace VRC3CVRVerification
                 Note("E3 core Emote reads " + emoteAfter.ToString("0.00") + " after the cancel (0 means the client " +
                      "clears it of its own accord; anything else means the cancel has to hold on its own)");
             });
-            Run("E3 emote off", () => PlayerSetup.Instance.ChangeAnimatorParam("Emote", 0f));
+            Run("E3 emote off", () => manager.Emote = 0);
             yield return new WaitForSeconds(2f);
 
-            // ---- E4: Sitting. The client owns it, so an injected value may simply be overwritten;
-            // an actual chair is a manual item ----
-            Run("E4 sit", () => PlayerSetup.Instance.ChangeAnimatorParam("Sitting", 1f));
+            // ---- E4: Sitting. The client sets it when it seats the player, so this only asks what
+            // the folded machine does with it; an actual chair is a manual item ----
+            Run("E4 sit", () => manager.Sitting = true);
             yield return new WaitForSeconds(2f);
             Run("E4", () =>
             {
@@ -1021,7 +1045,7 @@ namespace VRC3CVRVerification
                     Now() + "\")");
                 Check(Playing() == "LocSitting", "E4 the seated pose is what drives the body (clip \"" + Playing() + "\")");
             });
-            Run("E4 stand", () => PlayerSetup.Instance.ChangeAnimatorParam("Sitting", 0f));
+            Run("E4 stand", () => manager.Sitting = false);
             yield return new WaitForSeconds(2f);
             Run("E4 stood", () => Check(Now() == hubState,
                 "E4 clearing Sitting returns the body to the locomotion hub (state \"" + Now() +
@@ -1548,18 +1572,6 @@ namespace VRC3CVRVerification
         static string VrcEmoteOf(Animator animator)
         {
             return HasParameter(animator, "VRCEmote") ? "VRCEmote" : "#VRCEmote";
-        }
-
-        // ChangeAnimatorParam takes a float, so a trigger cannot go through it.
-        static bool TryTrigger(Animator animator, string name)
-        {
-            var parameter = animator.parameters.FirstOrDefault(p => p.name == name);
-            if (parameter == null || parameter.type != AnimatorControllerParameterType.Trigger)
-            {
-                return false;
-            }
-            animator.SetTrigger(name);
-            return true;
         }
 
         static bool HasFeedLayer(Animator animator)
