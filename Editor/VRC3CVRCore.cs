@@ -5123,8 +5123,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // removing ChilloutVR's own Emotes machine (FoldActionMachine) does not silence that menu.
     // ChilloutVR reports a press as a pulse of about a tenth of a second rather than a value it
     // holds, while a VRChat Action layer reads the number for as long as the emote runs -- so the
-    // number is latched here on the way in and let go only on a cancel or where the folded machine
-    // reaches its Exit. ChilloutVR's own Emotes machine absorbs the same pulse the same way, by
+    // number is latched here on the way in and let go only on a cancel or as the emote that was
+    // holding it ends. ChilloutVR's own Emotes machine absorbs the same pulse the same way, by
     // latching its band on entry and leaving on its clip rather than on the number.
     void MakeVrcEmoteCompatFeedLayer()
     {
@@ -5216,18 +5216,81 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         };
 
         // A one-shot emote ends by running out of its own machine rather than by the number changing,
-        // and the hub dispatches on that number, so the latch comes down with it.
-        foreach (var state in AllStatesOf(foldedActionMachine)
-                     .Where(state => state.transitions.Any(transition => transition.isExit)))
-        {
-            var behaviours = state.behaviours;
-            ArrayUtility.Add(ref behaviours, new AnimatorDriver
+        // and the hub dispatches on that number, so the latch comes down as the emote is left --
+        // but only while it is still the number that emote was holding. Leaving because the
+        // selection moved on hands the latch to the emote that comes next, and taking it down there
+        // would strand the new one. The test needs two tasks because one carries a single operator:
+        // the first asks whether the number is still ours, the second answers with 0 or leaves it be.
+        var holding = AllStatesOf(foldedActionMachine)
+            .Select(state => new
             {
-                hideFlags = HideFlags.HideInHierarchy,
-                localOnly = true,
-                ExitTasks = new List<AnimatorDriverTask> { SetVrcEmote(0f) },
-            });
-            state.behaviours = behaviours;
+                state,
+                number = state.transitions.SelectMany(transition => transition.conditions)
+                    .Where(condition => condition.parameter == vrcEmote.name
+                        && condition.mode == AnimatorConditionMode.NotEqual)
+                    .Select(condition => (float?)condition.threshold)
+                    .FirstOrDefault(),
+            })
+            .Where(entry => entry.number.HasValue)
+            .ToArray();
+
+        if (holding.Length == 0)
+        {
+            Debug.LogWarning($"No state of the Action animator leaves its emote on a {vrcEmote.name} condition, so nothing lowers {vrcEmote.name} once an emote ends and the avatar will play it again as soon as it finishes. Give each emote state an exit condition on the emote number, as VRChat's stock Action layer does.");
+        }
+        else
+        {
+            var stillOurs = NonSyncParameterName("VRCEmoteHeld");
+            var parameters = chilloutAnimatorController.parameters;
+            if (!parameters.Any(p => p.name == stillOurs))
+            {
+                ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+                {
+                    name = stillOurs,
+                    type = AnimatorControllerParameterType.Int,
+                });
+                chilloutAnimatorController.parameters = parameters;
+            }
+            var stillOursType = AnimatorDriverParameterType(chilloutAnimatorController.parameters, stillOurs);
+
+            foreach (var entry in holding)
+            {
+                var behaviours = entry.state.behaviours;
+                ArrayUtility.Add(ref behaviours, new AnimatorDriver
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    localOnly = true,
+                    ExitTasks = new List<AnimatorDriverTask>
+                    {
+                        new AnimatorDriverTask
+                        {
+                            op = AnimatorDriverTask.Operator.Equal,
+                            targetName = stillOurs,
+                            targetType = stillOursType,
+                            aType = AnimatorDriverTask.SourceType.Parameter,
+                            aName = vrcEmote.name,
+                            aParamType = vrcEmoteType,
+                            bType = AnimatorDriverTask.SourceType.Static,
+                            bValue = entry.number.Value,
+                        },
+                        new AnimatorDriverTask
+                        {
+                            op = AnimatorDriverTask.Operator.Conditional,
+                            targetName = vrcEmote.name,
+                            targetType = vrcEmoteType,
+                            aType = AnimatorDriverTask.SourceType.Parameter,
+                            aName = stillOurs,
+                            aParamType = stillOursType,
+                            bType = AnimatorDriverTask.SourceType.Static,
+                            bValue = 0f,
+                            cType = AnimatorDriverTask.SourceType.Parameter,
+                            cName = vrcEmote.name,
+                            cParamType = vrcEmoteType,
+                        },
+                    },
+                });
+                entry.state.behaviours = behaviours;
+            }
         }
 
         var layerName = chilloutAnimatorController.MakeUniqueLayerName(VrcEmoteCompatLayerName);

@@ -15,6 +15,7 @@ public class VRC3CVRActionFoldTests
 
     const string ActionFoldTestFolder = "Assets/VRC3CVR_ActionFoldTest";
     const string EmoteStateName = "StandWave";
+    const string SecondEmoteStateName = "StandPoint";
     const string SecondLayerStateName = "ActionSecondLayerState";
 
     GameObject originalAvatar;
@@ -57,12 +58,17 @@ public class VRC3CVRActionFoldTests
         var emote = machine.AddState(EmoteStateName);
         emote.motion = clip;
 
+        var secondEmote = machine.AddState(SecondEmoteStateName);
+        secondEmote.motion = clip;
+
         var blendOut = machine.AddState("BlendOut");
         blendOut.AddStateMachineBehaviour<VRCPlayableLayerControl>().goalWeight = 0f;
 
         wait.AddTransition(prepare).AddCondition(AnimatorConditionMode.Greater, 0f, emoteParameter);
         prepare.AddTransition(emote).AddCondition(AnimatorConditionMode.Equals, 2f, emoteParameter);
         emote.AddTransition(blendOut).AddCondition(AnimatorConditionMode.NotEqual, 2f, emoteParameter);
+        prepare.AddTransition(secondEmote).AddCondition(AnimatorConditionMode.Equals, 5f, emoteParameter);
+        secondEmote.AddTransition(blendOut).AddCondition(AnimatorConditionMode.NotEqual, 5f, emoteParameter);
         blendOut.AddExitTransition().hasExitTime = true;
 
         controller.AddLayer("ActionSecondLayer");
@@ -319,7 +325,7 @@ public class VRC3CVRActionFoldTests
     }
 
     [Test]
-    public void Convert_WithVRCEmoteDeclared_ReleasesTheLatchWhereTheFoldedMachineExits()
+    public void Convert_WithVRCEmoteDeclared_ReleasesTheLatchOnlyWhileTheEmoteStillHoldsIt()
     {
         var controller = Convert(convertActionLayer: true, declareVrcEmote: true);
         var actionMachine = ChildMachineNamed(LocomotionMachineOf(controller), "Action");
@@ -327,14 +333,30 @@ public class VRC3CVRActionFoldTests
         AnimatorDriver ReleaseOn(string stateName) => AllStatesOf(actionMachine)
             .Single(state => state.name == stateName).behaviours.OfType<AnimatorDriver>().SingleOrDefault();
 
-        var release = ReleaseOn("BlendOut");
-        Assert.IsNotNull(release, "the state the folded machine exits through never lets go of VRCEmote");
-        Assert.AreEqual("VRCEmote", release.ExitTasks.Single().targetName);
-        Assert.AreEqual(0f, release.ExitTasks.Single().aValue);
-        Assert.IsEmpty(release.EnterTasks, "the release fires on the way in as well as the way out");
+        // both emote states hold a number of their own, and each has to test against its own
+        foreach (var (stateName, number) in new[] { (EmoteStateName, 2f), (SecondEmoteStateName, 5f) })
+        {
+            var release = ReleaseOn(stateName);
+            Assert.IsNotNull(release, stateName + " never lets go of the emote number it holds");
+            Assert.IsEmpty(release.EnterTasks, stateName + " lets go of the number on the way in as well as out");
+            Assert.AreEqual(2, release.ExitTasks.Count, stateName + " release");
 
-        Assert.IsNull(ReleaseOn(EmoteStateName), "a state with no way out of the machine lets go of VRCEmote anyway");
-        Assert.IsNull(ReleaseOn("WaitForActionOrAFK"), "a state with no way out of the machine lets go of VRCEmote anyway");
+            var test = release.ExitTasks[0];
+            Assert.AreEqual(AnimatorDriverTask.Operator.Equal, test.op, stateName + " release test");
+            Assert.AreEqual("#VRCEmoteHeld", test.targetName);
+            Assert.AreEqual("VRCEmote", test.aName);
+            Assert.AreEqual(number, test.bValue, stateName + " tests against a number it does not hold");
+
+            var answer = release.ExitTasks[1];
+            Assert.AreEqual(AnimatorDriverTask.Operator.Conditional, answer.op, stateName + " release answer");
+            Assert.AreEqual("VRCEmote", answer.targetName);
+            Assert.AreEqual("#VRCEmoteHeld", answer.aName);
+            Assert.AreEqual(0f, answer.bValue, stateName + " does not let the number go when it is still its own");
+            Assert.AreEqual("VRCEmote", answer.cName, stateName + " drops a number that had already moved on");
+        }
+
+        Assert.IsNull(ReleaseOn("BlendOut"), "a state that holds no emote number lets go of one anyway");
+        Assert.IsNull(ReleaseOn("WaitForActionOrAFK"), "a state that holds no emote number lets go of one anyway");
     }
 
     // ---- driven: Animator.Update advances state, never pose, so state checks need no PlayableGraph ----
@@ -476,6 +498,17 @@ public class VRC3CVRActionFoldTests
             "CancelEmote never returned the avatar to the hub");
     }
 
+    // ChilloutVR holds the emote number for about a tenth of a second and then clears it itself
+    static void Pulse(Animator animator, float emote)
+    {
+        animator.SetFloat("Emote", emote);
+        for (var frame = 0; frame < 6; frame++)
+        {
+            animator.Update(1f / 60f);
+        }
+        animator.SetFloat("Emote", 0f);
+    }
+
     [Test]
     public void Convert_WithEmotePulsed_LatchesVRCEmoteUntilTheEmoteIsCancelled()
     {
@@ -484,18 +517,7 @@ public class VRC3CVRActionFoldTests
         var animator = DriveAnimator(convertedAvatar);
         var layer = LocomotionLayerIndex(animator);
 
-        // ChilloutVR holds the emote number for about a tenth of a second and then clears it itself
-        void Pulse()
-        {
-            animator.SetFloat("Emote", 2f);
-            for (var frame = 0; frame < 6; frame++)
-            {
-                animator.Update(1f / 60f);
-            }
-            animator.SetFloat("Emote", 0f);
-        }
-
-        Pulse();
+        Pulse(animator, 2f);
         Assert.Less(FramesUntil(animator, layer, EmoteStateName), DrivenFrameLimit,
             "the emote never settled once ChilloutVR's pulse had ended");
         Assert.AreEqual(2, animator.GetInteger("VRCEmote"), "the latch came down with the pulse");
@@ -505,9 +527,29 @@ public class VRC3CVRActionFoldTests
             "CancelEmote never returned the avatar to the hub");
         Assert.AreEqual(0, animator.GetInteger("VRCEmote"), "the latch outlived the emote it was holding");
 
-        Pulse();
+        Pulse(animator, 2f);
         Assert.Less(FramesUntil(animator, layer, EmoteStateName), DrivenFrameLimit,
             "pressing the same emote again did not start it again");
+    }
+
+    [Test]
+    public void Convert_WithEmoteSwitchedWhilePlaying_ReachesTheEmoteThatWasSwitchedTo()
+    {
+        Convert(convertActionLayer: true, declareVrcEmote: true);
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+
+        Pulse(animator, 2f);
+        Assert.Less(FramesUntil(animator, layer, EmoteStateName), DrivenFrameLimit,
+            "fixture: the first emote never started");
+
+        // driven past BlendOut and back through the hub, which is the whole point: the first emote
+        // lets go of the number on its way out, and stopping at the switch would never see that
+        Pulse(animator, 5f);
+        Assert.Less(FramesUntil(animator, layer, SecondEmoteStateName), DrivenFrameLimit,
+            "switching emotes while one played never reached the second one");
+        Assert.AreEqual(5, animator.GetInteger("VRCEmote"),
+            "the emote being switched away from took the new number down with it");
     }
 
     [Test]

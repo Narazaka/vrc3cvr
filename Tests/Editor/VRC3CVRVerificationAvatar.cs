@@ -26,6 +26,7 @@ using TrackingType = VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType;
 //   E2 the emote keeps running once ChilloutVR's own Emote pulse has ended
 //   E3 the quick menu's cancel leaves the emote too
 //   E4 Sitting plays the folded Sitting machine's seated pose
+//   E5 picking a second emote while one plays reaches the second one
 // Each group can be shown/hidden from the expressions menu so items can be checked one at a
 // time. Labels carry the expected behavior (in English: the built-in font has no CJK glyphs).
 // Lives in Tests/ so it ships with the repository but not with the distributed unitypackage.
@@ -793,6 +794,7 @@ public static class VRC3CVRVerificationAvatar
     // whole body, which is both what a wearer looks for and what lets the in-game check name the
     // clip the layer is actually playing.
     const string CckEmoteClipPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Emotes/Emote2.anim";
+    const string CckSecondEmoteClipPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Emotes/Emote5.anim";
     const string CckSittingClipPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Locomotion/LocSitting.anim";
 
     // VRChat's stock Action shape, down to the VRCEmote it reads: a wait state, a Prepare that raises
@@ -828,12 +830,19 @@ public static class VRC3CVRVerificationAvatar
         var emote = State("Emote2");
         emote.motion = AssetDatabase.LoadAssetAtPath<AnimationClip>(CckEmoteClipPath);
 
+        // a second emote, so switching from one to another while it plays is something the in-game
+        // checks can actually ask for
+        var secondEmote = State("Emote5");
+        secondEmote.motion = AssetDatabase.LoadAssetAtPath<AnimationClip>(CckSecondEmoteClipPath);
+
         var blendOut = State("BlendOut");
         blendOut.AddStateMachineBehaviour<VRCPlayableLayerControl>().goalWeight = 0f;
 
         Immediate(wait.AddTransition(prepare)).AddCondition(AnimatorConditionMode.Greater, 0f, "VRCEmote");
         Immediate(prepare.AddTransition(emote)).AddCondition(AnimatorConditionMode.Equals, 2f, "VRCEmote");
         Immediate(emote.AddTransition(blendOut)).AddCondition(AnimatorConditionMode.NotEqual, 2f, "VRCEmote");
+        Immediate(prepare.AddTransition(secondEmote)).AddCondition(AnimatorConditionMode.Equals, 5f, "VRCEmote");
+        Immediate(secondEmote.AddTransition(blendOut)).AddCondition(AnimatorConditionMode.NotEqual, 5f, "VRCEmote");
         blendOut.AddExitTransition().hasExitTime = true;
 
         return action;

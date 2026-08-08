@@ -1003,7 +1003,46 @@ namespace VRC3CVRVerification
                     ReadParam(animator, VrcEmoteOf(animator)).ToString("0") + ")");
             });
 
-            // ---- E3: the quick menu's cancel, on the emote E1 started ----
+            // ---- E5: a second emote picked while the first plays. The first one lets go of the
+            // number on its way out, so this is where a latch belonging to the second can be lost.
+            // Traced as well, since whether the client sends a cancel of its own is unmeasured ----
+            var switchTrace = new List<string>();
+            var lastSwitchReading = "";
+            var switchElapsed = 0f;
+            Run("E5 switch", () => PlayerSetup.Instance.TriggerEmote(5f));
+            while (switchElapsed < 3f)
+            {
+                yield return null;
+                switchElapsed += Time.deltaTime;
+                var now = switchElapsed;
+                Run("E5 sample", () =>
+                {
+                    var reading = ReadParam(animator, "Emote").ToString("0.00") + ":" +
+                        ReadParam(animator, VrcEmoteOf(animator)).ToString("0") + ":" +
+                        ReadParam(animator, "CancelEmote").ToString("0") + ":" + Now() + ":" + Playing();
+                    if (reading != lastSwitchReading)
+                    {
+                        lastSwitchReading = reading;
+                        switchTrace.Add(now.ToString("0.000") + ":" + reading);
+                    }
+                });
+            }
+            Run("E5", () =>
+            {
+                Note("E5 trace t:Emote:VRCEmote:CancelEmote:state:clip, one sample per change — " +
+                    string.Join(";", switchTrace.ToArray()));
+                if (!startedEmote)
+                {
+                    Note("E5 not measured: the first emote never started");
+                    return;
+                }
+                Check(Now() == "Emote5", "E5 picking a second emote while the first played reaches it (state \"" +
+                    Now() + "\", VRCEmote " + ReadParam(animator, VrcEmoteOf(animator)).ToString("0") + ")");
+                Check(Playing() == "Emote5", "E5 the second emote's own clip is what drives the body (clip \"" +
+                    Playing() + "\")");
+            });
+
+            // ---- E3: the quick menu's cancel, on whichever emote is running ----
             Run("E3 cancel", () => manager.CancelEmote = true);
             yield return new WaitForSeconds(3f);
             Run("E3", () =>
@@ -1721,7 +1760,8 @@ namespace VRC3CVRVerification
             }
             switch (parameter.type)
             {
-                case AnimatorControllerParameterType.Bool: return animator.GetBool(name) ? 1f : 0f;
+                case AnimatorControllerParameterType.Bool:
+                case AnimatorControllerParameterType.Trigger: return animator.GetBool(name) ? 1f : 0f;
                 case AnimatorControllerParameterType.Int: return animator.GetInteger(name);
                 default: return animator.GetFloat(name);
             }
