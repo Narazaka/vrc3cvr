@@ -71,10 +71,17 @@ public class VRC3CVRActionFoldTests
         return controller;
     }
 
-    AnimatorController Convert(bool convertActionLayer, bool authoredAction = true, bool authoredBase = true, bool declareVrcEmote = false)
+    AnimatorController Convert(bool convertActionLayer, bool authoredAction = true, bool authoredBase = true,
+        bool declareVrcEmote = false, bool vrcEmoteIsSynced = true)
     {
         var descriptor = VRC3CVRVerificationAvatar.Generate(ActionFoldTestFolder);
         originalAvatar = descriptor.gameObject;
+
+        if (declareVrcEmote && !vrcEmoteIsSynced)
+        {
+            descriptor.expressionParameters.parameters =
+                descriptor.expressionParameters.parameters.Where(p => p.name != "VRCEmote").ToArray();
+        }
 
         var layers = descriptor.baseAnimationLayers;
         if (!authoredBase)
@@ -261,7 +268,6 @@ public class VRC3CVRActionFoldTests
         Assert.AreEqual("Idle", idle.name);
         Assert.IsEmpty(idle.behaviours, "Idle writes VRCEmote on its own enter, clobbering a custom menu that drives it directly");
 
-        // highest band first, mirroring CCK's own ordered Greater cascade
         CollectionAssert.AreEqual(
             new[] { "Emote8", "Emote7", "Emote6", "Emote5", "Emote4", "Emote3", "Emote2", "Emote1" },
             idle.transitions.Select(t => t.destinationState.name).ToArray(),
@@ -290,6 +296,18 @@ public class VRC3CVRActionFoldTests
             Assert.IsTrue(state.transitions.Any(t => t.conditions.Single().parameter == "CancelEmote" && t.conditions.Single().mode == AnimatorConditionMode.If),
                 "Emote" + n + " has no CancelEmote escape");
         }
+    }
+
+    [Test]
+    public void Convert_WithVRCEmoteNotSynced_TargetsTheNonSyncPrefixedParameter()
+    {
+        var controller = Convert(convertActionLayer: true, declareVrcEmote: true, vrcEmoteIsSynced: false);
+        var layer = controller.layers.Single(l => l.name.StartsWith(VrcEmoteCompatLayerPrefix));
+        var emote1 = layer.stateMachine.states.Single(child => child.state.name == "Emote1").state;
+        var driver = (AnimatorDriver)emote1.behaviours.Single();
+
+        Assert.AreEqual("#VRCEmote", driver.EnterTasks.Single().targetName);
+        Assert.AreEqual("#VRCEmote", driver.ExitTasks.Single().targetName);
     }
 
     // ---- driven: Animator.Update advances state, never pose, so state checks need no PlayableGraph ----
@@ -429,6 +447,28 @@ public class VRC3CVRActionFoldTests
         animator.SetFloat("Emote", 0f);
         Assert.Less(FramesUntil(animator, layer, hub.name), DrivenFrameLimit,
             "CancelEmote never returned the avatar to the hub");
+    }
+
+    [Test]
+    public void Convert_WithEmoteSwitchedDirectly_SettlesVRCEmoteOnTheNewSelection()
+    {
+        Convert(convertActionLayer: true, declareVrcEmote: true);
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+
+        animator.SetFloat("Emote", 2f);
+        Assert.Less(FramesUntil(animator, layer, EmoteStateName), DrivenFrameLimit,
+            "fixture: Emote never settled the avatar into the emote itself");
+
+        animator.SetFloat("Emote", 5f);
+        var frames = 0;
+        while (frames < DrivenFrameLimit && animator.GetInteger("VRCEmote") != 5)
+        {
+            animator.Update(1f / 60f);
+            frames++;
+        }
+        Assert.AreEqual(5, animator.GetInteger("VRCEmote"),
+            "switching Emote directly from 2 to 5 did not settle VRCEmote on the new selection");
     }
 }
 #endif

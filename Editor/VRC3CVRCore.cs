@@ -4971,12 +4971,18 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
 
         var declared = chilloutAnimatorController.parameters;
-        var vrcEmoteType = AnimatorDriverParameterType(declared, VrcEmoteParameterName);
+        var vrcEmote = declared.FirstOrDefault(p => p.name == VrcEmoteParameterName)
+            ?? declared.FirstOrDefault(p => p.name == NonSyncParameterName(VrcEmoteParameterName));
+        if (vrcEmote == null)
+        {
+            return;
+        }
+        var vrcEmoteType = AnimatorDriverParameterType(declared, vrcEmote.name);
 
         AnimatorDriverTask SetVrcEmote(float value) => new AnimatorDriverTask
         {
             op = AnimatorDriverTask.Operator.Set,
-            targetName = VrcEmoteParameterName,
+            targetName = vrcEmote.name,
             targetType = vrcEmoteType,
             aType = AnimatorDriverTask.SourceType.Static,
             aValue = value,
