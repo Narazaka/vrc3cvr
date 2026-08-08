@@ -34,8 +34,11 @@ public class VRC3CVREndToEndTests
             shouldCloneAvatar = true,
             saveAssets = false,
             gestureWeightConversionMode = mode,
-            // off by default, and the avatar's Base layer is only looked at when it is on
+            // all three are off by default, and the avatar's Base, Action and Sitting layers are
+            // only looked at when they are on
             convertLocomotionLayer = true,
+            convertActionLayer = true,
+            convertSittingLayer = true,
         });
         core.Convert();
         converted = core.chilloutAvatar;
@@ -157,36 +160,103 @@ public class VRC3CVREndToEndTests
 
         Assert.IsTrue(machine.states.Any(child => child.state.name == "LocFlying"));
         Assert.IsTrue(machine.states.Any(child => child.state.name == "Swimming"));
-        Assert.IsTrue(machine.stateMachines.Any(child => child.stateMachine.name == "Emotes"));
 
         // Nothing in the converted asset shows whether the pass-through still passes, so it is run.
-        var animator = avatar.GetComponent<Animator>();
-        // the controller was assigned to a component that already existed, and outside play mode
-        // nothing rebinds it on its own -- until it does, the animator reports no layers at all
-        animator.Rebind();
-        var layerIndex = Enumerable.Range(0, animator.layerCount)
-            .Single(index => animator.GetLayerName(index) == "Locomotion/Emotes");
-        int FramesUntil(string stateName)
-        {
-            var frames = 0;
-            while (frames < 240 &&
-                   animator.GetCurrentAnimatorStateInfo(layerIndex).shortNameHash != Animator.StringToHash(stateName))
-            {
-                animator.Update(1f / 60f);
-                frames++;
-            }
-            return frames;
-        }
+        var animator = DriveAnimator(avatar);
+        var layerIndex = LocomotionLayerIndex(animator);
 
         animator.SetBool("Grounded", true);
         animator.Update(0f);
         animator.SetBool("Grounded", false);
-        Assert.Less(FramesUntil("Short Fall"), 30, "the avatar never went airborne");
+        Assert.Less(FramesUntil(animator, layerIndex, "Short Fall"), 30, "the avatar never went airborne");
 
         animator.SetBool("Grounded", true);
         // Short Fall -> QuickLand blend 6F; LocJumpLand runs to its 0.5588 crossing ~19F; 15F blend
         // into RestoreTracking; its entry blend then its own crossing ~2F; 15F blend out: ~52F.
-        Assert.Less(FramesUntil("Locomotion"), 75, "landing left the avatar stuck in the landing chain");
+        Assert.Less(FramesUntil(animator, layerIndex, "Locomotion"), 75, "landing left the avatar stuck in the landing chain");
+    }
+
+    // ---- driven: Animator.Update advances state, never pose, so state checks need no PlayableGraph ----
+
+    const int DrivenFrameLimit = 240;
+
+    static Animator DriveAnimator(GameObject avatar)
+    {
+        var animator = avatar.GetComponent<Animator>();
+        // the controller was assigned to a component that already existed, and outside play mode
+        // nothing rebinds it on its own -- until it does, the animator reports no layers at all
+        animator.Rebind();
+        return animator;
+    }
+
+    static int LocomotionLayerIndex(Animator animator) =>
+        Enumerable.Range(0, animator.layerCount)
+            .Single(index => animator.GetLayerName(index) == "Locomotion/Emotes");
+
+    static int FramesUntil(Animator animator, int layer, string stateName)
+    {
+        var frames = 0;
+        while (frames < DrivenFrameLimit &&
+               animator.GetCurrentAnimatorStateInfo(layer).shortNameHash != Animator.StringToHash(stateName))
+        {
+            animator.Update(1f / 60f);
+            frames++;
+        }
+        return frames;
+    }
+
+    // The fold tests prove the mechanism on purpose-built controllers; this asks whether the avatar
+    // that actually gets uploaded came out of the conversion with both folds wired and driveable.
+    [Test]
+    public void ConvertVerificationAvatar_FoldsItsActionAndSittingLayersIntoTheLocomotionHub()
+    {
+        var avatar = Convert(VRC3CVRConvertConfig.GestureWeightConversionMode.FoldToGestureLeft);
+        var controller = ControllerOf(avatar);
+        var machine = controller.layers.Single(layer => layer.name == "Locomotion/Emotes").stateMachine;
+        var hub = machine.defaultState;
+
+        AnimatorStateMachine Child(string name) => machine.stateMachines
+            .Select(child => child.stateMachine).FirstOrDefault(child => child != null && child.name == name);
+
+        var actionMachine = Child("Action");
+        Assert.IsNotNull(actionMachine, "the Action machine was not folded into the locomotion layer");
+        Assert.IsNull(Child("Emotes"), "ChilloutVR's own emote machine was kept alongside the folded one");
+        var sittingMachine = Child("Sitting");
+        Assert.IsNotNull(sittingMachine, "the Sitting machine was not folded into the locomotion layer");
+        Assert.IsFalse(machine.states.Any(child => child.state.name == "Sitting"),
+            "ChilloutVR's own seat was kept alongside the folded machine");
+
+        // the avatar's Action controller reads VRCEmote, so the quick menu's own Emote only reaches
+        // it through the compat feed layer
+        Assert.IsTrue(controller.layers.Any(layer => layer.name.StartsWith("VRC3CVR_VRCEmoteCompat")));
+        var emoteEntry = hub.transitions.Single(transition => transition.destinationStateMachine == actionMachine
+            && transition.conditions.Any(condition => condition.parameter == "VRCEmote"));
+        Assert.AreEqual(AnimatorConditionMode.Greater, emoteEntry.conditions.Single().mode);
+        var sitEntry = hub.transitions.Single(transition => transition.destinationStateMachine == sittingMachine);
+        Assert.AreEqual("Sitting", sitEntry.conditions.Single().parameter);
+
+        var emote = actionMachine.states.Single(child => child.state.name == "Emote2").state;
+        Assert.IsTrue(emote.transitions.Any(t => t.conditions.Any(condition => condition.parameter == "CancelEmote")),
+            "the emote has no CancelEmote escape");
+
+        // the same sequence the mod's E group runs in game
+        var animator = DriveAnimator(avatar);
+        var layerIndex = LocomotionLayerIndex(animator);
+
+        animator.SetFloat("Emote", 2f);
+        Assert.Less(FramesUntil(animator, layerIndex, "Emote2"), DrivenFrameLimit,
+            "the quick menu's Emote never bridged into VRCEmote and reached the folded emote");
+        animator.SetTrigger("CancelEmote");
+        animator.SetFloat("Emote", 0f);
+        Assert.Less(FramesUntil(animator, layerIndex, hub.name), DrivenFrameLimit,
+            "CancelEmote never returned the avatar to the hub");
+
+        animator.SetBool("Sitting", true);
+        Assert.Less(FramesUntil(animator, layerIndex, "SitPose"), DrivenFrameLimit,
+            "Sitting never carried the avatar into the folded Sitting machine");
+        animator.SetBool("Sitting", false);
+        Assert.Less(FramesUntil(animator, layerIndex, hub.name), DrivenFrameLimit,
+            "clearing Sitting never carried the avatar back to the hub");
     }
 
     static IEnumerable<string> ClipNamesOf(AnimatorStateMachine machine)

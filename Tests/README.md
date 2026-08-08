@@ -68,8 +68,9 @@ CCK Control Panel, or drive both programmatically — the CCK exposes
 `ContentBuilderAPI.BuildAndUpload(assetInfo, BuildConfig.Default, uploadInfo, new LegalAssurance(true, true), ct)`,
 which needs no UI (see issue #23).
 
-Tick **Convert locomotion animator**: it is off by default, and the L checks are about the
-avatar's own Base layer, which the conversion only looks at when it is on.
+Tick **Convert locomotion animator**, **Convert action animator** and **Convert sitting animator**:
+all three are off by default, and the L and E checks are about the avatar's own Base, Action and
+Sitting layers, which the conversion only looks at when they are on.
 
 Upload once, then **reuse the same content ids on every later run**: an upload replaces whatever
 id it is given, and CVR accounts have a limited number of content slots, so uploading fresh each
@@ -119,7 +120,8 @@ The suite switches to each avatar in turn and injects everything it needs — no
 | Prone | Reflection on the character controller — the member is not guaranteed across client versions, so a rename degrades to "not measured" instead of breaking the build |
 | Heading | The player transform's rotation, re-asserted every frame (the movement system owns it otherwise). Used by M1 to tell an avatar-local `VelocityX/Z` from a world-space one: an axis-aligned heading makes both readings identical, so the test would pass for either |
 | Mute | `Comms_Manager.IsMicMuted` |
-| Menu toggles | `PlayerSetup.ChangeAnimatorParam()` |
+| Menu toggles, `Emote`, `Sitting` | `PlayerSetup.ChangeAnimatorParam()` |
+| `CancelEmote` | `Animator.SetTrigger` — `ChangeAnimatorParam` only takes a float |
 
 Results are appended to `<ChilloutVR>\VRC3CVR_VerificationReport.txt` as `PASS` / `FAIL` /
 `INFO` lines, per avatar, and progress goes to the MelonLoader console as `[step]` lines.
