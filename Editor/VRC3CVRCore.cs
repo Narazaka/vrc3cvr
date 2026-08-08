@@ -1406,6 +1406,18 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             MergeVrcAnimatorIntoChilloutAnimator(vrcAnimatorControllers[i], baseAnimatorID);
         }
 
+        // Not one of the base animation layers, so it has no turn in the loop above.
+        if (vrcSittingFoldsIntoCckLocomotion)
+        {
+            FoldSittingMachine(
+                chilloutAnimatorController.layers.FirstOrDefault(layer => layer.name == CckLocomotionLayerName),
+                VrcSittingAnimatorController());
+        }
+        else if (convertSittingLayer)
+        {
+            Debug.Log("Not converting the Sitting animator: it has no seated animation of its own. ChilloutVR's own seated state is kept instead.");
+        }
+
         Debug.Log("Finished merging all animators");
     }
 
@@ -2700,6 +2712,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // Set while FoldActionMachine reads VRCEmote rather than Emote (MakeVrcEmoteCompatFeedLayer).
     bool vrcActionFoldReadsVrcEmote;
 
+    // Set while the VRC Sitting playable is folded into the integrated locomotion layer
+    // (FoldSittingMachine).
+    bool vrcSittingFoldsIntoCckLocomotion;
+
+    // Set while CVR's own seated state is carried across with the movement modes (BaseAnswersSitting).
+    bool salvagesCckSitting;
+
     // Set while ProcessStateMachine walks a machine that ends up in the layer owning ChilloutVR's
     // locomotion: the Base layer that takes it over, or a machine folded into it.
     bool processingIntegratedLocomotionLayer;
@@ -2719,14 +2738,16 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     const string CckFlyingStateName = "LocFlying";
     const string CckSwimmingStateName = "Swimming";
+    const string CckSittingStateName = "Sitting";
     const string CckEmotesMachineName = "Emotes";
 
     Dictionary<string, AnimatorState> salvagedMovementModeStates = new Dictionary<string, AnimatorState>();
     AnimatorStateMachine salvagedEmotesMachine;
 
     // The parts of the CVR locomotion layer nothing in a converted Base layer can answer: the two
-    // movement modes VRChat has no concept of, and the quick-menu emotes, whose Emote/CancelEmote
-    // parameters stay declared and would otherwise drive nothing.
+    // movement modes VRChat has no concept of, the seat when nothing else answers Sitting, and the
+    // quick-menu emotes, whose Emote/CancelEmote parameters stay declared and would otherwise drive
+    // nothing.
     void SalvageCckMovementModeStates(AnimatorControllerLayer[] cckLayers)
     {
         salvagedMovementModeStates = new Dictionary<string, AnimatorState>();
@@ -2739,7 +2760,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             }
             foreach (var state in AllStatesOf(layer.stateMachine))
             {
-                if (state.name == CckFlyingStateName || state.name == CckSwimmingStateName)
+                if (state.name == CckFlyingStateName || state.name == CckSwimmingStateName
+                    || (state.name == CckSittingStateName && salvagesCckSitting))
                 {
                     salvagedMovementModeStates[state.name] = state;
                 }
@@ -2794,6 +2816,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         var flying = Adopt(CckFlyingStateName);
         var swimming = Adopt(CckSwimmingStateName);
+        var sitting = Adopt(CckSittingStateName);
         machine.states = states;
 
         if (flying != null)
@@ -2819,6 +2842,16 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             rewiredFromHub.Add(enter);
 
             Timed(swimming.AddTransition(hub), 0.25f).AddCondition(AnimatorConditionMode.IfNot, 0f, "Swimming");
+        }
+
+        if (sitting != null)
+        {
+            // CVR sits down and stands up on the frame the client flips Sitting, with no blend
+            var enter = Timed(hub.AddTransition(sitting), 0f);
+            enter.AddCondition(AnimatorConditionMode.If, 0f, SittingParameterName);
+            rewiredFromHub.Add(enter);
+
+            Timed(sitting.AddTransition(hub), 0f).AddCondition(AnimatorConditionMode.IfNot, 0f, SittingParameterName);
         }
 
         if (salvagedEmotesMachine != null)
@@ -2970,6 +3003,121 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             ArrayUtility.Add(ref transitions, escape);
             state.transitions = transitions;
         }
+    }
+
+    const string FoldedSittingMachineName = "Sitting";
+    const string SittingParameterName = "Sitting";
+    const float SittingBlendDuration = 0.25f;
+
+    AnimatorController VrcSittingAnimatorController() =>
+        (vrcAvatarDescriptor.specialAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0])
+            .FirstOrDefault(layer => layer.type == VRCAvatarDescriptor.AnimLayerType.Sitting)
+            .animatorController as AnimatorController;
+
+    // The Sitting playable is folded the same way the Action one is, but VRChat holds its weight at
+    // zero for as long as the player is standing, which leaves the machine with no exit structure at
+    // all: nothing inside it says how to stand up, because the weight said it. Reducing that weight
+    // to structure therefore means synthesising the way out -- every state gains a transition to the
+    // machine's Exit node the moment Sitting drops -- on top of moving the machine in and wiring the
+    // hub's entry. ChilloutVR's own seated state is dropped along the way for the same reason the
+    // Emotes machine is (FoldActionMachine): two states answering the same Sitting would fight over
+    // the body.
+    void FoldSittingMachine(AnimatorControllerLayer integratedLayer, AnimatorController sittingController)
+    {
+        var machine = integratedLayer != null ? integratedLayer.stateMachine : null;
+        var hub = machine != null ? machine.defaultState : null;
+        if (hub == null)
+        {
+            Debug.LogWarning("Not converting the Sitting animator: the converted locomotion layer has no default state to sit down from.");
+            return;
+        }
+
+        // when the Base layer took the locomotion layer over, CVR's seat was never salvaged into it
+        if (!vrcBaseReplacesCckLocomotion)
+        {
+            RemoveCckSittingState(machine);
+        }
+
+        var clonedSittingController = new CopyAnimatorController(sittingController).CopyController();
+        var clonedLayers = clonedSittingController.layers;
+        if (clonedLayers.Length > 1)
+        {
+            Debug.LogWarning($"Not converting {clonedLayers.Length - 1} layer(s) of the Sitting animator past the first: VRChat kept them off the avatar by holding the Sitting playable's weight at zero, and the folded machine has no weight of its own to hold them back with.");
+        }
+
+        var sittingMachine = clonedLayers[0].stateMachine;
+        sittingMachine.name = FoldedSittingMachineName;
+
+        // registered around the processing for the reason FoldActionMachine states
+        new CopyAnimatorController(clonedSittingController).CopyParametersTo(chilloutAnimatorController);
+        var parameters = clonedSittingController.parameters;
+        processingIntegratedLocomotionLayer = true;
+        ProcessStateMachine(sittingMachine, integratedLayer.name, ref parameters);
+        processingIntegratedLocomotionLayer = false;
+        clonedSittingController.parameters = parameters;
+        new CopyAnimatorController(clonedSittingController).CopyParametersTo(chilloutAnimatorController);
+
+        var childMachines = machine.stateMachines;
+        ArrayUtility.Add(ref childMachines, new ChildAnimatorStateMachine
+        {
+            stateMachine = sittingMachine,
+            position = new Vector3(900f, 200f, 0f),
+        });
+        machine.stateMachines = childMachines;
+
+        // after the processing above, as the conditions below are already in CVR's own vocabulary
+        foreach (var state in AllStatesOf(sittingMachine))
+        {
+            Timed(state.AddExitTransition(), SittingBlendDuration)
+                .AddCondition(AnimatorConditionMode.IfNot, 0f, SittingParameterName);
+        }
+
+        var enter = Timed(hub.AddTransition(sittingMachine), SittingBlendDuration);
+        enter.AddCondition(AnimatorConditionMode.If, 0f, SittingParameterName);
+        hub.transitions = PutFirst(hub.transitions, new List<AnimatorStateTransition> { enter });
+
+        machine.AddStateMachineTransition(sittingMachine, hub);
+    }
+
+    static void RemoveCckSittingState(AnimatorStateMachine machine)
+    {
+        var sitting = machine.states
+            .Select(child => child.state)
+            .FirstOrDefault(state => state != null && state.name == CckSittingStateName);
+        if (sitting == null)
+        {
+            return;
+        }
+        foreach (var child in machine.states)
+        {
+            child.state.transitions = child.state.transitions
+                .Where(transition => transition.destinationState != sitting)
+                .ToArray();
+        }
+        machine.anyStateTransitions = machine.anyStateTransitions
+            .Where(transition => transition.destinationState != sitting)
+            .ToArray();
+        machine.RemoveState(sitting);
+    }
+
+    // Sitting under every name a Base layer could be reading it by: the one below is read before the
+    // conversion, so VRChat's own names for it are still in place.
+    static readonly string[] SittingParameterNames = { SittingParameterName, "Seated", "InStation" };
+
+    // A Base layer derived from VRChat's stock one carries its own seated branch. Handing it CVR's
+    // seated state as well would leave both answering Sitting, so the salvage stands down.
+    static bool BaseAnswersSitting(AnimatorController controller)
+    {
+        var machine = controller != null && controller.layers.Length > 0 ? controller.layers[0].stateMachine : null;
+        if (machine == null)
+        {
+            return false;
+        }
+        return AllStatesOf(machine)
+            .SelectMany(state => state.transitions.Cast<AnimatorTransitionBase>())
+            .Concat(machine.anyStateTransitions)
+            .Concat(machine.entryTransitions)
+            .Any(transition => transition.conditions.Any(condition => SittingParameterNames.Contains(condition.parameter)));
     }
 
     // Returns the states that used to reach it.
@@ -3468,6 +3616,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             ? vrcAnimatorControllers[(int)VRCBaseAnimatorID.ACTION]
             : null;
         vrcActionFoldsIntoCckLocomotion = convertActionLayer && HasAuthoredMotion(actionAnimatorController);
+
+        // A stock Sitting layer only manages tracking and has no seated pose of its own, so it fails
+        // HasAuthoredMotion and leaves the seat to ChilloutVR, which is what it was already doing.
+        vrcSittingFoldsIntoCckLocomotion = convertSittingLayer && HasAuthoredMotion(VrcSittingAnimatorController());
+        salvagesCckSitting = !vrcSittingFoldsIntoCckLocomotion && !BaseAnswersSitting(baseAnimatorController);
 
         if (vrcBaseReplacesCckLocomotion)
         {

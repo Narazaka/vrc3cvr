@@ -21,6 +21,8 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring ConvertGestureAnimatorDescription => new istring("If your avatar overwrites the default finger animations when performing expressions", "アバターが表情を実行するときにデフォルトの指のアニメーションを上書きする場合はON");
         public static istring ConvertActionAnimator => new istring("Convert Action Animator (NOT RECOMMEND)", "Actionレイヤーを変換 (非推奨)");
         public static istring ConvertActionAnimatorDescription => new istring("Actions (mostly used for emotes) will very likely not convert over correctly and this option is better left unticked for now", "アクション (主にエモートに使用される) は正しく変換されない可能性が高く、このオプションは今のところチェックを外しておくことをお勧めします");
+        public static istring ConvertSittingAnimator => new istring("Convert Sitting Animator (seats)", "Sittingレイヤーを変換 (着席)");
+        public static istring ConvertSittingAnimatorDescription => new istring("Only applies to an avatar with its own sitting animations; a stock Sitting layer is left to ChilloutVR's own seated pose.", "独自の着席アニメーションを持つアバターのみが対象で、標準のSittingレイヤーはChilloutVRの着席ポーズに任せます。");
         public static istring ConvertFXAnimator => new istring("Convert FX Animator (blendshapes, particles, ect.)", "FXレイヤーを変換 (ブレンドシェイプ、パーティクルなど)");
         public static istring ConvertFXAnimatorDescription => new istring("FX state machine is commonly used all effects which don't affect the underlying rig, such as blendshapes and particle effects.", "FXステートマシンは、ブレンドシェイプやパーティクルエフェクトなど、基礎的なリグに影響を与えないすべてのエフェクトに一般的に使用されます。");
         public static istring PreserveParameterSyncState => new istring("Preserve parameter sync state", "パラメータの同期状態を保持");
@@ -257,7 +259,9 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             Toggle(nameof(VRC3CVRConvertConfig.convertGestureLayer), T.ConvertGestureAnimator, T.ConvertGestureAnimatorDescription);
             
             Toggle(nameof(VRC3CVRConvertConfig.convertActionLayer), T.ConvertActionAnimator, T.ConvertActionAnimatorDescription);
-            
+
+            Toggle(nameof(VRC3CVRConvertConfig.convertSittingLayer), T.ConvertSittingAnimator, T.ConvertSittingAnimatorDescription);
+
             Toggle(nameof(VRC3CVRConvertConfig.convertFXLayer), T.ConvertFXAnimator, T.ConvertFXAnimatorDescription);
 
             EditorGUI.indentLevel--;

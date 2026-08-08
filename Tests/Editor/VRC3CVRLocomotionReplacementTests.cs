@@ -759,15 +759,16 @@ public class VRC3CVRLocomotionReplacementTests
             "the avatar's own AnyState transition does not come last");
 
         var hubTransitions = hub.transitions;
-        Assert.AreEqual(3, hubTransitions.Length);
-        Assert.IsTrue(hubTransitions[2].isExit, "the avatar's own hub transition does not come last");
+        Assert.AreEqual(4, hubTransitions.Length);
+        Assert.IsTrue(hubTransitions[3].isExit, "the avatar's own hub transition does not come last");
         AssertModeReachableAndLeavable(root, hub, hubTransitions[0], "Swimming", "Swimming");
+        AssertModeReachableAndLeavable(root, hub, hubTransitions[1], "Sitting", "Sitting");
 
         var emotes = root.stateMachines.Single(child => child.stateMachine.name == "Emotes").stateMachine;
         Assert.IsTrue(AllStatesOf(emotes).Any(state => state.name == "Emote1"));
-        Assert.AreEqual(emotes, hubTransitions[1].destinationStateMachine);
-        Assert.IsFalse(hubTransitions[1].hasExitTime, "the emote entry waits for an exit time");
-        AssertCondition(hubTransitions[1], "Emote", AnimatorConditionMode.Greater, "emote entry");
+        Assert.AreEqual(emotes, hubTransitions[2].destinationStateMachine);
+        Assert.IsFalse(hubTransitions[2].hasExitTime, "the emote entry waits for an exit time");
+        AssertCondition(hubTransitions[2], "Emote", AnimatorConditionMode.Greater, "emote entry");
         var leaveEmotes = root.GetStateMachineTransitions(emotes).Single();
         Assert.AreEqual(hub, leaveEmotes.destinationState, "the Emotes machine has no way back out");
         Assert.AreEqual(0, leaveEmotes.conditions.Length, "the emote return is conditional");
