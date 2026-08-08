@@ -16,6 +16,7 @@ public class VRC3CVRActionFoldTests
     const string ActionFoldTestFolder = "Assets/VRC3CVR_ActionFoldTest";
     const string EmoteStateName = "StandWave";
     const string SecondEmoteStateName = "StandPoint";
+    const string OneShotEmoteStateName = "StandClap";
     const string SecondLayerStateName = "ActionSecondLayerState";
 
     GameObject originalAvatar;
@@ -61,6 +62,11 @@ public class VRC3CVRActionFoldTests
         var secondEmote = machine.AddState(SecondEmoteStateName);
         secondEmote.motion = clip;
 
+        // stock's own shape for an emote that ends by itself: it runs out and leaves on its exit
+        // time, with the emote number still standing
+        var oneShotEmote = machine.AddState(OneShotEmoteStateName);
+        oneShotEmote.motion = clip;
+
         var blendOut = machine.AddState("BlendOut");
         blendOut.AddStateMachineBehaviour<VRCPlayableLayerControl>().goalWeight = 0f;
 
@@ -69,6 +75,9 @@ public class VRC3CVRActionFoldTests
         emote.AddTransition(blendOut).AddCondition(AnimatorConditionMode.NotEqual, 2f, emoteParameter);
         prepare.AddTransition(secondEmote).AddCondition(AnimatorConditionMode.Equals, 5f, emoteParameter);
         secondEmote.AddTransition(blendOut).AddCondition(AnimatorConditionMode.NotEqual, 5f, emoteParameter);
+        prepare.AddTransition(oneShotEmote).AddCondition(AnimatorConditionMode.Equals, 7f, emoteParameter);
+        oneShotEmote.AddTransition(blendOut).AddCondition(AnimatorConditionMode.NotEqual, 7f, emoteParameter);
+        oneShotEmote.AddTransition(blendOut).hasExitTime = true;
         blendOut.AddExitTransition().hasExitTime = true;
 
         controller.AddLayer("ActionSecondLayer");
@@ -333,8 +342,9 @@ public class VRC3CVRActionFoldTests
         AnimatorDriver ReleaseOn(string stateName) => AllStatesOf(actionMachine)
             .Single(state => state.name == stateName).behaviours.OfType<AnimatorDriver>().SingleOrDefault();
 
-        // both emote states hold a number of their own, and each has to test against its own
-        foreach (var (stateName, number) in new[] { (EmoteStateName, 2f), (SecondEmoteStateName, 5f) })
+        // every emote state holds a number of its own, and each has to test against its own
+        foreach (var (stateName, number) in new[]
+                 { (EmoteStateName, 2f), (SecondEmoteStateName, 5f), (OneShotEmoteStateName, 7f) })
         {
             var release = ReleaseOn(stateName);
             Assert.IsNotNull(release, stateName + " never lets go of the emote number it holds");
@@ -530,6 +540,30 @@ public class VRC3CVRActionFoldTests
         Pulse(animator, 2f);
         Assert.Less(FramesUntil(animator, layer, EmoteStateName), DrivenFrameLimit,
             "pressing the same emote again did not start it again");
+    }
+
+    [Test]
+    public void Convert_WithAnEmoteThatEndsOnItsOwn_LetsTheNumberGoAndDoesNotStartItAgain()
+    {
+        var controller = Convert(convertActionLayer: true, declareVrcEmote: true);
+        var hub = LocomotionMachineOf(controller).defaultState;
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+
+        Pulse(animator, 7f);
+        Assert.Less(FramesUntil(animator, layer, OneShotEmoteStateName), DrivenFrameLimit,
+            "fixture: the one-shot emote never started");
+
+        // it runs out on its own, with nothing having touched the number
+        Assert.Less(FramesUntil(animator, layer, hub.name), DrivenFrameLimit,
+            "the emote never ended on its own");
+        Assert.AreEqual(0, animator.GetInteger("VRCEmote"),
+            "an emote that ended on its own left its number standing, and the hub dispatches on that");
+
+        // the number is what the hub dispatches on, so a number left standing shows up as the emote
+        // starting over rather than as a stale parameter
+        Assert.AreEqual(DrivenFrameLimit, FramesUntil(animator, layer, OneShotEmoteStateName),
+            "the emote started itself again after ending");
     }
 
     [Test]

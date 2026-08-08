@@ -1203,6 +1203,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         RenameParameterNameIfNeeded(ref task.targetName);
         RenameParameterNameIfNeeded(ref task.aName);
         RenameParameterNameIfNeeded(ref task.bName);
+        RenameParameterNameIfNeeded(ref task.cName);
     }
 
     void AdjustParameterNamesOnAdvancedSettings()
@@ -2942,6 +2943,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var actionMachine = clonedLayers[0].stateMachine;
         actionMachine.name = FoldedActionMachineName;
         foldedActionMachine = actionMachine;
+        // has to run before the processing below: on the Emote path those NotEqual conditions are
+        // adapted away against a float, and there would be nothing left to copy
         AddCancelEmoteEscapes(actionMachine, emoteParameterName);
 
         // registered before the processing below so this machine's conditions are adapted against
