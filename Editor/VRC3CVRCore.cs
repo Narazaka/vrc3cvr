@@ -2712,6 +2712,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // Set while FoldActionMachine reads VRCEmote rather than Emote (MakeVrcEmoteCompatFeedLayer).
     bool vrcActionFoldReadsVrcEmote;
 
+    // The machine FoldActionMachine moved in; MakeVrcEmoteCompatFeedLayer drops the VRCEmote latch
+    // on its way out, once AdjustParameterNames has settled the name to drop.
+    AnimatorStateMachine foldedActionMachine;
+
     // Set while the VRC Sitting playable is folded into the integrated locomotion layer
     // (FoldSittingMachine).
     bool vrcSittingFoldsIntoCckLocomotion;
@@ -2937,6 +2941,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         var actionMachine = clonedLayers[0].stateMachine;
         actionMachine.name = FoldedActionMachineName;
+        foldedActionMachine = actionMachine;
         AddCancelEmoteEscapes(actionMachine, emoteParameterName);
 
         // registered before the processing below so this machine's conditions are adapted against
@@ -5116,6 +5121,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     // Bridges ChilloutVR's own quick-menu Emote onto VRCEmote for a fold that reads VRCEmote, so
     // removing ChilloutVR's own Emotes machine (FoldActionMachine) does not silence that menu.
+    // ChilloutVR reports a press as a pulse of about a tenth of a second rather than a value it
+    // holds, while a VRChat Action layer reads the number for as long as the emote runs -- so the
+    // number is latched here on the way in and let go only on a cancel or where the folded machine
+    // reaches its Exit. ChilloutVR's own Emotes machine absorbs the same pulse the same way, by
+    // latching its band on entry and leaving on its clip rather than on the number.
     void MakeVrcEmoteCompatFeedLayer()
     {
         if (!vrcActionFoldReadsVrcEmote)
@@ -5148,23 +5158,29 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             writeDefaultValues = false,
         };
 
-        // Enter sets VRCEmote; exit clears it back to 0 -- edge-triggered on this state's own span,
-        // so a custom menu that drives VRCEmote directly while Emote sits at 0 is left alone.
+        AnimatorDriver Writes(float value) => new AnimatorDriver
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            localOnly = true,
+            EnterTasks = new List<AnimatorDriverTask> { SetVrcEmote(value) },
+        };
+
+        // Only entering writes, which is what leaves a custom menu driving VRCEmote directly alone:
+        // while Emote sits at 0 this layer holds in Idle and touches nothing.
         AnimatorState MakeEmoteState(string name, float vrcEmoteValue) => new AnimatorState
         {
             hideFlags = HideFlags.HideInHierarchy,
             name = name,
             writeDefaultValues = false,
-            behaviours = new StateMachineBehaviour[]
-            {
-                new AnimatorDriver
-                {
-                    hideFlags = HideFlags.HideInHierarchy,
-                    localOnly = true,
-                    EnterTasks = new List<AnimatorDriverTask> { SetVrcEmote(vrcEmoteValue) },
-                    ExitTasks = new List<AnimatorDriverTask> { SetVrcEmote(0f) },
-                },
-            },
+            behaviours = new StateMachineBehaviour[] { Writes(vrcEmoteValue) },
+        };
+
+        var cancel = new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = "Cancel",
+            writeDefaultValues = false,
+            behaviours = new StateMachineBehaviour[] { Writes(0f) },
         };
 
         AnimatorStateTransition MakeTransition(AnimatorState destination, AnimatorConditionMode mode, float threshold, string parameter) =>
@@ -5189,10 +5205,29 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             emoteStates[n - 1].transitions = new[]
             {
+                MakeTransition(cancel, AnimatorConditionMode.If, 0f, CancelEmoteParameterName),
                 MakeTransition(idle, AnimatorConditionMode.Less, n, EmoteParameterName),
                 MakeTransition(idle, AnimatorConditionMode.Greater, n, EmoteParameterName),
-                MakeTransition(idle, AnimatorConditionMode.If, 0f, CancelEmoteParameterName),
             };
+        }
+        cancel.transitions = new[]
+        {
+            Timed(new AnimatorStateTransition { hideFlags = HideFlags.HideInHierarchy, destinationState = idle }, 0f),
+        };
+
+        // A one-shot emote ends by running out of its own machine rather than by the number changing,
+        // and the hub dispatches on that number, so the latch comes down with it.
+        foreach (var state in AllStatesOf(foldedActionMachine)
+                     .Where(state => state.transitions.Any(transition => transition.isExit)))
+        {
+            var behaviours = state.behaviours;
+            ArrayUtility.Add(ref behaviours, new AnimatorDriver
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                localOnly = true,
+                ExitTasks = new List<AnimatorDriverTask> { SetVrcEmote(0f) },
+            });
+            state.behaviours = behaviours;
         }
 
         var layerName = chilloutAnimatorController.MakeUniqueLayerName(VrcEmoteCompatLayerName);
@@ -5210,7 +5245,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 exitPosition = new Vector3(0, 200),
                 anyStatePosition = new Vector3(0, -300),
                 defaultState = idle,
-                states = new[] { idle }.Concat(emoteStates)
+                states = new[] { idle }.Concat(emoteStates).Concat(new[] { cancel })
                     .Select((state, i) => new ChildAnimatorState { state = state, position = new Vector3(0, i * 100) })
                     .ToArray(),
             },

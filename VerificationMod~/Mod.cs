@@ -991,30 +991,23 @@ namespace VRC3CVRVerification
                 Check(Playing() == "Emote2", "E1 the emote's own clip is what drives the body (clip \"" + Playing() + "\")");
             });
 
-            // ---- E2: deselecting the emote ----
-            Run("E2 emote off", () => manager.Emote = 0);
-            // BlendOut leaves on its own exit time, so the return is not immediate
-            yield return new WaitForSeconds(3f);
+            // ---- E2: the latch. The client's pulse is long over by the time E1 has read three
+            // seconds of it, so the emote is only still running if VRCEmote held the number ----
+            var startedEmote = false;
             Run("E2", () =>
             {
-                Check(Now() == hubState, "E2 clearing Emote returns the body to the locomotion hub (state \"" +
-                    Now() + "\", expected \"" + hubState + "\")");
-                Check(Playing() != "Emote2", "E2 the emote's clip left the body (clip \"" + Playing() + "\")");
+                startedEmote = Now() == "Emote2";
+                Check(ReadParam(animator, "Emote") < 0.5f && ReadParam(animator, VrcEmoteOf(animator)) > 1.5f,
+                    "E2 VRCEmote holds the emote after ChilloutVR's own Emote pulse ended (Emote " +
+                    ReadParam(animator, "Emote").ToString("0.00") + ", VRCEmote " +
+                    ReadParam(animator, VrcEmoteOf(animator)).ToString("0") + ")");
             });
 
-            // ---- E3: the quick menu's cancel ----
-            Run("E3 emote on", () => PlayerSetup.Instance.TriggerEmote(2f));
-            yield return new WaitForSeconds(1.5f);
-            var startedEmote = false;
-            Run("E3 cancel", () =>
-            {
-                startedEmote = Now() == "Emote2";
-                manager.CancelEmote = true;
-            });
+            // ---- E3: the quick menu's cancel, on the emote E1 started ----
+            Run("E3 cancel", () => manager.CancelEmote = true);
             yield return new WaitForSeconds(3f);
             Run("E3", () =>
             {
-                var emoteAfter = ReadParam(animator, "Emote");
                 if (!startedEmote)
                 {
                     Note("E3 not measured: the emote never started (state \"" + Now() + "\")");
@@ -1022,13 +1015,10 @@ namespace VRC3CVRVerification
                 }
                 Check(Now() == hubState, "E3 CancelEmote returns the body to the locomotion hub (state \"" +
                     Now() + "\", expected \"" + hubState + "\")");
-                // the one thing only the running client can answer: if it leaves Emote standing, the
-                // compat feed layer re-enters the same band the moment the cancel is consumed
-                Note("E3 core Emote reads " + emoteAfter.ToString("0.00") + " after the cancel (0 means the client " +
-                     "clears it of its own accord; anything else means the cancel has to hold on its own)");
+                Check(ReadParam(animator, VrcEmoteOf(animator)) < 0.5f,
+                    "E3 the latch came down with the emote, so the hub does not dispatch straight back in (VRCEmote " +
+                    ReadParam(animator, VrcEmoteOf(animator)).ToString("0") + ")");
             });
-            Run("E3 emote off", () => manager.Emote = 0);
-            yield return new WaitForSeconds(2f);
 
             // ---- E4: Sitting. The client sets it when it seats the player, so this only asks what
             // the folded machine does with it; an actual chair is a manual item ----

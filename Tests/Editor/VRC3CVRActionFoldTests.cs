@@ -262,11 +262,15 @@ public class VRC3CVRActionFoldTests
         Assert.AreEqual(1f, layer.defaultWeight, "the compat feed layer does not run at full weight");
 
         float EnterValue(AnimatorState state) => ((AnimatorDriver)state.behaviours.Single()).EnterTasks.Single().aValue;
-        float ExitValue(AnimatorState state) => ((AnimatorDriver)state.behaviours.Single()).ExitTasks.Single().aValue;
 
         var idle = layer.stateMachine.defaultState;
         Assert.AreEqual("Idle", idle.name);
         Assert.IsEmpty(idle.behaviours, "Idle writes VRCEmote on its own enter, clobbering a custom menu that drives it directly");
+
+        var cancel = layer.stateMachine.states.Single(child => child.state.name == "Cancel").state;
+        Assert.AreEqual(0f, EnterValue(cancel), "the cancel state does not clear VRCEmote");
+        Assert.AreEqual(idle, cancel.transitions.Single().destinationState, "the cancel state does not fall back to Idle");
+        Assert.IsEmpty(cancel.transitions.Single().conditions, "the cancel state's fall back to Idle is conditional");
 
         CollectionAssert.AreEqual(
             new[] { "Emote8", "Emote7", "Emote6", "Emote5", "Emote4", "Emote3", "Emote2", "Emote1" },
@@ -282,19 +286,22 @@ public class VRC3CVRActionFoldTests
         {
             var state = layer.stateMachine.states.Single(child => child.state.name == "Emote" + n).state;
             Assert.AreEqual((float)n, EnterValue(state), "Emote" + n + " enter");
-            Assert.AreEqual(0f, ExitValue(state), "Emote" + n + " exit");
-            Assert.IsTrue(state.transitions.All(t => t.destinationState == idle), "Emote" + n + " leaves anywhere but idle");
+            Assert.IsEmpty(((AnimatorDriver)state.behaviours.Single()).ExitTasks,
+                "Emote" + n + " clears VRCEmote as ChilloutVR's pulse ends, so the latch never outlives it");
 
-            var less = state.transitions.Single(t => t.conditions.Single().mode == AnimatorConditionMode.Less).conditions.Single();
-            Assert.AreEqual("Emote", less.parameter);
-            Assert.AreEqual((float)n, less.threshold);
+            var less = state.transitions.Single(t => t.conditions.Single().mode == AnimatorConditionMode.Less);
+            Assert.AreEqual(idle, less.destinationState, "Emote" + n + " leaves the band anywhere but Idle");
+            Assert.AreEqual("Emote", less.conditions.Single().parameter);
+            Assert.AreEqual((float)n, less.conditions.Single().threshold);
 
-            var greater = state.transitions.Single(t => t.conditions.Single().mode == AnimatorConditionMode.Greater).conditions.Single();
-            Assert.AreEqual("Emote", greater.parameter);
-            Assert.AreEqual((float)n, greater.threshold);
+            var greater = state.transitions.Single(t => t.conditions.Single().mode == AnimatorConditionMode.Greater);
+            Assert.AreEqual(idle, greater.destinationState, "Emote" + n + " leaves the band anywhere but Idle");
+            Assert.AreEqual("Emote", greater.conditions.Single().parameter);
+            Assert.AreEqual((float)n, greater.conditions.Single().threshold);
 
-            Assert.IsTrue(state.transitions.Any(t => t.conditions.Single().parameter == "CancelEmote" && t.conditions.Single().mode == AnimatorConditionMode.If),
-                "Emote" + n + " has no CancelEmote escape");
+            var escape = state.transitions.Single(t => t.conditions.Single().parameter == "CancelEmote");
+            Assert.AreEqual(AnimatorConditionMode.If, escape.conditions.Single().mode, "Emote" + n + " has no CancelEmote escape");
+            Assert.AreEqual(cancel, escape.destinationState, "Emote" + n + "'s cancel skips the state that clears VRCEmote");
         }
     }
 
@@ -303,11 +310,31 @@ public class VRC3CVRActionFoldTests
     {
         var controller = Convert(convertActionLayer: true, declareVrcEmote: true, vrcEmoteIsSynced: false);
         var layer = controller.layers.Single(l => l.name.StartsWith(VrcEmoteCompatLayerPrefix));
-        var emote1 = layer.stateMachine.states.Single(child => child.state.name == "Emote1").state;
-        var driver = (AnimatorDriver)emote1.behaviours.Single();
 
-        Assert.AreEqual("#VRCEmote", driver.EnterTasks.Single().targetName);
-        Assert.AreEqual("#VRCEmote", driver.ExitTasks.Single().targetName);
+        string EnterTarget(string stateName) => ((AnimatorDriver)layer.stateMachine.states
+            .Single(child => child.state.name == stateName).state.behaviours.Single()).EnterTasks.Single().targetName;
+
+        Assert.AreEqual("#VRCEmote", EnterTarget("Emote1"));
+        Assert.AreEqual("#VRCEmote", EnterTarget("Cancel"));
+    }
+
+    [Test]
+    public void Convert_WithVRCEmoteDeclared_ReleasesTheLatchWhereTheFoldedMachineExits()
+    {
+        var controller = Convert(convertActionLayer: true, declareVrcEmote: true);
+        var actionMachine = ChildMachineNamed(LocomotionMachineOf(controller), "Action");
+
+        AnimatorDriver ReleaseOn(string stateName) => AllStatesOf(actionMachine)
+            .Single(state => state.name == stateName).behaviours.OfType<AnimatorDriver>().SingleOrDefault();
+
+        var release = ReleaseOn("BlendOut");
+        Assert.IsNotNull(release, "the state the folded machine exits through never lets go of VRCEmote");
+        Assert.AreEqual("VRCEmote", release.ExitTasks.Single().targetName);
+        Assert.AreEqual(0f, release.ExitTasks.Single().aValue);
+        Assert.IsEmpty(release.EnterTasks, "the release fires on the way in as well as the way out");
+
+        Assert.IsNull(ReleaseOn(EmoteStateName), "a state with no way out of the machine lets go of VRCEmote anyway");
+        Assert.IsNull(ReleaseOn("WaitForActionOrAFK"), "a state with no way out of the machine lets go of VRCEmote anyway");
     }
 
     // ---- driven: Animator.Update advances state, never pose, so state checks need no PlayableGraph ----
@@ -447,6 +474,40 @@ public class VRC3CVRActionFoldTests
         animator.SetFloat("Emote", 0f);
         Assert.Less(FramesUntil(animator, layer, hub.name), DrivenFrameLimit,
             "CancelEmote never returned the avatar to the hub");
+    }
+
+    [Test]
+    public void Convert_WithEmotePulsed_LatchesVRCEmoteUntilTheEmoteIsCancelled()
+    {
+        var controller = Convert(convertActionLayer: true, declareVrcEmote: true);
+        var hub = LocomotionMachineOf(controller).defaultState;
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+
+        // ChilloutVR holds the emote number for about a tenth of a second and then clears it itself
+        void Pulse()
+        {
+            animator.SetFloat("Emote", 2f);
+            for (var frame = 0; frame < 6; frame++)
+            {
+                animator.Update(1f / 60f);
+            }
+            animator.SetFloat("Emote", 0f);
+        }
+
+        Pulse();
+        Assert.Less(FramesUntil(animator, layer, EmoteStateName), DrivenFrameLimit,
+            "the emote never settled once ChilloutVR's pulse had ended");
+        Assert.AreEqual(2, animator.GetInteger("VRCEmote"), "the latch came down with the pulse");
+
+        animator.SetTrigger("CancelEmote");
+        Assert.Less(FramesUntil(animator, layer, hub.name), DrivenFrameLimit,
+            "CancelEmote never returned the avatar to the hub");
+        Assert.AreEqual(0, animator.GetInteger("VRCEmote"), "the latch outlived the emote it was holding");
+
+        Pulse();
+        Assert.Less(FramesUntil(animator, layer, EmoteStateName), DrivenFrameLimit,
+            "pressing the same emote again did not start it again");
     }
 
     [Test]
