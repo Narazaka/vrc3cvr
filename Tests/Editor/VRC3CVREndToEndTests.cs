@@ -239,7 +239,8 @@ public class VRC3CVREndToEndTests
         Assert.IsTrue(emote.transitions.Any(t => t.conditions.Any(condition => condition.parameter == "CancelEmote")),
             "the emote has no CancelEmote escape");
 
-        // the same sequence the mod's E group runs in game
+        // Emote is held as a level here, which is the wiring on its own. Whether it survives the
+        // pulse the client actually sends is the latch's business, and the mod's E group's.
         var animator = DriveAnimator(avatar);
         var layerIndex = LocomotionLayerIndex(animator);
 

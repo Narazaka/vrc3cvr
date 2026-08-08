@@ -120,8 +120,9 @@ The suite switches to each avatar in turn and injects everything it needs — no
 | Prone | Reflection on the character controller — the member is not guaranteed across client versions, so a rename degrades to "not measured" instead of breaking the build |
 | Heading | The player transform's rotation, re-asserted every frame (the movement system owns it otherwise). Used by M1 to tell an avatar-local `VelocityX/Z` from a world-space one: an axis-aligned heading makes both readings identical, so the test would pass for either |
 | Mute | `Comms_Manager.IsMicMuted` |
-| Menu toggles, `Emote`, `Sitting` | `PlayerSetup.ChangeAnimatorParam()` |
-| `CancelEmote` | `Animator.SetTrigger` — `ChangeAnimatorParam` only takes a float |
+| Menu toggles | `PlayerSetup.ChangeAnimatorParam()` |
+| Emotes | `PlayerSetup.TriggerEmote()`, the quick menu's own emote button |
+| `CancelEmote`, `Sitting` | `PlayerSetup.AnimatorManager`'s own properties. These and `Emote` are ChilloutVR **core parameters**, which `ChangeAnimatorParam` does not route: the client owns them and hands them to the animator itself, so writing them through it changes nothing |
 
 Results are appended to `<ChilloutVR>\VRC3CVR_VerificationReport.txt` as `PASS` / `FAIL` /
 `INFO` lines, per avatar, and progress goes to the MelonLoader console as `[step]` lines.

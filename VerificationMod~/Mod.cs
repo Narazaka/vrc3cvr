@@ -1022,6 +1022,7 @@ namespace VRC3CVRVerification
 
             // ---- E4: Sitting. The client sets it when it seats the player, so this only asks what
             // the folded machine does with it; an actual chair is a manual item ----
+            var seated = false;
             Run("E4 sit", () => manager.Sitting = true);
             yield return new WaitForSeconds(2f);
             Run("E4", () =>
@@ -1031,15 +1032,23 @@ namespace VRC3CVRVerification
                     Note("E4 not measured: the client overwrote the injected Sitting (state \"" + Now() + "\")");
                     return;
                 }
+                seated = true;
                 Check(Now() == "SitPose", "E4 Sitting reaches the folded Sitting machine's seated state (state \"" +
                     Now() + "\")");
                 Check(Playing() == "LocSitting", "E4 the seated pose is what drives the body (clip \"" + Playing() + "\")");
             });
             Run("E4 stand", () => manager.Sitting = false);
             yield return new WaitForSeconds(2f);
-            Run("E4 stood", () => Check(Now() == hubState,
-                "E4 clearing Sitting returns the body to the locomotion hub (state \"" + Now() +
-                "\", expected \"" + hubState + "\")"));
+            Run("E4 stood", () =>
+            {
+                if (!seated)
+                {
+                    Note("E4 standing up not measured: the avatar never sat down");
+                    return;
+                }
+                Check(Now() == hubState, "E4 clearing Sitting returns the body to the locomotion hub (state \"" +
+                    Now() + "\", expected \"" + hubState + "\")");
+            });
         }
 
         // The ChilloutVR-NATIVE probe avatar (built by VRC3CVRCvrProbeAvatar, uploaded as-is).

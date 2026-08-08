@@ -23,7 +23,7 @@ using TrackingType = VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType;
 //   L3 flight, salvaged out of the replaced CVR locomotion layer, is still reachable
 //   L4 landing plays ChilloutVR's landing clip smoothly, with no tracking-control IK seizure
 //   E1 the quick menu's Emote plays the folded Action machine's emote
-//   E2 clearing the emote returns the body to the locomotion hub
+//   E2 the emote keeps running once ChilloutVR's own Emote pulse has ended
 //   E3 the quick menu's cancel leaves the emote too
 //   E4 Sitting plays the folded Sitting machine's seated pose
 // Each group can be shown/hidden from the expressions menu so items can be checked one at a
