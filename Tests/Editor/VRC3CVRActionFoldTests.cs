@@ -2,12 +2,15 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using UnityEngine.TestTools;
 using ABI.CCK.Components;
 using VRC.SDK3.Avatars.Components;
+using VRC.SDK3.Avatars.ScriptableObjects;
 
 public class VRC3CVRActionFoldTests
 {
@@ -18,6 +21,12 @@ public class VRC3CVRActionFoldTests
     const string SecondEmoteStateName = "StandPoint";
     const string OneShotEmoteStateName = "StandClap";
     const string SecondLayerStateName = "ActionSecondLayerState";
+
+    const string AddedLayerName = "HhotateA_EMK_Emote";
+    const string AddedLayerParameterName = "HhotateA_EMK_Emote";
+    const string AddedLayerMachineName = "Action:HhotateA_EMK_Emote";
+    const string AddedLayerIdleStateName = "Default";
+    const float AddedLayerBlendDuration = 0.1f;
 
     GameObject originalAvatar;
     GameObject convertedAvatar;
@@ -37,7 +46,8 @@ public class VRC3CVRActionFoldTests
 
     // The shape stock Action has: a default state that waits, a Prepare that raises the playable
     // weight, the emote itself, and a BlendOut that drops the weight and leaves through Exit.
-    static AnimatorController MakeActionController(bool authored, bool declareVrcEmote = false)
+    static AnimatorController MakeActionController(bool authored, bool declareVrcEmote = false,
+        bool addedLayer = false, bool addedLayerMasked = false)
     {
         var controller = AnimatorController.CreateAnimatorControllerAtPath(ActionFoldTestFolder + "/Action.controller");
         var emoteParameter = declareVrcEmote ? "VRCEmote" : "Emote";
@@ -83,11 +93,58 @@ public class VRC3CVRActionFoldTests
         controller.AddLayer("ActionSecondLayer");
         controller.layers[1].stateMachine.AddState(SecondLayerStateName).motion = clip;
 
+        if (addedLayer)
+        {
+            AddNEmoteShapedLayer(controller, clip, addedLayerMasked);
+        }
+
         return controller;
     }
 
+    // What an emote-adding tool leaves on the Action playable, NEmote's shape down to the state
+    // names: an empty idle the layer sits in, one state per emote entered on its own number, and a
+    // Reset that runs out and drops back to the idle.
+    static void AddNEmoteShapedLayer(AnimatorController controller, AnimationClip clip, bool masked)
+    {
+        controller.AddParameter(AddedLayerParameterName, AnimatorControllerParameterType.Int);
+        controller.AddLayer(AddedLayerName);
+
+        var layers = controller.layers;
+        var added = layers[layers.Length - 1];
+        if (masked)
+        {
+            var mask = new AvatarMask { name = "AddedLayerMask" };
+            AssetDatabase.CreateAsset(mask, ActionFoldTestFolder + "/AddedLayerMask.mask");
+            added.avatarMask = mask;
+            controller.layers = layers;
+        }
+
+        var machine = added.stateMachine;
+        var idle = machine.AddState(AddedLayerIdleStateName);
+        idle.writeDefaultValues = false;
+        machine.defaultState = idle;
+
+        for (var n = 1; n <= 2; n++)
+        {
+            var emote = machine.AddState("Emote" + n);
+            emote.motion = clip;
+            emote.writeDefaultValues = false;
+            var raiseWeight = emote.AddStateMachineBehaviour<VRCPlayableLayerControl>();
+            raiseWeight.goalWeight = 1f;
+            raiseWeight.blendDuration = AddedLayerBlendDuration;
+
+            var reset = machine.AddState("Reset" + n);
+            reset.motion = clip;
+            reset.writeDefaultValues = false;
+
+            idle.AddTransition(emote).AddCondition(AnimatorConditionMode.Equals, n, AddedLayerParameterName);
+            emote.AddTransition(reset).AddCondition(AnimatorConditionMode.NotEqual, n, AddedLayerParameterName);
+            reset.AddTransition(idle).hasExitTime = true;
+        }
+    }
+
     AnimatorController Convert(bool convertActionLayer, bool authoredAction = true, bool authoredBase = true,
-        bool declareVrcEmote = false, bool vrcEmoteIsSynced = true)
+        bool declareVrcEmote = false, bool vrcEmoteIsSynced = true, bool addedLayer = false, bool addedLayerMasked = false)
     {
         var descriptor = VRC3CVRVerificationAvatar.Generate(ActionFoldTestFolder);
         originalAvatar = descriptor.gameObject;
@@ -96,6 +153,20 @@ public class VRC3CVRActionFoldTests
         {
             descriptor.expressionParameters.parameters =
                 descriptor.expressionParameters.parameters.Where(p => p.name != "VRCEmote").ToArray();
+        }
+
+        if (addedLayer)
+        {
+            // the tools that add these layers sync their parameter through the avatar's own
+            // expression parameters, which is what keeps the name unprefixed after the conversion
+            var expressionParameters = descriptor.expressionParameters.parameters.ToList();
+            expressionParameters.Add(new VRCExpressionParameters.Parameter
+            {
+                name = AddedLayerParameterName,
+                valueType = VRCExpressionParameters.ValueType.Int,
+                networkSynced = true,
+            });
+            descriptor.expressionParameters.parameters = expressionParameters.ToArray();
         }
 
         var layers = descriptor.baseAnimationLayers;
@@ -111,7 +182,7 @@ public class VRC3CVRActionFoldTests
         {
             type = VRCAvatarDescriptor.AnimLayerType.Action,
             isDefault = false,
-            animatorController = MakeActionController(authoredAction, declareVrcEmote),
+            animatorController = MakeActionController(authoredAction, declareVrcEmote, addedLayer, addedLayerMasked),
         };
         descriptor.baseAnimationLayers = layers;
 
@@ -268,6 +339,104 @@ public class VRC3CVRActionFoldTests
         Assert.IsTrue(
             standWave.transitions.Any(transition => transition.conditions.Any(condition => condition.parameter == "CancelEmote")),
             "the VRCEmote-declaring machine's NotEqual exit was not duplicated against CancelEmote");
+    }
+
+    // ---- the layers an emote-adding tool appends to Action, folded the same way the first one is ----
+
+    [Test]
+    public void Convert_WithAnAddedActionLayer_FoldsItAsAMachineOfItsOwn()
+    {
+        var root = LocomotionMachineOf(Convert(convertActionLayer: true, addedLayer: true));
+
+        Assert.IsNotNull(ChildMachineNamed(root, "Action"), "the stock Action machine was not folded");
+        var added = ChildMachineNamed(root, AddedLayerMachineName);
+        Assert.IsNotNull(added, "the layer an emote tool added to Action was dropped");
+        CollectionAssert.IsSubsetOf(
+            new[] { AddedLayerIdleStateName, "Emote1", "Reset1", "Emote2", "Reset2" },
+            AllStatesOf(added).Select(state => state.name).ToArray());
+        Assert.IsFalse(AllStatesOf(added).Any(state => state.behaviours.Any(b => b is VRCPlayableLayerControl)),
+            "a playable weight control survived the fold");
+    }
+
+    [Test]
+    public void Convert_WithAnAddedActionLayer_EntersItFromEveryStanceOnEachConditionItsIdleLeftOn()
+    {
+        var root = LocomotionMachineOf(Convert(convertActionLayer: true, authoredBase: false, addedLayer: true));
+        var added = ChildMachineNamed(root, AddedLayerMachineName);
+
+        foreach (var stance in new[] { "Standard Locomotion", "Crouching Locomotion", "Prone Locomotion" })
+        {
+            var entries = root.states.Single(child => child.state.name == stance).state.transitions
+                .Where(transition => transition.destinationStateMachine == added).ToArray();
+            CollectionAssert.AreEquivalent(new[] { 1f, 2f },
+                entries.Select(entry => entry.conditions.Single().threshold).ToArray(), stance + " entries");
+            foreach (var entry in entries)
+            {
+                Assert.AreEqual(AddedLayerParameterName, entry.conditions.Single().parameter, stance + " entry");
+                Assert.AreEqual(AnimatorConditionMode.Equals, entry.conditions.Single().mode, stance + " entry");
+                Assert.IsFalse(entry.hasExitTime, stance + " entry waits for an exit time");
+                Assert.AreEqual(AddedLayerBlendDuration, entry.duration, 1e-4f,
+                    stance + " entry does not blend for the fade-in the layer's own weight control was worth");
+            }
+        }
+    }
+
+    [Test]
+    public void Convert_WithAnAddedActionLayer_LeavesItThroughExitAndReturnsToTheHub()
+    {
+        var root = LocomotionMachineOf(Convert(convertActionLayer: true, addedLayer: true));
+        var added = ChildMachineNamed(root, AddedLayerMachineName);
+
+        var back = AllStatesOf(added).Single(state => state.name == "Reset1").transitions.Single();
+        Assert.IsTrue(back.isExit, "the way back to the idle was not turned into a way out of the machine");
+        Assert.IsNull(back.destinationState);
+        Assert.IsTrue(back.hasExitTime, "the exit time the reset was timed against was lost");
+        Assert.IsNotNull(AllStatesOf(added).SingleOrDefault(state => state.name == AddedLayerIdleStateName),
+            "the idle the machine is entered through was removed");
+
+        var leave = root.GetStateMachineTransitions(added).Single();
+        Assert.AreEqual(root.defaultState, leave.destinationState, "the folded machine has no way back to the hub");
+        Assert.AreEqual(0, leave.conditions.Length, "the return to the hub is conditional");
+    }
+
+    [Test]
+    public void Convert_WithAnAddedActionLayer_LeavesItsWriteDefaultsAlone()
+    {
+        var added = ChildMachineNamed(
+            LocomotionMachineOf(Convert(convertActionLayer: true, addedLayer: true)), AddedLayerMachineName);
+
+        Assert.IsNotNull(added, "the layer an emote tool added to Action was dropped");
+        Assert.IsFalse(AllStatesOf(added).Any(state => state.writeDefaultValues),
+            "folding rewrote Write Defaults, mixing both settings inside one layer");
+    }
+
+    [Test]
+    public void Convert_WithAnAddedActionLayer_AnswersCancelEmoteOnTheParameterThatLayerReads()
+    {
+        var added = ChildMachineNamed(
+            LocomotionMachineOf(Convert(convertActionLayer: true, addedLayer: true)), AddedLayerMachineName);
+
+        var escape = AllStatesOf(added).Single(state => state.name == "Emote1").transitions
+            .Single(transition => transition.conditions.Any(condition => condition.parameter == "CancelEmote"));
+        Assert.AreEqual(AllStatesOf(added).Single(state => state.name == "Reset1"), escape.destinationState,
+            "the cancel does not reach where deselecting the emote would have");
+        Assert.IsFalse(
+            AllStatesOf(added).Single(state => state.name == AddedLayerIdleStateName).transitions
+                .Any(transition => transition.conditions.Any(condition => condition.parameter == "CancelEmote")),
+            "an entry-only (Equals) transition gained a CancelEmote escape");
+    }
+
+    [Test]
+    public void Convert_WithAMaskedAddedActionLayer_LeavesItOutAndSaysWhy()
+    {
+        LogAssert.Expect(LogType.Warning, new Regex(Regex.Escape(
+            "Not converting the Action animator's \"" + AddedLayerName + "\" layer")));
+
+        var root = LocomotionMachineOf(Convert(convertActionLayer: true, addedLayer: true, addedLayerMasked: true));
+
+        Assert.IsNull(ChildMachineNamed(root, AddedLayerMachineName),
+            "a layer masked to part of the body was folded into the layer that owns all of it");
+        Assert.IsNotNull(ChildMachineNamed(root, "Action"), "the stock Action machine went out with the masked one");
     }
 
     const string VrcEmoteCompatLayerPrefix = "VRC3CVR_VRCEmoteCompat";
@@ -497,6 +666,64 @@ public class VRC3CVRActionFoldTests
         animator.SetTrigger("CancelEmote");
         Assert.Less(FramesUntil(animator, layer, "Crouching Locomotion"), DrivenFrameLimit,
             "cancelling the emote did not re-dispatch the hub back to Crouching");
+    }
+
+    [Test]
+    public void Convert_WithAnAddedActionLayersNumberSet_PlaysItsEmoteAndReturnsToTheHub()
+    {
+        var controller = Convert(convertActionLayer: true, addedLayer: true);
+        var hub = LocomotionMachineOf(controller).defaultState;
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+
+        animator.SetInteger(AddedLayerParameterName, 1);
+        Assert.Less(FramesUntil(animator, layer, "Emote1"), DrivenFrameLimit,
+            "the added layer's own number never carried the avatar out of the hub and into its emote");
+        Assert.AreEqual(DrivenFrameLimit, FramesUntil(animator, layer, hub.name),
+            "the avatar left the emote without its number ever changing");
+
+        animator.SetInteger(AddedLayerParameterName, 0);
+        Assert.Less(FramesUntil(animator, layer, hub.name), DrivenFrameLimit,
+            "clearing the number never carried the avatar back to the hub through the reset");
+    }
+
+    [Test]
+    public void Convert_WithAnAddedActionLayersEmotePlaying_CancelEmoteLeavesTheEmote()
+    {
+        Convert(convertActionLayer: true, addedLayer: true);
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+
+        animator.SetInteger(AddedLayerParameterName, 1);
+        Assert.Less(FramesUntil(animator, layer, "Emote1"), DrivenFrameLimit,
+            "fixture: the added layer's emote never started");
+
+        // the number stays where the tool's own menu left it, so the reset -- where deselecting the
+        // emote would have gone -- is reachable by nothing but the cancel
+        animator.SetTrigger("CancelEmote");
+        Assert.Less(FramesUntil(animator, layer, "Reset1"), DrivenFrameLimit,
+            "the quick menu's cancel never reached an emote a tool added");
+    }
+
+    [Test]
+    public void Convert_WithCrouchingActiveAndAnAddedActionLayersEmoteEnded_RedispatchesToCrouching()
+    {
+        Convert(convertActionLayer: true, authoredBase: false, addedLayer: true);
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+
+        animator.SetFloat("Upright", 0.49f);
+        animator.SetBool("Crouching", true);
+        Assert.Less(FramesUntil(animator, layer, "Crouching Locomotion"), DrivenFrameLimit,
+            "fixture: Crouching never routed the avatar to its own locomotion stance");
+
+        animator.SetInteger(AddedLayerParameterName, 1);
+        Assert.Less(FramesUntil(animator, layer, "Emote1"), DrivenFrameLimit,
+            "the added layer's emote is not entered from a stance other than the hub");
+
+        animator.SetInteger(AddedLayerParameterName, 0);
+        Assert.Less(FramesUntil(animator, layer, "Crouching Locomotion"), DrivenFrameLimit,
+            "the emote ending did not re-dispatch the hub back to Crouching");
     }
 
     // ---- driven: the Emote-to-VRCEmote compat feed layer bridges ChilloutVR's own quick menu ----
