@@ -57,6 +57,9 @@ public class VRC3CVRBuildProcessor : CCKBuildProcessor
         // the bake also keeps it away from tools that strip unknown components.
         UnityEngine.Object.DestroyImmediate(settings);
 
+        // Read before the bake, which is what would run FaceTune's build (see VRC3CVRFaceTuneCheckpoint).
+        var faceTuneWasPresent = VRC3CVRFaceTuneCheckpoint.WasFaceTunePresent(avatar);
+
         if (config.autoBake)
         {
             // The CCK build does not run VRChat's hooks, so ask for them explicitly. Unlike the
@@ -78,6 +81,8 @@ public class VRC3CVRBuildProcessor : CCKBuildProcessor
         // has none at all. Not the user's choice on this path.
         config.saveAssets = true;
         VRC3CVRCore.FromConfig(config).Convert();
+
+        VRC3CVRFaceTuneCheckpoint.CheckConvertedAvatar(faceTuneWasPresent, avatar);
 
         // Defensive: by this point CVRAvatar is required by VRC3CVRAvatar and the CCK already
         // rejected anything whose type is not Avatar, so this is normally a no-op. It costs nothing
