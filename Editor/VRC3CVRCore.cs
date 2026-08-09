@@ -2785,12 +2785,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
     }
 
-    // The CVR locomotion layer is a hub-and-spoke: its default state carries a transition to each
-    // mode and every mode leads back to it, the one exception being flight, which is reached from
+    // The CVR locomotion layer is a hub-and-spoke: each mode is reached from a stance and leads
+    // back to the one the layer starts in, the exception being flight, which is reached from
     // AnyState because it has to interrupt whatever stance is running. That wiring is reproduced
-    // here with the avatar's own default state as the hub. Emotes keep their nested machine, whose
-    // states leave through its Exit node -- which only goes anywhere because the hub-bound
-    // transition below is registered for the machine on its parent.
+    // here with the avatar's own stances leading in and its default state taken as the hub they
+    // return to. Emotes keep their nested machine, whose states leave through its Exit node --
+    // which only goes anywhere because the hub-bound transition below is registered for the machine
+    // on its parent.
     void RewireCckMovementModes(AnimatorControllerLayer locomotionLayer)
     {
         var machine = locomotionLayer.stateMachine;
@@ -2801,7 +2802,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
 
         var rewiredFromAnyState = new List<AnimatorStateTransition>();
-        var rewiredFromHub = new List<AnimatorStateTransition>();
+        // read before the modes below join the layer's root, where they would count as stances
+        var rewiredFromStances = StancesOf(machine)
+            .ToDictionary(stance => stance, stance => new List<AnimatorStateTransition>());
         var ownAnyStateTransitionCount = machine.anyStateTransitions.Length;
         var states = machine.states;
         var y = 0f;
@@ -2842,9 +2845,12 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         if (swimming != null)
         {
-            var enter = Timed(hub.AddTransition(swimming), 0.25f);
-            enter.AddCondition(AnimatorConditionMode.If, 0f, "Swimming");
-            rewiredFromHub.Add(enter);
+            foreach (var stance in rewiredFromStances)
+            {
+                var enter = Timed(stance.Key.AddTransition(swimming), 0.25f);
+                enter.AddCondition(AnimatorConditionMode.If, 0f, "Swimming");
+                stance.Value.Add(enter);
+            }
 
             Timed(swimming.AddTransition(hub), 0.25f).AddCondition(AnimatorConditionMode.IfNot, 0f, "Swimming");
         }
@@ -2852,9 +2858,12 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         if (sitting != null)
         {
             // CVR sits down and stands up on the frame the client flips Sitting, with no blend
-            var enter = Timed(hub.AddTransition(sitting), 0f);
-            enter.AddCondition(AnimatorConditionMode.If, 0f, SittingParameterName);
-            rewiredFromHub.Add(enter);
+            foreach (var stance in rewiredFromStances)
+            {
+                var enter = Timed(stance.Key.AddTransition(sitting), 0f);
+                enter.AddCondition(AnimatorConditionMode.If, 0f, SittingParameterName);
+                stance.Value.Add(enter);
+            }
 
             Timed(sitting.AddTransition(hub), 0f).AddCondition(AnimatorConditionMode.IfNot, 0f, SittingParameterName);
         }
@@ -2869,9 +2878,12 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             });
             machine.stateMachines = childMachines;
 
-            var enter = Timed(hub.AddTransition(salvagedEmotesMachine), 0f);
-            enter.AddCondition(AnimatorConditionMode.Greater, 0f, EmoteParameterName);
-            rewiredFromHub.Add(enter);
+            foreach (var stance in rewiredFromStances)
+            {
+                var enter = Timed(stance.Key.AddTransition(salvagedEmotesMachine), 0f);
+                enter.AddCondition(AnimatorConditionMode.Greater, 0f, EmoteParameterName);
+                stance.Value.Add(enter);
+            }
 
             // unconditional, as CVR has it: an emote that ends lands back on the hub and the hub
             // re-dispatches on the next frame, which is what lets the stance it started from resume
@@ -2879,7 +2891,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
 
         machine.anyStateTransitions = PutFirst(machine.anyStateTransitions, rewiredFromAnyState);
-        hub.transitions = PutFirst(hub.transitions, rewiredFromHub);
+        foreach (var stance in rewiredFromStances)
+        {
+            stance.Key.transitions = PutFirst(stance.Key.transitions, stance.Value);
+        }
     }
 
     const string FoldedActionMachineName = "Action";
@@ -2898,9 +2913,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // ChilloutVR's own Emotes machine goes too: it answers the same quick-menu Emote the folded
     // machine now also answers -- directly when the fold reads Emote itself, or through the
     // Emote-to-VRCEmote compat feed layer below when it reads VRCEmote instead -- and two machines
-    // driving the body off the same value would fight over it. Its dispatch is inherited rather than
-    // dropped -- ChilloutVR dispatches from each stance it can emote out of, not from the hub alone,
-    // so every state that reached it reaches the folded machine instead.
+    // driving the body off the same value would fight over it. The folded machine takes over its
+    // dispatch as well as its emotes, reached from every stance rather than from the hub alone
+    // (StancesOf).
     // The AFK entry is only wired when the Action animator declares AFK, since stock answers it and
     // a machine that never mentions it has no AFK branch to reach. The emote number is read under
     // whichever name the Action controller itself declares -- VRCEmote when it does, Emote otherwise
@@ -2927,8 +2942,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             : EmoteParameterName;
         vrcActionFoldReadsVrcEmote = emoteParameterName == VrcEmoteParameterName;
 
-        var dispatchStates = new List<AnimatorState> { hub };
-        dispatchStates.AddRange(RemoveCckEmotesMachine(machine).Where(state => state != hub));
+        RemoveCckEmotesMachine(machine);
 
         // read before the clone, whose VRC behaviours the processing below throws away
         var blendDuration = ActionPrepareBlendDuration(actionController);
@@ -2969,7 +2983,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         // after the processing above, as MergeVrcAnimatorIntoChilloutAnimator rewires and for the
         // reason stated there
         var answersAfk = chilloutAnimatorController.parameters.Any(parameter => parameter.name == AfkParameterName);
-        foreach (var dispatch in dispatchStates)
+        foreach (var dispatch in StancesOf(machine).ToList())
         {
             var rewired = new List<AnimatorStateTransition>();
             var onEmote = Timed(dispatch.AddTransition(actionMachine), blendDuration);
@@ -3080,9 +3094,12 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 .AddCondition(AnimatorConditionMode.IfNot, 0f, SittingParameterName);
         }
 
-        var enter = Timed(hub.AddTransition(sittingMachine), SittingBlendDuration);
-        enter.AddCondition(AnimatorConditionMode.If, 0f, SittingParameterName);
-        hub.transitions = PutFirst(hub.transitions, new List<AnimatorStateTransition> { enter });
+        foreach (var stance in StancesOf(machine).ToList())
+        {
+            var enter = Timed(stance.AddTransition(sittingMachine), SittingBlendDuration);
+            enter.AddCondition(AnimatorConditionMode.If, 0f, SittingParameterName);
+            stance.transitions = PutFirst(stance.transitions, new List<AnimatorStateTransition> { enter });
+        }
 
         machine.AddStateMachineTransition(sittingMachine, hub);
     }
@@ -3128,31 +3145,22 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             .Any(transition => transition.conditions.Any(condition => SittingParameterNames.Contains(condition.parameter)));
     }
 
-    // Returns the states that used to reach it.
-    IEnumerable<AnimatorState> RemoveCckEmotesMachine(AnimatorStateMachine machine)
+    static void RemoveCckEmotesMachine(AnimatorStateMachine machine)
     {
         var emotes = machine.stateMachines
             .Select(child => child.stateMachine)
             .FirstOrDefault(child => child != null && child.name == CckEmotesMachineName);
         if (emotes == null)
         {
-            return Enumerable.Empty<AnimatorState>();
+            return;
         }
-        var dispatchStates = new List<AnimatorState>();
         foreach (var child in machine.states)
         {
-            var kept = child.state.transitions
+            child.state.transitions = child.state.transitions
                 .Where(transition => transition.destinationStateMachine != emotes)
                 .ToArray();
-            if (kept.Length == child.state.transitions.Length)
-            {
-                continue;
-            }
-            child.state.transitions = kept;
-            dispatchStates.Add(child.state);
         }
         machine.RemoveStateMachine(emotes);
-        return dispatchStates;
     }
 
     const float DefaultActionBlendDuration = 0.25f;
@@ -3196,6 +3204,22 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // written for, and one of its own conditions holding would otherwise shadow them.
     static AnimatorStateTransition[] PutFirst(AnimatorStateTransition[] all, List<AnimatorStateTransition> rewired) =>
         rewired.Concat(all.Where(transition => !rewired.Contains(transition))).ToArray();
+
+    // Everything the integrated locomotion layer answers a game state from. The layer's default
+    // state is not enough on its own: an avatar whose first layer leaves it on a condition that
+    // already holds -- a custom stance gated on a toggle that is off by default, say -- passes
+    // through it in a single frame and lives somewhere else entirely, and every entry hung off the
+    // hub alone would then be unreachable for the rest of the session. Taking the whole root
+    // instead lands between the two clients: above ChilloutVR, which emotes out of its three
+    // stances, and below VRChat, whose Action and Sitting playables faded in over any locomotion
+    // state at all (an avatar's airborne states live in a sub-state-machine and are left out with
+    // it, as they are in ChilloutVR's own dispatch). The movement modes are not stances and stay
+    // out: flight is entered from AnyState and would pull itself straight back in after leaving.
+    static IEnumerable<AnimatorState> StancesOf(AnimatorStateMachine machine) =>
+        machine.states.Select(child => child.state).Where(state => state != null
+            && state.name != CckFlyingStateName
+            && state.name != CckSwimmingStateName
+            && state.name != CckSittingStateName);
 
     static IEnumerable<AnimatorState> AllStatesOf(AnimatorStateMachine machine)
     {

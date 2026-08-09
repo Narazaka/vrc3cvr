@@ -592,7 +592,9 @@ public class VRC3CVRLocomotionReplacementTests
 
     const string ReplacementTestFolder = "Assets/VRC3CVR_LocomotionReplacementTest";
     const string GroundStateName = "AvatarGroundLocomotion";
+    const string SettledStanceStateName = "AvatarSettledStance";
     const string AvatarOwnAnyStateParameter = "AvatarOwnFlag";
+    const string StanceToggleParameter = "AvatarStanceToggle";
 
     GameObject originalAvatar;
     GameObject convertedAvatar;
@@ -615,7 +617,8 @@ public class VRC3CVRLocomotionReplacementTests
         AssetDatabase.DeleteAsset(ReplacementTestFolder);
     }
 
-    AnimatorController ConvertWithBaseLayer(bool authored, bool convertLocomotionLayer, bool hubless = false)
+    AnimatorController ConvertWithBaseLayer(bool authored, bool convertLocomotionLayer, bool hubless = false,
+        bool transientHub = false, bool foldPlayables = false)
     {
         var descriptor = VRC3CVRVerificationAvatar.Generate(ReplacementTestFolder);
         originalAvatar = descriptor.gameObject;
@@ -642,6 +645,20 @@ public class VRC3CVRLocomotionReplacementTests
             baseMachine.AddAnyStateTransition(groundState)
                 .AddCondition(AnimatorConditionMode.If, 0f, AvatarOwnAnyStateParameter);
             groundState.AddExitTransition().AddCondition(AnimatorConditionMode.If, 0f, AvatarOwnAnyStateParameter);
+
+            if (transientHub)
+            {
+                // A stance added ahead of the stock default state, gated on a toggle that is off:
+                // the condition already holds when the layer starts, so the default state is a
+                // single frame's staging post and the avatar lives here instead.
+                baseController.AddParameter(StanceToggleParameter, AnimatorControllerParameterType.Bool);
+                var settled = baseMachine.AddState(SettledStanceStateName);
+                settled.motion = clip;
+                var leaveDefault = groundState.AddTransition(settled);
+                leaveDefault.hasExitTime = false;
+                leaveDefault.duration = 0f;
+                leaveDefault.AddCondition(AnimatorConditionMode.IfNot, 0f, StanceToggleParameter);
+            }
         }
 
         var layers = descriptor.baseAnimationLayers;
@@ -659,6 +676,8 @@ public class VRC3CVRLocomotionReplacementTests
             shouldCloneAvatar = true,
             saveAssets = false,
             convertLocomotionLayer = convertLocomotionLayer,
+            convertActionLayer = foldPlayables,
+            convertSittingLayer = foldPlayables,
         });
         core.Convert();
         convertedAvatar = core.chilloutAvatar;
@@ -780,6 +799,86 @@ public class VRC3CVRLocomotionReplacementTests
             Assert.IsTrue(controller.parameters.Any(p => p.name == parameter),
                 parameter + " is no longer declared");
         }
+    }
+
+    static AnimatorState SettledStanceOf(AnimatorStateMachine root) =>
+        root.states.Single(child => child.state.name == SettledStanceStateName).state;
+
+    [Test]
+    public void Convert_WithADefaultStateItLeavesAtOnce_SalvagesTheModesOntoTheStanceItSettlesIn()
+    {
+        var controller = ConvertWithBaseLayer(authored: true, convertLocomotionLayer: true, transientHub: true);
+        var root = LocomotionLayerOf(controller).stateMachine;
+        var settled = SettledStanceOf(root);
+
+        AssertModeReachableAndLeavable(root, root.defaultState, settled.transitions[0], "Swimming", "Swimming");
+        AssertModeReachableAndLeavable(root, root.defaultState, settled.transitions[1], "Sitting", "Sitting");
+
+        var emotes = root.stateMachines.Single(child => child.stateMachine.name == "Emotes").stateMachine;
+        Assert.AreEqual(emotes, settled.transitions[2].destinationStateMachine,
+            "ChilloutVR's own emotes are out of reach from the stance the avatar settles in");
+        AssertCondition(settled.transitions[2], "Emote", AnimatorConditionMode.Greater, "emote entry");
+    }
+
+    [Test]
+    public void Convert_WithADefaultStateItLeavesAtOnce_EntersTheFoldedMachinesFromTheStanceItSettlesIn()
+    {
+        var controller = ConvertWithBaseLayer(
+            authored: true, convertLocomotionLayer: true, transientHub: true, foldPlayables: true);
+        var root = LocomotionLayerOf(controller).stateMachine;
+        var settled = SettledStanceOf(root);
+
+        void AssertEntryTo(string machineName, string parameter, AnimatorConditionMode mode)
+        {
+            var folded = root.stateMachines.Single(child => child.stateMachine.name == machineName).stateMachine;
+            var entry = settled.transitions.SingleOrDefault(transition => transition.destinationStateMachine == folded);
+            Assert.IsNotNull(entry,
+                "the folded " + machineName + " machine is out of reach from the stance the avatar settles in");
+            Assert.IsFalse(entry.hasExitTime, machineName + " entry waits for an exit time");
+            AssertCondition(entry, parameter, mode, machineName + " entry");
+        }
+
+        AssertEntryTo("Action", "VRCEmote", AnimatorConditionMode.Greater);
+        AssertEntryTo("Sitting", "Sitting", AnimatorConditionMode.If);
+        AssertModeReachableAndLeavable(root, root.defaultState,
+            settled.transitions.Single(transition => transition.destinationState != null
+                && transition.destinationState.name == "Swimming"), "Swimming", "Swimming");
+    }
+
+    // ---- driven: Animator.Update advances state, never pose, so state checks need no PlayableGraph ----
+
+    const int DrivenFrameLimit = 240;
+
+    static int FramesUntil(Animator animator, int layer, string stateName)
+    {
+        var frames = 0;
+        while (frames < DrivenFrameLimit &&
+               animator.GetCurrentAnimatorStateInfo(layer).shortNameHash != Animator.StringToHash(stateName))
+        {
+            animator.Update(1f / 60f);
+            frames++;
+        }
+        return frames;
+    }
+
+    [Test]
+    public void Convert_WithADefaultStateItLeavesAtOnce_StartsAnEmotePressedFromTheStanceItSettlesIn()
+    {
+        ConvertWithBaseLayer(
+            authored: true, convertLocomotionLayer: true, transientHub: true, foldPlayables: true);
+        var animator = convertedAvatar.GetComponent<Animator>();
+        // the controller was assigned to a component that already existed, and outside play mode
+        // nothing rebinds it on its own -- until it does, the animator reports no layers at all
+        animator.Rebind();
+        var layer = Enumerable.Range(0, animator.layerCount)
+            .Single(index => animator.GetLayerName(index) == "Locomotion/Emotes");
+
+        Assert.Less(FramesUntil(animator, layer, SettledStanceStateName), DrivenFrameLimit,
+            "fixture: the avatar never left its default state for the stance it settles in");
+
+        animator.SetFloat("Emote", 2f);
+        Assert.Less(FramesUntil(animator, layer, "Emote2"), DrivenFrameLimit,
+            "an emote pressed while the avatar stood in the stance it settles in never started");
     }
 }
 #endif
