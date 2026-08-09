@@ -2927,10 +2927,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // exclusive with the locomotion states by construction -- which is what the playable weight was
     // doing for all of them. Their entry conditions and their emote parameter are read off each
     // machine rather than assumed, since only the first layer answers VRChat's own VRCEmote. The
-    // emotes and their Write Defaults are carried across untouched: silencing an idle by rewriting
-    // Write Defaults on part of a machine would leave both settings inside one layer, which is worse
-    // than the overlap it would buy. VRChat ran these layers at once with the upper one winning and
-    // the fold runs them one at a time, which looks the same except where two were meant to overlap.
+    // emotes and their Write Defaults are carried across untouched: one layer has room for a single
+    // Write Defaults setting throughout, so there is no way to silence a machine's idle from inside
+    // it. VRChat ran these layers at once with the upper one winning and the fold runs them one at a
+    // time, which looks the same except where two were meant to overlap.
     void FoldActionMachine(AnimatorControllerLayer integratedLayer, AnimatorController actionController)
     {
         var machine = integratedLayer != null ? integratedLayer.stateMachine : null;
@@ -2962,7 +2962,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         // adapted away against a float, and there would be nothing left to copy
         AddCancelEmoteEscapes(actionMachine, emoteParameterName);
 
-        var addedMachines = new List<(AnimatorStateMachine machine, float blendDuration)>();
+        var addedMachines = new List<(AnimatorStateMachine machine, float blendDuration, string layerName)>();
         for (var i = 1; i < clonedLayers.Length; i++)
         {
             var refusal = AddedActionLayerRefusal(clonedLayers[i]);
@@ -2972,12 +2972,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 continue;
             }
             var added = clonedLayers[i].stateMachine;
-            added.name = FoldedActionMachineNamePrefix + clonedLayers[i].name;
+            // kept, since the machine is about to be renamed and the warnings below name the layer
+            var layerName = clonedLayers[i].name;
+            added.name = FoldedActionMachineNamePrefix + layerName;
             foreach (var parameter in DispatchParametersOf(added))
             {
                 AddCancelEmoteEscapes(added, parameter);
             }
-            addedMachines.Add((added, blendDurations[i]));
+            addedMachines.Add((added, blendDurations[i], layerName));
         }
 
         // registered before the processing below so this machine's conditions are adapted against
@@ -3029,7 +3031,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         foreach (var added in addedMachines)
         {
             y += 200f;
-            FoldAddedActionLayer(machine, hub, added.machine, added.blendDuration, new Vector3(1200f, y, 0f));
+            FoldAddedActionLayer(machine, hub, added.machine, added.blendDuration, added.layerName, new Vector3(1200f, y, 0f));
         }
     }
 
@@ -3049,16 +3051,35 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             .Select(condition => condition.parameter)
             .Distinct();
 
-    // What v1 leaves out, with the reason, since the emotes in a refused layer simply go missing.
+    // What this refuses, with the reason, since the emotes in a refused layer simply go missing. A
+    // fold is a layer running at full override weight whose states all leave through the machine's
+    // own Exit, so anything the layer held back by other means, and any way out that Exit cannot be
+    // made to stand for, is turned away rather than folded in wrong.
     static string AddedActionLayerRefusal(AnimatorControllerLayer layer)
     {
         if (layer.avatarMask != null)
         {
             return "it is masked to part of the avatar, and the layer it would fold into owns all of it.";
         }
+        if (layer.defaultWeight == 0f)
+        {
+            return "it sits at zero weight until something raises it, and the layer it would fold into has no weight of its own to keep it silent with.";
+        }
+        if (layer.blendingMode == AnimatorLayerBlendingMode.Additive)
+        {
+            return "it is added on top of the pose underneath, and the layer it would fold into replaces that pose rather than adding to it.";
+        }
         if (!DispatchTransitionsOf(layer.stateMachine).Any())
         {
             return "the state it starts in has no conditional transition out of it, so there is nothing for the locomotion stances to dispatch on.";
+        }
+        if (layer.stateMachine.anyStateTransitions.Any(transition => transition.destinationState == layer.stateMachine.defaultState))
+        {
+            return "it returns to the state it starts in from AnyState, and Unity has no AnyState transition to Exit to turn that into, so an emote would never hand the body back.";
+        }
+        if (layer.stateMachine.stateMachines.Length > 0)
+        {
+            return "it holds sub-state-machines of its own, whose Exit leads to their own parent rather than out of the fold, so an emote inside one would never hand the body back.";
         }
         if (!MachineHasAuthoredMotion(layer.stateMachine))
         {
@@ -3068,14 +3089,15 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     }
 
     void FoldAddedActionLayer(
-        AnimatorStateMachine machine, AnimatorState hub, AnimatorStateMachine added, float blendDuration, Vector3 position)
+        AnimatorStateMachine machine, AnimatorState hub, AnimatorStateMachine added, float blendDuration,
+        string layerName, Vector3 position)
     {
         var dispatches = DispatchTransitionsOf(added).Select(transition => transition.conditions).ToList();
         if (dispatches.Count == 0)
         {
             // conditions can be adapted away against a parameter the merged controller holds as a
             // float, and an entry left without any would fire out of every stance on sight
-            Debug.LogWarning($"Not converting the Action animator's \"{added.name}\" layer: none of its dispatch conditions survived the conversion to ChilloutVR's parameter types.");
+            Debug.LogWarning($"Not converting the Action animator's \"{layerName}\" layer: none of its dispatch conditions survived the conversion to ChilloutVR's parameter types.");
             return;
         }
 
@@ -3130,6 +3152,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     {
         foreach (var state in AllStatesOf(actionMachine))
         {
+            // The state the machine starts in is the way in, not a way out, and a layer whose idle
+            // dispatches on NotEqual would otherwise gain an escape that carries the cancel further
+            // into the machine.
+            if (state == actionMachine.defaultState)
+            {
+                continue;
+            }
             var transitions = state.transitions;
             var heldByEmote = transitions.FirstOrDefault(
                 transition => transition.conditions.Any(condition =>

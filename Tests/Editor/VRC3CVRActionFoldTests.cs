@@ -47,7 +47,7 @@ public class VRC3CVRActionFoldTests
     // The shape stock Action has: a default state that waits, a Prepare that raises the playable
     // weight, the emote itself, and a BlendOut that drops the weight and leaves through Exit.
     static AnimatorController MakeActionController(bool authored, bool declareVrcEmote = false,
-        bool addedLayer = false, bool addedLayerMasked = false)
+        bool addedLayer = false, bool addedLayerMasked = false, string addedLayerParameter = AddedLayerParameterName)
     {
         var controller = AnimatorController.CreateAnimatorControllerAtPath(ActionFoldTestFolder + "/Action.controller");
         var emoteParameter = declareVrcEmote ? "VRCEmote" : "Emote";
@@ -95,7 +95,7 @@ public class VRC3CVRActionFoldTests
 
         if (addedLayer)
         {
-            AddNEmoteShapedLayer(controller, clip, addedLayerMasked);
+            AddNEmoteShapedLayer(controller, clip, addedLayerMasked, addedLayerParameter);
         }
 
         return controller;
@@ -104,20 +104,26 @@ public class VRC3CVRActionFoldTests
     // What an emote-adding tool leaves on the Action playable, NEmote's shape down to the state
     // names: an empty idle the layer sits in, one state per emote entered on its own number, and a
     // Reset that runs out and drops back to the idle.
-    static void AddNEmoteShapedLayer(AnimatorController controller, AnimationClip clip, bool masked)
+    static void AddNEmoteShapedLayer(AnimatorController controller, AnimationClip clip, bool masked, string parameterName)
     {
-        controller.AddParameter(AddedLayerParameterName, AnimatorControllerParameterType.Int);
+        if (!controller.parameters.Any(parameter => parameter.name == parameterName))
+        {
+            controller.AddParameter(parameterName, AnimatorControllerParameterType.Int);
+        }
         controller.AddLayer(AddedLayerName);
 
         var layers = controller.layers;
         var added = layers[layers.Length - 1];
+        // Unity adds a layer at zero weight; a tool that appends emotes raises it, or nothing it
+        // added would ever play
+        added.defaultWeight = 1f;
         if (masked)
         {
             var mask = new AvatarMask { name = "AddedLayerMask" };
             AssetDatabase.CreateAsset(mask, ActionFoldTestFolder + "/AddedLayerMask.mask");
             added.avatarMask = mask;
-            controller.layers = layers;
         }
+        controller.layers = layers;
 
         var machine = added.stateMachine;
         var idle = machine.AddState(AddedLayerIdleStateName);
@@ -137,14 +143,15 @@ public class VRC3CVRActionFoldTests
             reset.motion = clip;
             reset.writeDefaultValues = false;
 
-            idle.AddTransition(emote).AddCondition(AnimatorConditionMode.Equals, n, AddedLayerParameterName);
-            emote.AddTransition(reset).AddCondition(AnimatorConditionMode.NotEqual, n, AddedLayerParameterName);
+            idle.AddTransition(emote).AddCondition(AnimatorConditionMode.Equals, n, parameterName);
+            emote.AddTransition(reset).AddCondition(AnimatorConditionMode.NotEqual, n, parameterName);
             reset.AddTransition(idle).hasExitTime = true;
         }
     }
 
     AnimatorController Convert(bool convertActionLayer, bool authoredAction = true, bool authoredBase = true,
-        bool declareVrcEmote = false, bool vrcEmoteIsSynced = true, bool addedLayer = false, bool addedLayerMasked = false)
+        bool declareVrcEmote = false, bool vrcEmoteIsSynced = true, bool addedLayer = false, bool addedLayerMasked = false,
+        string addedLayerParameter = AddedLayerParameterName)
     {
         var descriptor = VRC3CVRVerificationAvatar.Generate(ActionFoldTestFolder);
         originalAvatar = descriptor.gameObject;
@@ -155,7 +162,7 @@ public class VRC3CVRActionFoldTests
                 descriptor.expressionParameters.parameters.Where(p => p.name != "VRCEmote").ToArray();
         }
 
-        if (addedLayer)
+        if (addedLayer && addedLayerParameter == AddedLayerParameterName)
         {
             // the tools that add these layers sync their parameter through the avatar's own
             // expression parameters, which is what keeps the name unprefixed after the conversion
@@ -182,7 +189,8 @@ public class VRC3CVRActionFoldTests
         {
             type = VRCAvatarDescriptor.AnimLayerType.Action,
             isDefault = false,
-            animatorController = MakeActionController(authoredAction, declareVrcEmote, addedLayer, addedLayerMasked),
+            animatorController = MakeActionController(
+                authoredAction, declareVrcEmote, addedLayer, addedLayerMasked, addedLayerParameter),
         };
         descriptor.baseAnimationLayers = layers;
 
@@ -437,6 +445,24 @@ public class VRC3CVRActionFoldTests
         Assert.IsNull(ChildMachineNamed(root, AddedLayerMachineName),
             "a layer masked to part of the body was folded into the layer that owns all of it");
         Assert.IsNotNull(ChildMachineNamed(root, "Action"), "the stock Action machine went out with the masked one");
+    }
+
+    // ChilloutVR declares Emote as a Float, and CopyParametersTo keeps that type, so a layer that
+    // dispatched on it with Equals is left with an unconditional entry once the conversion has
+    // adapted what it could -- an entry that would fire out of every stance on sight.
+    [Test]
+    public void Convert_WithAnAddedActionLayerDispatchingOnAFloatParameter_LeavesItOutAndSaysWhy()
+    {
+        LogAssert.Expect(LogType.Warning, new Regex(Regex.Escape(
+            "Not converting the Action animator's \"" + AddedLayerName
+            + "\" layer: none of its dispatch conditions survived")));
+
+        var root = LocomotionMachineOf(
+            Convert(convertActionLayer: true, addedLayer: true, addedLayerParameter: "Emote"));
+
+        Assert.IsNull(ChildMachineNamed(root, AddedLayerMachineName),
+            "a layer whose entry conditions were all adapted away was folded in anyway");
+        Assert.IsNotNull(ChildMachineNamed(root, "Action"), "the stock Action machine went out with the refused one");
     }
 
     const string VrcEmoteCompatLayerPrefix = "VRC3CVR_VRCEmoteCompat";
