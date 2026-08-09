@@ -216,7 +216,18 @@ public class VRC3CVRActionFoldTests
                 .Any(t => !t.isExit && t.destinationStateMachine == null && t.destinationState == null),
             "a transition to the removed emote machine was left dangling");
 
-        // ChilloutVR emotes out of each stance it can emote from, not out of the hub alone
+        // ChilloutVR emotes out of each stance it can emote from, not out of the hub alone. Its
+        // airborne states are at the layer's root rather than in a machine of their own, so they
+        // come along; LocFlying/Swimming/Sitting must not, being modes rather than stances -- and
+        // an emote entered from flight would be undone by the AnyState transition that put the
+        // avatar there, one frame later, forever.
+        CollectionAssert.AreEquivalent(
+            new[] { "Standard Locomotion", "Crouching Locomotion", "Prone Locomotion", "JumpStart", "JumpAir", "JumpLand" },
+            root.states
+                .Where(child => child.state.transitions.Any(t => t.destinationStateMachine == actionMachine))
+                .Select(child => child.state.name).ToArray(),
+            "the stances the folded Action machine is entered from");
+
         foreach (var stance in new[] { "Standard Locomotion", "Crouching Locomotion", "Prone Locomotion" })
         {
             var state = root.states.Single(child => child.state.name == stance).state;

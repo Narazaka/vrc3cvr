@@ -2785,13 +2785,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
     }
 
-    // The CVR locomotion layer is a hub-and-spoke: each mode is reached from a stance and leads
-    // back to the one the layer starts in, the exception being flight, which is reached from
-    // AnyState because it has to interrupt whatever stance is running. That wiring is reproduced
-    // here with the avatar's own stances leading in and its default state taken as the hub they
-    // return to. Emotes keep their nested machine, whose states leave through its Exit node --
-    // which only goes anywhere because the hub-bound transition below is registered for the machine
-    // on its parent.
+    // The CVR locomotion layer is a hub-and-spoke: every mode leads back to the state the layer
+    // starts in. What leads into them varies -- swimming and the seat from that same state, the
+    // emotes from each of the three stances, and flight from AnyState, because it has to interrupt
+    // whatever stance is running. Reproduced here with the avatar's own default state as the hub
+    // they all return to, and every stance leading into them (StancesOf), flight excepted. Emotes
+    // keep their nested machine, whose states leave through its Exit node -- which only goes
+    // anywhere because the hub-bound transition below is registered for the machine on its parent.
     void RewireCckMovementModes(AnimatorControllerLayer locomotionLayer)
     {
         var machine = locomotionLayer.stateMachine;
@@ -3040,10 +3040,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // zero for as long as the player is standing, which leaves the machine with no exit structure at
     // all: nothing inside it says how to stand up, because the weight said it. Reducing that weight
     // to structure therefore means synthesising the way out -- every state gains a transition to the
-    // machine's Exit node the moment Sitting drops -- on top of moving the machine in and wiring the
-    // hub's entry. ChilloutVR's own seated state is dropped along the way for the same reason the
-    // Emotes machine is (FoldActionMachine): two states answering the same Sitting would fight over
-    // the body.
+    // machine's Exit node the moment Sitting drops -- on top of moving the machine in and wiring an
+    // entry from each stance. ChilloutVR's own seated state is dropped along the way for the same
+    // reason the Emotes machine is (FoldActionMachine): two states answering the same Sitting would
+    // fight over the body.
     void FoldSittingMachine(AnimatorControllerLayer integratedLayer, AnimatorController sittingController)
     {
         var machine = integratedLayer != null ? integratedLayer.stateMachine : null;
@@ -3215,11 +3215,16 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // state at all (an avatar's airborne states live in a sub-state-machine and are left out with
     // it, as they are in ChilloutVR's own dispatch). The movement modes are not stances and stay
     // out: flight is entered from AnyState and would pull itself straight back in after leaving.
+    // They are recognised by name, which is what makes the layer ChilloutVR's own and the layer that
+    // replaced it read alike -- so the state the layer starts in is held in whatever it is named,
+    // since an avatar that happened to name it one of those would otherwise be left with no way in
+    // at all.
     static IEnumerable<AnimatorState> StancesOf(AnimatorStateMachine machine) =>
         machine.states.Select(child => child.state).Where(state => state != null
-            && state.name != CckFlyingStateName
-            && state.name != CckSwimmingStateName
-            && state.name != CckSittingStateName);
+            && (state == machine.defaultState
+                || (state.name != CckFlyingStateName
+                    && state.name != CckSwimmingStateName
+                    && state.name != CckSittingStateName)));
 
     static IEnumerable<AnimatorState> AllStatesOf(AnimatorStateMachine machine)
     {
