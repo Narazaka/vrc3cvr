@@ -13,7 +13,10 @@ using UnityEngine;
 // the failure reason (AvatarContextBuilder.TryBuild's `out result`) at every call site. This is what
 // notices instead: remember whether FaceTune was on the avatar before the bake, then look for
 // FaceTune's own output in the converted animator afterward -- and when that output is missing,
-// replay TryBuild by reflection against a disposable pre-bake snapshot to recover the reason.
+// report a dry run of that same TryBuild call (by reflection, read-only -- verified against
+// BlendShapeUtility.GetBlendShapesAndSetWeightToZero, which despite its name only records zeroes into
+// a list it returns and never calls SkinnedMeshRenderer.SetBlendShapeWeight) made against the avatar
+// before the bake, since both conversion paths can rewrite that avatar in place once baking starts.
 public static class VRC3CVRFaceTuneCheckpoint
 {
     // FaceTune's runtime components all live directly under this namespace. Checked by name, not by
@@ -46,9 +49,32 @@ public static class VRC3CVRFaceTuneCheckpoint
         return type?.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static);
     }
 
-    // originalAvatarSnapshot must be a disposable clone the caller made before the bake and destroys
-    // itself afterward -- never the live scene avatar. Read-only here: never mutated or destroyed.
-    public static void CheckConvertedAvatar(bool faceTuneWasPresent, GameObject convertedAvatar, GameObject originalAvatarSnapshot = null)
+    // Call this before the bake, alongside WasFaceTunePresent -- both conversion paths can rewrite
+    // avatar in place once baking starts, so this is the last point it still matches what FaceTune's
+    // own build would have seen. Returns null (skip) when FaceTune's API is missing, its signature no
+    // longer matches, or reflection fails for any other reason; never throws.
+    public static string DryRunFaceRendererResolution(GameObject avatar)
+    {
+        if (avatar == null) return null;
+        try
+        {
+            var tryBuild = FindPublicStaticMethod(AvatarContextBuilderTypeName, TryBuildMethodName);
+            if (tryBuild == null) return null;
+
+            // Sized from the method itself, not hardcoded, so a FaceTune update that adds another
+            // trailing optional parameter doesn't turn into a silent TargetParameterCountException.
+            var args = new object[tryBuild.GetParameters().Length];
+            args[0] = avatar;
+            tryBuild.Invoke(null, args);
+            return args[2]?.ToString();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static void CheckConvertedAvatar(bool faceTuneWasPresent, GameObject convertedAvatar, string preBakeDryRunResult = null)
     {
         if (!faceTuneWasPresent) return;
 
@@ -66,12 +92,11 @@ public static class VRC3CVRFaceTuneCheckpoint
                     + "animator has no \"FaceTune: \" layers -- it likely produced nothing during the build "
                     + "(e.g. it could not resolve the face renderer).";
 
-                var dryRunResult = DryRunFaceRendererResolution(originalAvatarSnapshot);
-                if (dryRunResult != null)
+                if (preBakeDryRunResult != null)
                 {
                     message += " A dry run of FaceTune's own face-renderer resolution on the pre-bake "
-                        + $"avatar returned: {dryRunResult}.";
-                    if (dryRunResult == "Success")
+                        + $"avatar returned: {preBakeDryRunResult}.";
+                    if (preBakeDryRunResult == "Success")
                     {
                         message += " That resolution succeeds before the bake, so the failure is specific "
                             + "to the build-time clone state -- suspect a hook earlier in the build chain altering it.";
@@ -108,29 +133,6 @@ public static class VRC3CVRFaceTuneCheckpoint
         catch (Exception exception)
         {
             Debug.LogWarning($"VRC3CVR: the FaceTune conversion checkpoint itself failed ({exception.Message}); skipping it rather than blocking the conversion.");
-        }
-    }
-
-    // TryBuild zeroes the face renderer's blend shape weights as a side effect on success
-    // (GetBlendShapesAndSetWeightToZero); snapshot is already a disposable clone the caller owns, so
-    // that is harmless here. Returns null (skip) when FaceTune's API is missing or reflection fails.
-    static string DryRunFaceRendererResolution(GameObject snapshot)
-    {
-        if (snapshot == null) return null;
-        try
-        {
-            var tryBuild = FindPublicStaticMethod(AvatarContextBuilderTypeName, TryBuildMethodName);
-            if (tryBuild == null) return null;
-
-            // target, out avatarContext, out result, context = null -- reflection needs a slot for
-            // every parameter; the trailing null matches TryBuild's own default for the optional one.
-            var args = new object[] { snapshot, null, null, null };
-            tryBuild.Invoke(null, args);
-            return args[2]?.ToString();
-        }
-        catch
-        {
-            return null;
         }
     }
 

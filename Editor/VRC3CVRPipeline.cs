@@ -62,8 +62,6 @@ public static class VRC3CVRPipeline
         if (blocker != null) return new Result { succeeded = false, errorMessage = blocker };
 
         isRunning = true;
-        // Declared outside the try so the finally below can always clean it up, however Convert exits.
-        GameObject faceTuneSnapshot = null;
         try
         {
             // Copy so the caller's serialized settings are never mutated by the pipeline.
@@ -75,10 +73,11 @@ public static class VRC3CVRPipeline
             // Read before the bake makes its clone: the baker names its result "<name> (Baked)",
             // and this is what the normal (non-bake) path would have named the conversion output.
             var originalName = descriptor.gameObject.name;
-            // Read before the bake, which is what would run FaceTune's build, and snapshot it for a
-            // dry run if the checkpoint needs one later (see VRC3CVRFaceTuneCheckpoint).
+            // Read before the bake, which is what would run FaceTune's build (see VRC3CVRFaceTuneCheckpoint).
             var faceTuneWasPresent = VRC3CVRFaceTuneCheckpoint.WasFaceTunePresent(descriptor.gameObject);
-            faceTuneSnapshot = faceTuneWasPresent ? UnityEngine.Object.Instantiate(descriptor.gameObject) : null;
+            var faceTuneDryRunResult = faceTuneWasPresent
+                ? VRC3CVRFaceTuneCheckpoint.DryRunFaceRendererResolution(descriptor.gameObject)
+                : null;
 
             if (workingConfig.autoBake)
             {
@@ -122,7 +121,7 @@ public static class VRC3CVRPipeline
                 return new Result { succeeded = false, errorMessage = exception.ToString() };
             }
 
-            VRC3CVRFaceTuneCheckpoint.CheckConvertedAvatar(faceTuneWasPresent, converted, faceTuneSnapshot);
+            VRC3CVRFaceTuneCheckpoint.CheckConvertedAvatar(faceTuneWasPresent, converted, faceTuneDryRunResult);
 
             // With autoBake the baker stripped this before the hooks ran; without it nothing has.
             var leftoverSettings = converted.GetComponent<VRC3CVRAvatar>();
@@ -142,7 +141,6 @@ public static class VRC3CVRPipeline
         finally
         {
             isRunning = false;
-            if (faceTuneSnapshot != null) UnityEngine.Object.DestroyImmediate(faceTuneSnapshot);
         }
     }
 }

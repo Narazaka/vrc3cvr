@@ -9,13 +9,15 @@ using VRC.SDK3.Avatars.Components;
 public class VRC3CVRFaceTuneCheckpointTests
 {
     GameObject avatar;
-    GameObject snapshot;
+    GameObject resolutionTarget;
+    Mesh mesh;
 
     [TearDown]
     public void TearDown()
     {
         if (avatar != null) Object.DestroyImmediate(avatar);
-        if (snapshot != null) Object.DestroyImmediate(snapshot);
+        if (resolutionTarget != null) Object.DestroyImmediate(resolutionTarget);
+        if (mesh != null) Object.DestroyImmediate(mesh);
     }
 
     // ---- IsFaceTuneNamespace ----
@@ -120,16 +122,13 @@ public class VRC3CVRFaceTuneCheckpointTests
     }
 
     // ---- CheckConvertedAvatar's dry-run enrichment (E-series warning only) ----
-    // These run against the real FaceTune package installed in this project (see task context), not a
-    // fake -- the two fixtures below are chosen to land on deterministic AvatarContextBuildResult values.
+    // Message formatting is tested against literal result strings, decoupled from whether reflection
+    // can actually reach real FaceTune -- DryRunFaceRendererResolution's own tests below cover that.
 
     [Test]
-    public void CheckConvertedAvatar_WarnsWithDryRunResultWhenSnapshotCannotResolveAnAvatarRoot()
+    public void CheckConvertedAvatar_WarnsWithDryRunResultWhenProvided()
     {
         MakeAvatar(MakeControllerWithLayer("Locomotion"));
-        // No VRCAvatarDescriptor (or any other registered avatar-root type) anywhere on it, so
-        // FaceTune's own AvatarContextBuilder.TryBuild fails at its first check.
-        snapshot = new GameObject("FaceTuneCheckpointTest_UnresolvableSnapshot");
 
         LogAssert.Expect(LogType.Warning, new Regex(Regex.Escape(
             "FaceTune was present on the avatar before conversion, but the converted animator has no "
@@ -137,23 +136,13 @@ public class VRC3CVRFaceTuneCheckpointTests
                 + "(e.g. it could not resolve the face renderer). A dry run of FaceTune's own "
                 + "face-renderer resolution on the pre-bake avatar returned: NotFoundAvatarRoot.")));
 
-        VRC3CVRFaceTuneCheckpoint.CheckConvertedAvatar(true, avatar, snapshot);
+        VRC3CVRFaceTuneCheckpoint.CheckConvertedAvatar(true, avatar, "NotFoundAvatarRoot");
     }
 
     [Test]
-    public void CheckConvertedAvatar_WarnsWithSuccessDryRunAndBuildTimeCloneSuspicionWhenSnapshotResolves()
+    public void CheckConvertedAvatar_WarnsWithBuildTimeCloneSuspicionWhenDryRunSucceeded()
     {
         MakeAvatar(MakeControllerWithLayer("Locomotion"));
-
-        // FaceTune's face-renderer resolution chain: VRCAvatarDescriptor marks the avatar root, then
-        // (absent any lipSync/eyelid blend shape config) it falls back to a child literally named
-        // "Body" carrying a SkinnedMeshRenderer with a mesh -- see AvatarContextBuilder.TryGetFaceRenderer
-        // and VRChatSupport.GetFaceRenderer.
-        snapshot = new GameObject("FaceTuneCheckpointTest_ResolvableSnapshot");
-        snapshot.AddComponent<VRCAvatarDescriptor>();
-        var body = new GameObject("Body");
-        body.transform.SetParent(snapshot.transform);
-        body.AddComponent<SkinnedMeshRenderer>().sharedMesh = new Mesh();
 
         LogAssert.Expect(LogType.Warning, new Regex(Regex.Escape(
             "FaceTune was present on the avatar before conversion, but the converted animator has no "
@@ -163,7 +152,46 @@ public class VRC3CVRFaceTuneCheckpointTests
                 + "succeeds before the bake, so the failure is specific to the build-time clone state "
                 + "-- suspect a hook earlier in the build chain altering it.")));
 
-        VRC3CVRFaceTuneCheckpoint.CheckConvertedAvatar(true, avatar, snapshot);
+        VRC3CVRFaceTuneCheckpoint.CheckConvertedAvatar(true, avatar, "Success");
+    }
+
+    // ---- DryRunFaceRendererResolution ----
+    // These call real FaceTune (installed in this project) through reflection, not a fake, so the two
+    // fixtures below are chosen to land on deterministic AvatarContextBuildResult values. If FaceTune
+    // changes its resolution order or renderer fallback, these -- not the formatting tests above --
+    // are the ones that would need updating.
+
+    [Test]
+    public void DryRunFaceRendererResolution_ReturnsNullWhenAvatarIsNull()
+    {
+        Assert.IsNull(VRC3CVRFaceTuneCheckpoint.DryRunFaceRendererResolution(null));
+    }
+
+    [Test]
+    public void DryRunFaceRendererResolution_ReturnsNotFoundAvatarRootForAnUnresolvableAvatar()
+    {
+        // No VRCAvatarDescriptor (or any other registered avatar-root type) anywhere on it, so
+        // FaceTune's own AvatarContextBuilder.TryBuild fails at its first check.
+        resolutionTarget = new GameObject("FaceTuneCheckpointTest_UnresolvableAvatar");
+
+        Assert.AreEqual("NotFoundAvatarRoot", VRC3CVRFaceTuneCheckpoint.DryRunFaceRendererResolution(resolutionTarget));
+    }
+
+    [Test]
+    public void DryRunFaceRendererResolution_ReturnsSuccessForAResolvableAvatar()
+    {
+        // FaceTune's face-renderer resolution chain: VRCAvatarDescriptor marks the avatar root, then
+        // (absent any lipSync/eyelid blend shape config) it falls back to a child literally named
+        // "Body" carrying a SkinnedMeshRenderer with a mesh -- see AvatarContextBuilder.TryGetFaceRenderer
+        // and VRChatSupport.GetFaceRenderer.
+        resolutionTarget = new GameObject("FaceTuneCheckpointTest_ResolvableAvatar");
+        resolutionTarget.AddComponent<VRCAvatarDescriptor>();
+        var body = new GameObject("Body");
+        body.transform.SetParent(resolutionTarget.transform);
+        mesh = new Mesh();
+        body.AddComponent<SkinnedMeshRenderer>().sharedMesh = mesh;
+
+        Assert.AreEqual("Success", VRC3CVRFaceTuneCheckpoint.DryRunFaceRendererResolution(resolutionTarget));
     }
 }
 #endif
