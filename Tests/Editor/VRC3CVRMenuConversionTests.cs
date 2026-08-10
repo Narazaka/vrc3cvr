@@ -3,11 +3,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using ABI.CCK.Components;
 using ABI.CCK.Scripts;
 using NUnit.Framework;
 using UnityEditor.Animations;
 using UnityEngine;
+using UnityEngine.TestTools;
 using VRC.SDK3.Avatars.Components;
 using VRC.SDK3.Avatars.ScriptableObjects;
 
@@ -425,26 +427,50 @@ public class VRC3CVRMenuConversionTests
     }
 
     [Test]
-    public void Bug_NegativeToggleValue_IsSilentlyDroppedFromDropdown()
+    public void NegativeToggleValue_IsDroppedWithWarning()
     {
-        // REAL BUG: FindMenuButtonsAndToggles stores toggle entries keyed by the raw VRC
-        // control.value, which can be negative, but ConvertVrcParametersToChillout's Int branch
-        // only walks `for (j = 0; j < lastIndex + 1; j++)` starting at zero. A control with a
-        // negative value is therefore silently omitted from the resulting dropdown instead of
-        // being clamped, reordered, or reported.
+        // CVR dropdown options carry no per-option value field -- the option's list index is the
+        // value it sets (AddCondition(Equals, i, ...) in CVRAdvancedAvatarSettings) -- so there is
+        // no index that could stand in for a negative control.value. It is dropped, with a warning,
+        // rather than shifting the whole option list to make room for it.
         core.useHierarchicalDropdownMenuName = false; // isolate from the flat-menu naming bug below
         SetMenu(Menu(
             Toggle("Negative", "Mode", -1f),
             Toggle("Zero", "Mode", 0f),
             Toggle("One", "Mode", 1f)));
-        SetParams(Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue: -1f));
+        SetParams(Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue: 0f));
+
+        LogAssert.Expect(LogType.Warning, new Regex(Regex.Escape(
+            "Param \"Mode\" has option value(s) -1 which are negative; CVR dropdown options are "
+                + "addressed by list index and can't represent a negative value, so those option(s) are dropped.")));
 
         Convert();
 
         var dropdown = (CVRAdvancesAvatarSettingGameObjectDropdown)Settings[0].setting;
-        // Correct behavior would keep all three options in control order; today "Negative" vanishes
-        // because the option-building loop starts at index 0.
-        Assert.AreEqual(new[] { "Negative", "Zero", "One" }, dropdown.options.Select(o => o.name).ToArray());
+        Assert.AreEqual(new[] { "Zero", "One" }, dropdown.options.Select(o => o.name).ToArray());
+        Assert.AreEqual(0, dropdown.defaultValue);
+    }
+
+    [Test]
+    public void IntDropdown_OptionValuesStartAtOne_KeepsZeroOriginIndexAlignment()
+    {
+        // Regression for the option-list-shift bug: menus that never assign value 0 to any option
+        // (VRChat's own emote menu, and NEmote-style custom menus, both start at 1 since 0 means
+        // "no selection") used to have their option list start at the lowest key present -- shifting
+        // every option's list index, and therefore its CVR value, down by one. The list must instead
+        // start at index 0, with a "---" placeholder standing in for the unused value 0.
+        var subMenu = Menu(
+            Toggle("First", "Emote", 1f),
+            Toggle("Second", "Emote", 2f),
+            Toggle("Third", "Emote", 3f));
+        SetMenu(Menu(SubMenuControl("Emotes", subMenu)));
+        SetParams(Param("Emote", VRCExpressionParameters.ValueType.Int, defaultValue: 1f));
+
+        Convert();
+
+        var dropdown = (CVRAdvancesAvatarSettingGameObjectDropdown)Settings[0].setting;
+        Assert.AreEqual(new[] { "---", "First", "Second", "Third" }, dropdown.options.Select(o => o.name).ToArray());
+        Assert.AreEqual(1, dropdown.defaultValue);
     }
 
     [Test]

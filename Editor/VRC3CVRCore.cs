@@ -670,13 +670,29 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         }
                         else
                         {
-                            // control.value (and therefore the key here) can be negative; start the
-                            // range at the lowest key instead of assuming it is always 0, or negative
-                            // options are silently dropped from the resulting dropdown.
-                            var firstIndex = (int)discreteIdTable.Keys.Min();
+                            // CVR dropdown options have no per-option value field: the option's list
+                            // index is the parameter value it sets (AddCondition(Equals, i, ...) in
+                            // CVRAdvancedAvatarSettings, built from CCK_CVRAvatarEditor's
+                            // AdvSettings_Dropdown). The list must therefore start at index 0. VRC
+                            // control.value can be negative, but there is no index that could stand in
+                            // for a negative value, so such options are dropped rather than shifting
+                            // the whole list to make room for them.
+                            var negativeKeys = discreteIdTable.Keys.Where(k => k < 0).ToList();
+                            if (negativeKeys.Count > 0)
+                            {
+                                Debug.LogWarning($"Param \"{vrcParam.name}\" has option value(s) {string.Join(", ", negativeKeys)} which are negative; CVR dropdown options are addressed by list index and can't represent a negative value, so those option(s) are dropped.");
+                                discreteIdTable = discreteIdTable.Where(p => p.Key >= 0).ToDictionary(p => p.Key, p => p.Value);
+                            }
+
+                            if (discreteIdTable.Count == 0)
+                            {
+                                Debug.LogWarning($"Int parameter \"{vrcParam.name}\" had only negative option values, so no CVR menu entry is generated for it (the animator parameter itself is still converted).");
+                                break;
+                            }
+
                             var lastIndex = (int)discreteIdTable.Keys.Max();
                             var menuEntryNames = new List<string>();
-                            for (var j = firstIndex; j < lastIndex + 1; j++)
+                            for (var j = 0; j <= lastIndex; j++)
                             {
                                 menuEntryNames.Add(discreteIdTable.TryGetValue(j, out var menuEntry) ? menuEntry.name : "---");
                             }
