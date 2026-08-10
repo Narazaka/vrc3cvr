@@ -222,8 +222,7 @@ public class VRC3CVRActionFoldTests
             convertLocomotionLayer = true,
             convertActionLayer = convertActionLayer,
         });
-        core.Convert();
-        convertedAvatar = core.chilloutAvatar;
+        try { core.Convert(); } finally { convertedAvatar = core.chilloutAvatar; }
         Assert.IsNotNull(convertedAvatar);
 
         var controller = convertedAvatar.GetComponent<CVRAvatar>().avatarSettings.baseController as AnimatorController;
@@ -496,10 +495,141 @@ public class VRC3CVRActionFoldTests
         var actionMachine = ChildMachineNamed(
             LocomotionMachineOf(Convert(convertActionLayer: true, proxyEmotes: true)), "Action");
 
+        // also proves substituted slots are not double-prefixed: a rename on top of this would read
+        // "Emote_Emote3", not "Emote3"
         Assert.AreEqual("Emote3", EmoteClipNameOf(actionMachine, ProxyEmotes[0].state),
             "a placeholder only VRChat's client swaps was left to play as itself");
-        Assert.AreEqual("MyOwnWave", EmoteClipNameOf(actionMachine, EmoteStateName),
-            "an emote the author animated was replaced by ChilloutVR's own");
+        Assert.AreEqual("Emote_MyOwnWave", EmoteClipNameOf(actionMachine, EmoteStateName),
+            "an emote the author animated was replaced by ChilloutVR's own, or left without the name ChilloutVR's client reads as emoting");
+    }
+
+    [Test]
+    public void Convert_WithAnAuthoredEmote_LeavesTheOriginalAssetUnrenamed()
+    {
+        Convert(convertActionLayer: true);
+
+        var original = AssetDatabase.LoadAssetAtPath<AnimationClip>(ActionFoldTestFolder + "/MyOwnWave.anim");
+        Assert.IsNotNull(original, "fixture: the authored clip's own asset went missing");
+        Assert.AreEqual("MyOwnWave", original.name, "the rename touched the avatar's own asset instead of a copy");
+    }
+
+    [Test]
+    public void Convert_WithAnAddedActionLayer_RenamesItsEmoteStatesClips()
+    {
+        var added = ChildMachineNamed(
+            LocomotionMachineOf(Convert(convertActionLayer: true, addedLayer: true)), AddedLayerMachineName);
+
+        StringAssert.Contains("Emote", EmoteClipNameOf(added, "Emote1"),
+            "a tool-added emote state's clip kept a name ChilloutVR's client never reads as emoting");
+        StringAssert.Contains("Emote", EmoteClipNameOf(added, "Emote2"),
+            "a tool-added emote state's clip kept a name ChilloutVR's client never reads as emoting");
+    }
+
+    // ---- the region of a fold machine VRChat's own Action playable had its weight raised for ----
+
+    [Test]
+    public void ActionPlayableWeightRaisedStates_MatchesTheSpanBetweenAGoal1AndAGoal0Control()
+    {
+        var controller = new AnimatorController { name = "RegionTest" };
+        try
+        {
+            controller.AddParameter("Emote", AnimatorControllerParameterType.Int);
+            controller.AddLayer("Base");
+            var machine = controller.layers[0].stateMachine;
+
+            var wait = machine.AddState("Wait");
+            machine.defaultState = wait;
+            var prepare = machine.AddState("Prepare");
+            prepare.AddStateMachineBehaviour<VRCPlayableLayerControl>().goalWeight = 1f;
+            var emote = machine.AddState("Emote");
+            var blendOut = machine.AddState("BlendOut");
+            blendOut.AddStateMachineBehaviour<VRCPlayableLayerControl>().goalWeight = 0f;
+
+            wait.AddTransition(prepare).AddCondition(AnimatorConditionMode.Greater, 0f, "Emote");
+            prepare.AddTransition(emote).AddCondition(AnimatorConditionMode.Equals, 2f, "Emote");
+            emote.AddTransition(blendOut).AddCondition(AnimatorConditionMode.NotEqual, 2f, "Emote");
+            blendOut.AddExitTransition();
+
+            var raised = (IEnumerable<AnimatorState>)typeof(VRC3CVRCore)
+                .GetMethod("ActionPlayableWeightRaisedStates", Flags).Invoke(null, new object[] { machine });
+
+            CollectionAssert.AreEquivalent(new[] { prepare, emote }, raised.ToList(),
+                "the raised-weight region did not match VRChat's own Prepare/BlendOut boundary");
+        }
+        finally
+        {
+            Object.DestroyImmediate(controller);
+        }
+    }
+
+    [Test]
+    public void ActionPlayableWeightRaisedStates_IsNullAndRenameFallsBackToEqualsDispatch_WhenTheMachineHasNoPlayableControlAtAll()
+    {
+        var controller = new AnimatorController { name = "RegionFallbackTest" };
+        try
+        {
+            controller.AddParameter("Emote", AnimatorControllerParameterType.Int);
+            controller.AddLayer("Base");
+            var machine = controller.layers[0].stateMachine;
+
+            var wait = machine.AddState("Wait");
+            machine.defaultState = wait;
+            var emote = machine.AddState("Emote");
+            emote.motion = new AnimationClip { name = "MyOwnWave" };
+            wait.AddTransition(emote).AddCondition(AnimatorConditionMode.Equals, 2f, "Emote");
+
+            var raised = typeof(VRC3CVRCore).GetMethod("ActionPlayableWeightRaisedStates", Flags)
+                .Invoke(null, new object[] { machine });
+            Assert.IsNull(raised, "a machine with no VRCPlayableLayerControl anywhere computed a region anyway");
+
+            var fallback = new[] { emote };
+            typeof(VRC3CVRCore).GetMethod("RenameEmoteClips", Flags)
+                .Invoke(null, new object[] { machine, fallback });
+
+            Assert.AreEqual("Emote_MyOwnWave", emote.motion.name,
+                "the Equals-dispatch fallback did not rename the clip on a machine with no playable weight control");
+        }
+        finally
+        {
+            Object.DestroyImmediate(controller);
+        }
+    }
+
+    [Test]
+    public void RenameEmoteClips_RenamesEveryClipInABlendTreeWithoutMutatingItInPlace()
+    {
+        var controller = new AnimatorController { name = "RegionBlendTreeTest" };
+        try
+        {
+            controller.AddLayer("Base");
+            var machine = controller.layers[0].stateMachine;
+
+            var emote = machine.AddState("Emote");
+            emote.AddStateMachineBehaviour<VRCPlayableLayerControl>().goalWeight = 1f;
+            var tree = new BlendTree { name = "EmoteTree" };
+            tree.AddChild(new AnimationClip { name = "MyOwnWaveLow" }, 0f);
+            tree.AddChild(new AnimationClip { name = "MyOwnWaveHigh" }, 1f);
+            emote.motion = tree;
+            machine.defaultState = machine.AddState("Wait");
+
+            typeof(VRC3CVRCore).GetMethod("RenameEmoteClips", Flags)
+                .Invoke(null, new object[] { machine, Enumerable.Empty<AnimatorState>() });
+
+            // the tree wrapper itself is never persisted here, so what proves no mutation-in-place is
+            // the wrapper identity, not its children's names -- an unpersisted clip is cost-free to
+            // rename directly, and the copy-on-rename guarantee that matters for those is already
+            // covered where the fixture uses a real, persisted .anim asset
+            Assert.AreNotSame(tree, emote.motion, "the rename mutated the tree in place instead of handing back a copy");
+            var renamedTree = (BlendTree)emote.motion;
+            foreach (var child in renamedTree.children)
+            {
+                StringAssert.Contains("Emote", child.motion.name, "a blend tree child kept a name ChilloutVR's client never reads as emoting");
+            }
+        }
+        finally
+        {
+            Object.DestroyImmediate(controller);
+        }
     }
 
     [Test]
@@ -510,6 +640,43 @@ public class VRC3CVRActionFoldTests
 
         Assert.AreEqual(ProxyEmoteClipName, EmoteClipNameOf(actionMachine, ProxyEmotes[1].state),
             "a slot outside ChilloutVR's eight was filled from them anyway");
+    }
+
+    // ChilloutVR's own Emote states leave on an unconditional, exit-time transition once their clip
+    // has run once -- that's why the quick menu has no stop button for them -- and a state substituted
+    // to play one of those clips needs the same way out, or it loops forever with no way to stop it.
+    [Test]
+    public void Convert_WithAStockEmoteProxy_GetsAOneShotExitLikeChilloutVRsOwnEmotes()
+    {
+        var actionMachine = ChildMachineNamed(
+            LocomotionMachineOf(Convert(convertActionLayer: true, proxyEmotes: true)), "Action");
+
+        // every emote state here ends up with a way out that carries no conditions at all:
+        // ChilloutVR's Emote is a float, which has no NotEqual to adapt the state's own "the number
+        // moved on" exit to, so that one is left standing with nothing on it and an exit time of
+        // zero -- leave at once. What names the one-shot among them is the full cycle it waits
+        AnimatorStateTransition OneShotExitOf(string stateName) =>
+            AllStatesOf(actionMachine).Single(state => state.name == stateName).transitions
+                .SingleOrDefault(transition =>
+                    transition.conditions.Length == 0 && transition.hasExitTime && transition.exitTime == 1f);
+
+        var oneShot = OneShotExitOf(ProxyEmotes[0].state);
+        Assert.IsNotNull(oneShot,
+            "a slot ChilloutVR substituted its own emote clip into did not gain an ending that waits out a full cycle of it, the way ChilloutVR's own emotes do");
+
+        var cancelEmote = AllStatesOf(actionMachine).Single(state => state.name == ProxyEmotes[0].state).transitions
+            .Single(transition => transition.conditions.Any(condition => condition.parameter == "CancelEmote"));
+        Assert.AreEqual(cancelEmote.destinationState, oneShot.destinationState,
+            "the one-shot exit does not lead where the state's own cancel already leaves");
+        Assert.AreEqual(cancelEmote.destinationStateMachine, oneShot.destinationStateMachine,
+            "the one-shot exit does not lead where the state's own cancel already leaves");
+        Assert.AreEqual(cancelEmote.duration, oneShot.duration, 1e-4f,
+            "the one-shot exit does not blend the way the state's own cancel already does");
+
+        Assert.IsNull(OneShotExitOf(ProxyEmotes[1].state),
+            "a slot outside ChilloutVR's eight, left playing its own placeholder, gained the ending that belongs to ChilloutVR's own clips");
+        Assert.IsNull(OneShotExitOf(EmoteStateName),
+            "an author's own emote gained the one-shot ending that belongs to a state ChilloutVR's clip was substituted into");
     }
 
     const string VrcEmoteCompatLayerPrefix = "VRC3CVR_VRCEmoteCompat";
@@ -875,6 +1042,34 @@ public class VRC3CVRActionFoldTests
         // starting over rather than as a stale parameter
         Assert.AreEqual(DrivenFrameLimit, FramesUntil(animator, layer, OneShotEmoteStateName),
             "the emote started itself again after ending");
+    }
+
+    [Test]
+    public void Convert_WithASubstitutedProxyEmoteThatEndsOnItsOwn_ReturnsToTheHubWithoutReentering()
+    {
+        var controller = Convert(convertActionLayer: true, declareVrcEmote: true, proxyEmotes: true);
+        var hub = LocomotionMachineOf(controller).defaultState;
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+        // Emote3.anim, the real clip substituted in, runs 4.58s (275 frames) before its exit time
+        // fires, and the way back out through BlendOut costs another second on top -- 335 frames
+        // measured end to end. An emote left looping never comes back at all, so the limit only has
+        // to clear that return without ever reaching a second cycle of the clip
+        const int clipFrameLimit = 480;
+
+        animator.SetInteger("VRCEmote", ProxyEmotes[0].slot);
+        Assert.Less(FramesUntil(animator, layer, ProxyEmotes[0].state, clipFrameLimit), clipFrameLimit,
+            "fixture: the substituted proxy emote never started");
+
+        // held at its own number throughout, the way a pulsed latch leaves it once the pulse itself
+        // has ended -- nothing but the clip running out should carry the avatar back to the hub
+        Assert.Less(FramesUntil(animator, layer, hub.name, clipFrameLimit), clipFrameLimit,
+            "a slot ChilloutVR substituted its own emote clip into never ended on its own, looping forever with no way for the quick menu to stop it");
+
+        // the number is what the hub dispatches on, so a number left standing shows up as the emote
+        // starting over rather than as a stale parameter
+        Assert.AreEqual(clipFrameLimit, FramesUntil(animator, layer, ProxyEmotes[0].state, clipFrameLimit),
+            "the substituted emote re-entered itself once its number was left standing after it ended");
     }
 
     [Test]
