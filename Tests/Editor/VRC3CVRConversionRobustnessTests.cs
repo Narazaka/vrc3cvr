@@ -69,8 +69,7 @@ public class VRC3CVRConversionRobustnessTests
             shouldCloneAvatar = true,
             saveAssets = false,
         });
-        core.Convert();
-        converted = core.chilloutAvatar;
+        try { core.Convert(); } finally { converted = core.chilloutAvatar; }
 
         Assert.IsNotNull(converted, "the conversion produced no avatar");
         var cvrAvatar = converted.GetComponent<ABI.CCK.Components.CVRAvatar>();
@@ -102,8 +101,7 @@ public class VRC3CVRConversionRobustnessTests
             shouldCloneAvatar = true,
             saveAssets = false,
         });
-        core.Convert();
-        converted = core.chilloutAvatar;
+        try { core.Convert(); } finally { converted = core.chilloutAvatar; }
 
         var merged = converted.GetComponent<ABI.CCK.Components.CVRAvatar>().avatarSettings.baseController as AnimatorController;
         var mergedLayer = merged.layers.FirstOrDefault(layer => layer.name == firstLayerName);

@@ -50,60 +50,68 @@ public static class VRC3CVRVerificationAvatar
         }
 
         var root = new GameObject("VRC3CVR Verification Avatar");
-        var bones = BuildRig(root);
-        var avatar = BuildHumanAvatar(root, bones, assetFolder);
-        var animator = root.AddComponent<Animator>();
-        animator.avatar = avatar;
-
-        var materials = new Materials(assetFolder);
-        BuildGimmickObjects(root, materials);
-        BuildConstraintObjects(root, bones, materials);
-        BuildContactObjects(root, materials);
-        var faceMesh = BuildFaceMesh(bones.head, assetFolder, materials, out var visemeBlendShapeNames, out var blinkBlendShapeIndex);
-
-        var fx = BuildFxController(assetFolder);
-        var handMask = BuildHandMask(assetFolder);
-        var gesture = BuildGestureController(assetFolder, handMask);
-        var baseLocomotion = BuildBaseController(assetFolder);
-        var action = BuildActionController(assetFolder);
-        var sitting = BuildSittingController(assetFolder);
-        var descriptor = root.AddComponent<VRCAvatarDescriptor>();
-        descriptor.ViewPosition = new Vector3(0f, 1.45f, 0.1f);
-        descriptor.lipSync = VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape;
-        descriptor.VisemeSkinnedMesh = faceMesh;
-        descriptor.VisemeBlendShapes = visemeBlendShapeNames;
-        descriptor.customEyeLookSettings.eyelidType = VRCAvatarDescriptor.EyelidType.Blendshapes;
-        descriptor.customEyeLookSettings.eyelidsSkinnedMesh = faceMesh;
-        descriptor.customEyeLookSettings.eyelidsBlendshapes = new int[] { blinkBlendShapeIndex, -1, -1 };
-        descriptor.customizeAnimationLayers = true;
-        descriptor.baseAnimationLayers = new VRCAvatarDescriptor.CustomAnimLayer[]
+        try
         {
-            // locomotion of the avatar's own: the conversion replaces ChilloutVR's locomotion
-            // layer with it, which a stock (isDefault) Base layer would never reach
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Base, isDefault = false, animatorController = baseLocomotion },
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Additive, isDefault = true },
-            // dedicated (non-default) gesture controller: exercises the GESTURE avatar mask
-            // branch and the CVR default hand layer deletion branch, both unreachable while
-            // isDefault is true / no controller is assigned
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Gesture, isDefault = false, animatorController = gesture },
-            // dedicated (non-default) Action controller: a stock one holds nothing but VRChat's
-            // proxy_* placeholders, which the fold gate turns down
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Action, isDefault = false, animatorController = action },
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.FX, isDefault = false, animatorController = fx },
-        };
-        // Sitting is a special layer rather than a base one, so it is assigned separately
-        descriptor.specialAnimationLayers = new VRCAvatarDescriptor.CustomAnimLayer[]
-        {
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Sitting, isDefault = false, animatorController = sitting },
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.TPose, isDefault = true },
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.IKPose, isDefault = true },
-        };
-        descriptor.customExpressions = true;
-        descriptor.expressionParameters = BuildExpressionParameters(assetFolder);
-        descriptor.expressionsMenu = BuildExpressionsMenu(assetFolder);
+            var bones = BuildRig(root);
+            var avatar = BuildHumanAvatar(root, bones, assetFolder);
+            var animator = root.AddComponent<Animator>();
+            animator.avatar = avatar;
 
-        AssetDatabase.SaveAssets();
-        return descriptor;
+            var materials = new Materials(assetFolder);
+            BuildGimmickObjects(root, materials);
+            BuildConstraintObjects(root, bones, materials);
+            BuildContactObjects(root, materials);
+            var faceMesh = BuildFaceMesh(bones.head, assetFolder, materials, out var visemeBlendShapeNames, out var blinkBlendShapeIndex);
+
+            var fx = BuildFxController(assetFolder);
+            var handMask = BuildHandMask(assetFolder);
+            var gesture = BuildGestureController(assetFolder, handMask);
+            var baseLocomotion = BuildBaseController(assetFolder);
+            var action = BuildActionController(assetFolder);
+            var sitting = BuildSittingController(assetFolder);
+            var descriptor = root.AddComponent<VRCAvatarDescriptor>();
+            descriptor.ViewPosition = new Vector3(0f, 1.45f, 0.1f);
+            descriptor.lipSync = VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape;
+            descriptor.VisemeSkinnedMesh = faceMesh;
+            descriptor.VisemeBlendShapes = visemeBlendShapeNames;
+            descriptor.customEyeLookSettings.eyelidType = VRCAvatarDescriptor.EyelidType.Blendshapes;
+            descriptor.customEyeLookSettings.eyelidsSkinnedMesh = faceMesh;
+            descriptor.customEyeLookSettings.eyelidsBlendshapes = new int[] { blinkBlendShapeIndex, -1, -1 };
+            descriptor.customizeAnimationLayers = true;
+            descriptor.baseAnimationLayers = new VRCAvatarDescriptor.CustomAnimLayer[]
+            {
+                // locomotion of the avatar's own: the conversion replaces ChilloutVR's locomotion
+                // layer with it, which a stock (isDefault) Base layer would never reach
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Base, isDefault = false, animatorController = baseLocomotion },
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Additive, isDefault = true },
+                // dedicated (non-default) gesture controller: exercises the GESTURE avatar mask
+                // branch and the CVR default hand layer deletion branch, both unreachable while
+                // isDefault is true / no controller is assigned
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Gesture, isDefault = false, animatorController = gesture },
+                // dedicated (non-default) Action controller: a stock one holds nothing but VRChat's
+                // proxy_* placeholders, which the fold gate turns down
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Action, isDefault = false, animatorController = action },
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.FX, isDefault = false, animatorController = fx },
+            };
+            // Sitting is a special layer rather than a base one, so it is assigned separately
+            descriptor.specialAnimationLayers = new VRCAvatarDescriptor.CustomAnimLayer[]
+            {
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Sitting, isDefault = false, animatorController = sitting },
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.TPose, isDefault = true },
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.IKPose, isDefault = true },
+            };
+            descriptor.customExpressions = true;
+            descriptor.expressionParameters = BuildExpressionParameters(assetFolder);
+            descriptor.expressionsMenu = BuildExpressionsMenu(assetFolder);
+
+            AssetDatabase.SaveAssets();
+            return descriptor;
+        }
+        catch
+        {
+            Object.DestroyImmediate(root);
+            throw;
+        }
     }
 
     // ---- rig ----

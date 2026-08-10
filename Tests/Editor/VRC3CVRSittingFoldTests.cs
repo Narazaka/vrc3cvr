@@ -126,8 +126,7 @@ public class VRC3CVRSittingFoldTests
             convertLocomotionLayer = true,
             convertSittingLayer = convertSittingLayer,
         });
-        core.Convert();
-        convertedAvatar = core.chilloutAvatar;
+        try { core.Convert(); } finally { convertedAvatar = core.chilloutAvatar; }
         Assert.IsNotNull(convertedAvatar);
 
         var controller = convertedAvatar.GetComponent<CVRAvatar>().avatarSettings.baseController as AnimatorController;

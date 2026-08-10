@@ -40,8 +40,7 @@ public class VRC3CVREndToEndTests
             convertActionLayer = true,
             convertSittingLayer = true,
         });
-        core.Convert();
-        converted = core.chilloutAvatar;
+        try { core.Convert(); } finally { converted = core.chilloutAvatar; }
         Assert.IsNotNull(converted);
         return converted;
     }

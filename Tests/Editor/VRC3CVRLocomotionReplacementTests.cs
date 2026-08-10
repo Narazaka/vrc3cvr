@@ -679,8 +679,7 @@ public class VRC3CVRLocomotionReplacementTests
             convertActionLayer = foldPlayables,
             convertSittingLayer = foldPlayables,
         });
-        core.Convert();
-        convertedAvatar = core.chilloutAvatar;
+        try { core.Convert(); } finally { convertedAvatar = core.chilloutAvatar; }
         Assert.IsNotNull(convertedAvatar);
 
         var controller = convertedAvatar.GetComponent<CVRAvatar>().avatarSettings.baseController as AnimatorController;
