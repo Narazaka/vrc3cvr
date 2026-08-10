@@ -57,39 +57,49 @@ public class VRC3CVRBuildProcessor : CCKBuildProcessor
         // the bake also keeps it away from tools that strip unknown components.
         UnityEngine.Object.DestroyImmediate(settings);
 
-        // Read before the bake, which is what would run FaceTune's build (see VRC3CVRFaceTuneCheckpoint).
+        // Read before the bake, which is what would run FaceTune's build, and snapshot it for a dry
+        // run if the checkpoint needs one later (see VRC3CVRFaceTuneCheckpoint). This path converts
+        // avatar in place (shouldCloneAvatar below), so the snapshot is the only pre-bake state left
+        // by the time a warning might need it.
         var faceTuneWasPresent = VRC3CVRFaceTuneCheckpoint.WasFaceTunePresent(avatar);
-
-        if (config.autoBake)
+        var faceTuneSnapshot = faceTuneWasPresent ? UnityEngine.Object.Instantiate(avatar) : null;
+        try
         {
-            // The CCK build does not run VRChat's hooks, so ask for them explicitly. Unlike the
-            // manual path there is no clone to make: the SDK contract is to rewrite what it is given.
-            if (!VRC3CVRBaker.BakeInPlace(avatar))
+            if (config.autoBake)
             {
-                throw new Exception(T.BakeFailed);
+                // The CCK build does not run VRChat's hooks, so ask for them explicitly. Unlike the
+                // manual path there is no clone to make: the SDK contract is to rewrite what it is given.
+                if (!VRC3CVRBaker.BakeInPlace(avatar))
+                {
+                    throw new Exception(T.BakeFailed);
+                }
             }
+
+            var descriptor = avatar.GetComponent<VRCAvatarDescriptor>();
+            if (descriptor == null) throw new Exception(T.NoDescriptorAfterBake);
+
+            config.vrcAvatarDescriptor = descriptor;
+            // The CCK already owns this object; a clone here would be uploaded empty.
+            config.shouldCloneAvatar = false;
+            // PrefabUtility.SaveAsPrefabAsset cannot serialize a reference to an AnimatorOverrideController
+            // that only lives in memory, so the animator has to be written to disk or the uploaded avatar
+            // has none at all. Not the user's choice on this path.
+            config.saveAssets = true;
+            VRC3CVRCore.FromConfig(config).Convert();
+
+            VRC3CVRFaceTuneCheckpoint.CheckConvertedAvatar(faceTuneWasPresent, avatar, faceTuneSnapshot);
+
+            // Defensive: by this point CVRAvatar is required by VRC3CVRAvatar and the CCK already
+            // rejected anything whose type is not Avatar, so this is normally a no-op. It costs nothing
+            // and keeps the invariant explicit for a caller that reaches here another way. Also
+            // collapses duplicates: CVRAssetInfo is [DisallowMultipleComponent], but duplicates have
+            // been observed anyway, and picking the wrong one mid-upload would burn a content slot.
+            VRC3CVRCckComponents.EnsureSingleAssetInfo(avatar, recordUndo: false);
         }
-
-        var descriptor = avatar.GetComponent<VRCAvatarDescriptor>();
-        if (descriptor == null) throw new Exception(T.NoDescriptorAfterBake);
-
-        config.vrcAvatarDescriptor = descriptor;
-        // The CCK already owns this object; a clone here would be uploaded empty.
-        config.shouldCloneAvatar = false;
-        // PrefabUtility.SaveAsPrefabAsset cannot serialize a reference to an AnimatorOverrideController
-        // that only lives in memory, so the animator has to be written to disk or the uploaded avatar
-        // has none at all. Not the user's choice on this path.
-        config.saveAssets = true;
-        VRC3CVRCore.FromConfig(config).Convert();
-
-        VRC3CVRFaceTuneCheckpoint.CheckConvertedAvatar(faceTuneWasPresent, avatar);
-
-        // Defensive: by this point CVRAvatar is required by VRC3CVRAvatar and the CCK already
-        // rejected anything whose type is not Avatar, so this is normally a no-op. It costs nothing
-        // and keeps the invariant explicit for a caller that reaches here another way. Also
-        // collapses duplicates: CVRAssetInfo is [DisallowMultipleComponent], but duplicates have
-        // been observed anyway, and picking the wrong one mid-upload would burn a content slot.
-        VRC3CVRCckComponents.EnsureSingleAssetInfo(avatar, recordUndo: false);
+        finally
+        {
+            if (faceTuneSnapshot != null) UnityEngine.Object.DestroyImmediate(faceTuneSnapshot);
+        }
     }
 }
 #endif
