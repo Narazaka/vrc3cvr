@@ -22,6 +22,10 @@ public class VRC3CVRActionFoldTests
     const string OneShotEmoteStateName = "StandClap";
     const string SecondLayerStateName = "ActionSecondLayerState";
 
+    const string ProxyEmoteClipName = "proxy_stand_dance";
+    // ChilloutVR's wheel offers eight emotes, so the seated slot has nothing standing in the same place
+    static readonly (string state, int slot)[] ProxyEmotes = { ("StandProxyEmote", 3), ("SitProxyEmote", 12) };
+
     const string AddedLayerName = "HhotateA_EMK_Emote";
     const string AddedLayerParameterName = "HhotateA_EMK_Emote";
     const string AddedLayerMachineName = "Action:HhotateA_EMK_Emote";
@@ -47,7 +51,8 @@ public class VRC3CVRActionFoldTests
     // The shape stock Action has: a default state that waits, a Prepare that raises the playable
     // weight, the emote itself, and a BlendOut that drops the weight and leaves through Exit.
     static AnimatorController MakeActionController(bool authored, bool declareVrcEmote = false,
-        bool addedLayer = false, bool addedLayerMasked = false, string addedLayerParameter = AddedLayerParameterName)
+        bool addedLayer = false, bool addedLayerMasked = false, string addedLayerParameter = AddedLayerParameterName,
+        bool proxyEmotes = false)
     {
         var controller = AnimatorController.CreateAnimatorControllerAtPath(ActionFoldTestFolder + "/Action.controller");
         var emoteParameter = declareVrcEmote ? "VRCEmote" : "Emote";
@@ -89,6 +94,21 @@ public class VRC3CVRActionFoldTests
         oneShotEmote.AddTransition(blendOut).AddCondition(AnimatorConditionMode.NotEqual, 7f, emoteParameter);
         oneShotEmote.AddTransition(blendOut).hasExitTime = true;
         blendOut.AddExitTransition().hasExitTime = true;
+
+        // what a built avatar's Action still is underneath whatever its author replaced: VRChat's
+        // own placeholders, which nothing outside its client swaps for an animation
+        if (proxyEmotes)
+        {
+            var proxy = new AnimationClip { name = ProxyEmoteClipName };
+            AssetDatabase.CreateAsset(proxy, ActionFoldTestFolder + "/" + ProxyEmoteClipName + ".anim");
+            foreach (var (stateName, slot) in ProxyEmotes)
+            {
+                var proxyEmote = machine.AddState(stateName);
+                proxyEmote.motion = proxy;
+                prepare.AddTransition(proxyEmote).AddCondition(AnimatorConditionMode.Equals, slot, emoteParameter);
+                proxyEmote.AddTransition(blendOut).AddCondition(AnimatorConditionMode.NotEqual, slot, emoteParameter);
+            }
+        }
 
         controller.AddLayer("ActionSecondLayer");
         controller.layers[1].stateMachine.AddState(SecondLayerStateName).motion = clip;
@@ -151,7 +171,7 @@ public class VRC3CVRActionFoldTests
 
     AnimatorController Convert(bool convertActionLayer, bool authoredAction = true, bool authoredBase = true,
         bool declareVrcEmote = false, bool vrcEmoteIsSynced = true, bool addedLayer = false, bool addedLayerMasked = false,
-        string addedLayerParameter = AddedLayerParameterName)
+        string addedLayerParameter = AddedLayerParameterName, bool proxyEmotes = false)
     {
         var descriptor = VRC3CVRVerificationAvatar.Generate(ActionFoldTestFolder);
         originalAvatar = descriptor.gameObject;
@@ -190,7 +210,7 @@ public class VRC3CVRActionFoldTests
             type = VRCAvatarDescriptor.AnimLayerType.Action,
             isDefault = false,
             animatorController = MakeActionController(
-                authoredAction, declareVrcEmote, addedLayer, addedLayerMasked, addedLayerParameter),
+                authoredAction, declareVrcEmote, addedLayer, addedLayerMasked, addedLayerParameter, proxyEmotes),
         };
         descriptor.baseAnimationLayers = layers;
 
@@ -463,6 +483,33 @@ public class VRC3CVRActionFoldTests
         Assert.IsNull(ChildMachineNamed(root, AddedLayerMachineName),
             "a layer whose entry conditions were all adapted away was folded in anyway");
         Assert.IsNotNull(ChildMachineNamed(root, "Action"), "the stock Action machine went out with the refused one");
+    }
+
+    // ---- the stock emotes underneath, played from ChilloutVR's own set of eight ----
+
+    static string EmoteClipNameOf(AnimatorStateMachine actionMachine, string stateName) =>
+        AllStatesOf(actionMachine).Single(state => state.name == stateName).motion.name;
+
+    [Test]
+    public void Convert_WithAStockEmoteProxy_PlaysChilloutVRsOwnEmoteOfThatSlot()
+    {
+        var actionMachine = ChildMachineNamed(
+            LocomotionMachineOf(Convert(convertActionLayer: true, proxyEmotes: true)), "Action");
+
+        Assert.AreEqual("Emote3", EmoteClipNameOf(actionMachine, ProxyEmotes[0].state),
+            "a placeholder only VRChat's client swaps was left to play as itself");
+        Assert.AreEqual("MyOwnWave", EmoteClipNameOf(actionMachine, EmoteStateName),
+            "an emote the author animated was replaced by ChilloutVR's own");
+    }
+
+    [Test]
+    public void Convert_WithAnEmoteProxyOnASlotChilloutVRHasNoEmoteFor_LeavesItAlone()
+    {
+        var actionMachine = ChildMachineNamed(
+            LocomotionMachineOf(Convert(convertActionLayer: true, proxyEmotes: true)), "Action");
+
+        Assert.AreEqual(ProxyEmoteClipName, EmoteClipNameOf(actionMachine, ProxyEmotes[1].state),
+            "a slot outside ChilloutVR's eight was filled from them anyway");
     }
 
     const string VrcEmoteCompatLayerPrefix = "VRC3CVR_VRCEmoteCompat";

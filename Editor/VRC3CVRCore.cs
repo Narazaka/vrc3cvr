@@ -2694,6 +2694,41 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return AssetDatabase.LoadAssetAtPath<AnimationClip>(CckLocomotionClipPath + replacement + ".anim");
     }
 
+    const string CckEmoteClipPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Emotes/";
+
+    // A stock Action machine's emotes are proxy_* placeholders like its locomotion, and ChilloutVR
+    // ships the eight its own wheel offers -- Emote1..8, one per slot. Filling a slot from that set
+    // plays what the wheel promises, and settles two more things the client reads off the clip's
+    // name: the quick menu labels a slot after the clip it finds named for it, and an avatar counts
+    // as emoting -- which is what holds its gestures back -- while the clip it plays is one of these.
+    // The slot is the emote number the state is entered on, read here rather than after
+    // ProcessStateMachine has adapted those conditions to ChilloutVR's parameter types.
+    static void SubstituteEmoteProxyClips(AnimatorStateMachine machine, string emoteParameterName)
+    {
+        foreach (var transition in AllStatesOf(machine).SelectMany(state => state.transitions))
+        {
+            var emote = transition.destinationState;
+            if (emote == null || !(emote.motion is AnimationClip clip) || !IsVrchatPlaceholderClip(clip))
+            {
+                continue;
+            }
+            foreach (var condition in transition.conditions)
+            {
+                if (condition.parameter != emoteParameterName || condition.mode != AnimatorConditionMode.Equals)
+                {
+                    continue;
+                }
+                var cckEmote = AssetDatabase.LoadAssetAtPath<AnimationClip>(
+                    CckEmoteClipPath + "Emote" + (int)condition.threshold + ".anim");
+                if (cckEmote != null)
+                {
+                    emote.motion = cckEmote;
+                }
+                break;
+            }
+        }
+    }
+
     const string CckLocomotionLayerName = "Locomotion/Emotes";
 
     // Set while the CVR locomotion layer is dropped in favour of the avatar's own Base layer.
@@ -2958,6 +2993,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var actionMachine = clonedLayers[0].stateMachine;
         actionMachine.name = FoldedActionMachineName;
         foldedActionMachine = actionMachine;
+        SubstituteEmoteProxyClips(actionMachine, emoteParameterName);
         // has to run before the processing below: on the Emote path those NotEqual conditions are
         // adapted away against a float, and there would be nothing left to copy
         AddCancelEmoteEscapes(actionMachine, emoteParameterName);
