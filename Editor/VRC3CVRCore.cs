@@ -2651,12 +2651,21 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return pose;
     }
 
-    Motion SubstitutedMotion(Motion motion, bool poseOnly)
+    Motion SubstitutedMotion(Motion motion, bool poseOnly) => MapMotion(motion, clip =>
+    {
+        var substituted = SubstitutedClip(clip);
+        return substituted == null ? clip : poseOnly ? PoseClipOf(substituted) : substituted;
+    });
+
+    // Whatever a state plays, one clip at a time. A tree that any of its clips changed under is
+    // handed back as a copy rather than edited: CopyAnimatorController shares rather than copies a
+    // blend tree that lives in an asset of its own, so the tree reached here can still be the
+    // avatar's -- or another controller's.
+    static Motion MapMotion(Motion motion, Func<AnimationClip, AnimationClip> mapClip)
     {
         if (motion is AnimationClip clip)
         {
-            var substituted = SubstitutedClip(clip);
-            return substituted == null ? clip : poseOnly ? PoseClipOf(substituted) : substituted;
+            return mapClip(clip);
         }
         if (motion is BlendTree tree)
         {
@@ -2664,10 +2673,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             var changed = false;
             for (var i = 0; i < children.Length; i++)
             {
-                var substituted = SubstitutedMotion(children[i].motion, poseOnly);
-                if (substituted != children[i].motion)
+                var mapped = MapMotion(children[i].motion, mapClip);
+                if (mapped != children[i].motion)
                 {
-                    children[i].motion = substituted;
+                    children[i].motion = mapped;
                     changed = true;
                 }
             }
@@ -2675,9 +2684,6 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             {
                 return tree;
             }
-            // CopyAnimatorController shares rather than copies any blend tree that lives in an
-            // asset of its own, so the tree reached here can still be the avatar's -- or another
-            // controller's. The substitution goes into a copy the conversion owns.
             var owned = CopyAnimatorController.CopyBlendTree(null, tree, false);
             owned.children = children;
             return owned;
@@ -2766,13 +2772,32 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // goal to 1, through to wherever one drops it back to 0; a state with no control of its own
     // carries whatever the states reaching it carried, and a state reached both raised and not
     // resolves raised, logged as a warning since it means this machine's own Prepare/BlendOut shape
-    // does not hold clean. A machine with no VRCPlayableLayerControl anywhere has nothing to compute
-    // this from, so it returns null rather than an empty span.
-    static IEnumerable<AnimatorState> ActionPlayableWeightRaisedStates(AnimatorStateMachine machine)
+    // does not hold clean.
+    //
+    // That inheritance is only worth reading where the machine draws the span clearly enough to
+    // bound it, which takes two things, and null -- fall back to what the machine dispatches on --
+    // where either is missing:
+    //
+    // - Both ends present. A machine that only ever raises the weight leaves the region with no
+    //   lower boundary, and it runs on down the blend-out and into the idle, which would tell
+    //   ChilloutVR the avatar is emoting while it stands still.
+    // - Every inheriting state reached from one particular state. An edge out of AnyState or Entry
+    //   says nothing about what its destination inherits -- AnyState reaches it from raised and
+    //   unraised alike, Entry from outside the machine -- and a sub-machine's own Entry/Exit is the
+    //   same edge one level down. A state carrying its own control is not affected: it answers for
+    //   itself however it was reached.
+    static IEnumerable<AnimatorState> ActionPlayableWeightRaisedStates(AnimatorStateMachine machine, string layerName)
     {
         var states = AllStatesOf(machine).ToList();
         var ownGoal = states.ToDictionary(state => state, ActionPlayableLayerControlGoal);
-        if (ownGoal.Values.All(goal => !goal.HasValue))
+        if (!ownGoal.Values.Any(goal => goal == true) || !ownGoal.Values.Any(goal => goal == false))
+        {
+            return null;
+        }
+        if (machine.stateMachines.Length > 0 ||
+            machine.anyStateTransitions.Cast<AnimatorTransitionBase>().Concat(machine.entryTransitions).Any(
+                transition => transition.destinationState != null
+                    && !ActionPlayableLayerControlGoal(transition.destinationState).HasValue))
         {
             return null;
         }
@@ -2807,20 +2832,30 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             if (predecessorsOf[state].Any(predecessor => raised[predecessor]) &&
                 predecessorsOf[state].Any(predecessor => !raised[predecessor]))
             {
-                Debug.LogWarning($"\"{state.name}\" in the Action animator's \"{machine.name}\" layer is reached both with and without the Action playable's weight raised; treating it as raised.");
+                Debug.LogWarning($"\"{state.name}\" in the Action animator's \"{layerName}\" layer is reached both with and without the Action playable's weight raised; treating it as raised.");
             }
         }
 
         return states.Where(state => raised[state]);
     }
 
-    static bool? ActionPlayableLayerControlGoal(AnimatorState state) =>
-        state.behaviours.OfType<VRCPlayableLayerControl>()
-            .Select(behaviour => (bool?)(behaviour.goalWeight == 1f))
-            .FirstOrDefault();
+    // One control per playable: a state that drops FX or raises Gesture says nothing about the
+    // playable whose weight stood in for the tracked pose, and reading it as if it did would put
+    // the region's boundary wherever an FX-driving tool happened to leave one.
+    static VRCPlayableLayerControl ActionPlayableLayerControlOf(AnimatorState state) =>
+        state == null
+            ? null
+            : state.behaviours.OfType<VRCPlayableLayerControl>().FirstOrDefault(
+                behaviour => behaviour.layer == VRC.SDKBase.VRC_PlayableLayerControl.BlendableLayer.Action);
+
+    static bool? ActionPlayableLayerControlGoal(AnimatorState state)
+    {
+        var control = ActionPlayableLayerControlOf(state);
+        return control == null ? (bool?)null : control.goalWeight == 1f;
+    }
 
     static IEnumerable<AnimatorState> EqualsDispatchDestinationsOf(AnimatorStateMachine machine, string emoteParameterName) =>
-        AllStatesOf(machine).SelectMany(state => state.transitions)
+        AllStatesOf(machine).SelectMany(state => state.transitions).Concat(machine.anyStateTransitions)
             .Where(transition => transition.destinationState != null && transition.conditions.Any(condition =>
                 condition.parameter == emoteParameterName && condition.mode == AnimatorConditionMode.Equals))
             .Select(transition => transition.destinationState)
@@ -2830,63 +2865,39 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // decide an avatar is emoting, and that flag alone is what releases VRIK for the clip's own
     // duration. The span VRChat kept the Action playable's own weight raised for -- computed above
     // -- is exactly the span that decision should cover, since that clip is what stood in for the
-    // tracked pose throughout it; a machine with no playable weight control to read that span from
-    // falls back to whatever it dispatches on directly. A clip already named for it -- ChilloutVR's
+    // tracked pose throughout it; a machine whose own shape does not bound that span falls back to
+    // whatever it dispatches on directly. A clip already named for it -- ChilloutVR's
     // own substituted Emote{n}, or an author who happened to name theirs the same way -- is left
     // alone, and a VRChat placeholder is never renamed on its own account, substituted or not. The
     // rename goes into a copy of the clip: the one reached here can be shared -- with a state
     // outside the span, with another machine, with the avatar's own asset -- and renaming it where
     // it lies would tell the client every one of those is an emote too.
-    static void RenameEmoteClips(AnimatorStateMachine machine, IEnumerable<AnimatorState> equalsDispatchFallback)
+    static void RenameEmoteClips(
+        AnimatorStateMachine machine, string layerName, IEnumerable<AnimatorState> equalsDispatchFallback)
     {
-        foreach (var state in (ActionPlayableWeightRaisedStates(machine) ?? equalsDispatchFallback)
+        // one copy per clip, not per state that plays it: the states of a machine share their clips
+        // freely, and a copy each would be that many identical animations saved into the avatar
+        var renamed = new Dictionary<AnimationClip, AnimationClip>();
+        foreach (var state in (ActionPlayableWeightRaisedStates(machine, layerName) ?? equalsDispatchFallback)
             .Where(state => state != null))
         {
-            state.motion = EmoteNamedMotion(state.motion);
+            state.motion = MapMotion(state.motion, clip => EmoteNamedClip(clip, renamed));
         }
     }
 
-    static Motion EmoteNamedMotion(Motion motion)
-    {
-        if (motion is AnimationClip clip)
-        {
-            return EmoteNamedClip(clip);
-        }
-        if (motion is BlendTree tree)
-        {
-            var children = tree.children;
-            var changed = false;
-            for (var i = 0; i < children.Length; i++)
-            {
-                var renamed = EmoteNamedMotion(children[i].motion);
-                if (renamed != children[i].motion)
-                {
-                    children[i].motion = renamed;
-                    changed = true;
-                }
-            }
-            if (!changed)
-            {
-                return tree;
-            }
-            // CopyAnimatorController shares rather than copies any blend tree that lives in an
-            // asset of its own, so the tree reached here can still be the avatar's -- or another
-            // controller's. The rename goes into a copy the conversion owns.
-            var owned = CopyAnimatorController.CopyBlendTree(null, tree, false);
-            owned.children = children;
-            return owned;
-        }
-        return motion;
-    }
-
-    static AnimationClip EmoteNamedClip(AnimationClip clip)
+    static AnimationClip EmoteNamedClip(AnimationClip clip, Dictionary<AnimationClip, AnimationClip> renamed)
     {
         if (clip == null || clip.name.Contains("Emote") || IsVrchatPlaceholderClip(clip))
         {
             return clip;
         }
+        if (renamed.TryGetValue(clip, out var cached))
+        {
+            return cached;
+        }
         var owned = CopyAnimatorController.CopyAnimationClip(clip);
         owned.name = "Emote_" + owned.name;
+        renamed[clip] = owned;
         return owned;
     }
 
@@ -3154,12 +3165,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var actionMachine = clonedLayers[0].stateMachine;
         actionMachine.name = FoldedActionMachineName;
         foldedActionMachine = actionMachine;
+        // All three read the machine as VRChat left it, so all three run before the processing
+        // below: it adapts these conditions to ChilloutVR's own parameters -- on the Emote path the
+        // NotEqual ones against a float, which drops them entirely -- and throws the VRC behaviours
+        // away with them.
         SubstituteEmoteProxyClips(actionMachine, emoteParameterName);
-        // has to run before the processing below, same as the substitution above: ProcessStateMachine
-        // adapts these conditions and parameter types away, and VRCPlayableLayerControl along with them
-        RenameEmoteClips(actionMachine, EqualsDispatchDestinationsOf(actionMachine, emoteParameterName));
-        // has to run before the processing below: on the Emote path those NotEqual conditions are
-        // adapted away against a float, and there would be nothing left to copy
+        RenameEmoteClips(actionMachine, clonedLayers[0].name,
+            EqualsDispatchDestinationsOf(actionMachine, emoteParameterName));
         AddCancelEmoteEscapes(actionMachine, emoteParameterName);
 
         var addedMachines = new List<(AnimatorStateMachine machine, float blendDuration, string layerName)>();
@@ -3175,7 +3187,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             // kept, since the machine is about to be renamed and the warnings below name the layer
             var layerName = clonedLayers[i].name;
             added.name = FoldedActionMachineNamePrefix + layerName;
-            RenameEmoteClips(added, DispatchTransitionsOf(added).Select(transition => transition.destinationState));
+            RenameEmoteClips(added, layerName, DispatchTransitionsOf(added).Select(transition => transition.destinationState));
             foreach (var parameter in DispatchParametersOf(added))
             {
                 AddCancelEmoteEscapes(added, parameter);
@@ -3528,16 +3540,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
         foreach (var transition in start.transitions)
         {
-            if (transition.destinationState == null)
+            var raise = ActionPlayableLayerControlOf(transition.destinationState);
+            if (raise != null && raise.goalWeight == 1f)
             {
-                continue;
-            }
-            foreach (var behaviour in transition.destinationState.behaviours)
-            {
-                if (behaviour is VRCPlayableLayerControl playableWeight && playableWeight.goalWeight == 1f)
-                {
-                    return playableWeight.blendDuration;
-                }
+                return raise.blendDuration;
             }
         }
         return DefaultActionBlendDuration;

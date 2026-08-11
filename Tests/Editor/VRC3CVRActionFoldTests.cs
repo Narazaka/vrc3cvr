@@ -486,8 +486,11 @@ public class VRC3CVRActionFoldTests
 
     // ---- the stock emotes underneath, played from ChilloutVR's own set of eight ----
 
+    static Motion EmoteMotionOf(AnimatorStateMachine actionMachine, string stateName) =>
+        AllStatesOf(actionMachine).Single(state => state.name == stateName).motion;
+
     static string EmoteClipNameOf(AnimatorStateMachine actionMachine, string stateName) =>
-        AllStatesOf(actionMachine).Single(state => state.name == stateName).motion.name;
+        EmoteMotionOf(actionMachine, stateName).name;
 
     [Test]
     public void Convert_WithAStockEmoteProxy_PlaysChilloutVRsOwnEmoteOfThatSlot()
@@ -514,7 +517,7 @@ public class VRC3CVRActionFoldTests
     }
 
     [Test]
-    public void Convert_WithAnAddedActionLayer_RenamesItsEmoteStatesClips()
+    public void Convert_WithAnAddedActionLayer_RenamesTheClipsOfItsEmoteStatesAndNoOthers()
     {
         var added = ChildMachineNamed(
             LocomotionMachineOf(Convert(convertActionLayer: true, addedLayer: true)), AddedLayerMachineName);
@@ -523,38 +526,30 @@ public class VRC3CVRActionFoldTests
             "a tool-added emote state's clip kept a name ChilloutVR's client never reads as emoting");
         StringAssert.Contains("Emote", EmoteClipNameOf(added, "Emote2"),
             "a tool-added emote state's clip kept a name ChilloutVR's client never reads as emoting");
+
+        // this layer raises the Action playable's weight and never drops it back, so there is no
+        // span to read the emotes off and the resets that follow them must not be swept in with
+        // them: ChilloutVR would go on reading the avatar as emoting once the emote had ended
+        Assert.AreEqual("MyOwnWave", EmoteClipNameOf(added, "Reset1"),
+            "the state an emote resets through was renamed as an emote of its own");
+        Assert.AreEqual("MyOwnWave", EmoteClipNameOf(added, "Reset2"),
+            "the state an emote resets through was renamed as an emote of its own");
+
+        Assert.AreSame(EmoteMotionOf(added, "Emote1"), EmoteMotionOf(added, "Emote2"),
+            "the one clip both emotes play was copied once per state instead of once");
     }
 
     // ---- the region of a fold machine VRChat's own Action playable had its weight raised for ----
 
-    [Test]
-    public void ActionPlayableWeightRaisedStates_MatchesTheSpanBetweenAGoal1AndAGoal0Control()
+    // The shapes below are built bare rather than through an avatar: what the region is read off is
+    // the machine alone, and no one fixture can hold them all at once.
+    static void WithIsolatedMachine(string name, System.Action<AnimatorController, AnimatorStateMachine> body)
     {
-        var controller = new AnimatorController { name = "RegionTest" };
+        var controller = new AnimatorController { name = name };
         try
         {
-            controller.AddParameter("Emote", AnimatorControllerParameterType.Int);
             controller.AddLayer("Base");
-            var machine = controller.layers[0].stateMachine;
-
-            var wait = machine.AddState("Wait");
-            machine.defaultState = wait;
-            var prepare = machine.AddState("Prepare");
-            prepare.AddStateMachineBehaviour<VRCPlayableLayerControl>().goalWeight = 1f;
-            var emote = machine.AddState("Emote");
-            var blendOut = machine.AddState("BlendOut");
-            blendOut.AddStateMachineBehaviour<VRCPlayableLayerControl>().goalWeight = 0f;
-
-            wait.AddTransition(prepare).AddCondition(AnimatorConditionMode.Greater, 0f, "Emote");
-            prepare.AddTransition(emote).AddCondition(AnimatorConditionMode.Equals, 2f, "Emote");
-            emote.AddTransition(blendOut).AddCondition(AnimatorConditionMode.NotEqual, 2f, "Emote");
-            blendOut.AddExitTransition();
-
-            var raised = (IEnumerable<AnimatorState>)typeof(VRC3CVRCore)
-                .GetMethod("ActionPlayableWeightRaisedStates", Flags).Invoke(null, new object[] { machine });
-
-            CollectionAssert.AreEquivalent(new[] { prepare, emote }, raised.ToList(),
-                "the raised-weight region did not match VRChat's own Prepare/BlendOut boundary");
+            body(controller, controller.layers[0].stateMachine);
         }
         finally
         {
@@ -562,15 +557,82 @@ public class VRC3CVRActionFoldTests
         }
     }
 
+    // VRChat's own Action layer leaves the control's layer field at its default, which is the
+    // Action playable, so the fixtures that mean Action say no more than it does.
+    static AnimatorState WithActionWeightGoal(AnimatorState state, float goalWeight)
+    {
+        state.AddStateMachineBehaviour<VRCPlayableLayerControl>().goalWeight = goalWeight;
+        return state;
+    }
+
+    static IEnumerable<AnimatorState> RaisedRegionOf(AnimatorStateMachine machine) =>
+        (IEnumerable<AnimatorState>)typeof(VRC3CVRCore).GetMethod("ActionPlayableWeightRaisedStates", Flags)
+            .Invoke(null, new object[] { machine, "Action" });
+
+    static void RenameEmoteClips(AnimatorStateMachine machine, string emoteParameterName) =>
+        typeof(VRC3CVRCore).GetMethod("RenameEmoteClips", Flags).Invoke(null, new object[]
+        {
+            machine, "Action",
+            typeof(VRC3CVRCore).GetMethod("EqualsDispatchDestinationsOf", Flags)
+                .Invoke(null, new object[] { machine, emoteParameterName }),
+        });
+
+    [Test]
+    public void ActionPlayableWeightRaisedStates_MatchesTheSpanBetweenAGoal1AndAGoal0Control()
+    {
+        WithIsolatedMachine("RegionTest", (controller, machine) =>
+        {
+            controller.AddParameter("Emote", AnimatorControllerParameterType.Int);
+
+            var wait = machine.AddState("Wait");
+            machine.defaultState = wait;
+            var prepare = WithActionWeightGoal(machine.AddState("Prepare"), 1f);
+            var emote = machine.AddState("Emote");
+            var blendOut = WithActionWeightGoal(machine.AddState("BlendOut"), 0f);
+
+            wait.AddTransition(prepare).AddCondition(AnimatorConditionMode.Greater, 0f, "Emote");
+            prepare.AddTransition(emote).AddCondition(AnimatorConditionMode.Equals, 2f, "Emote");
+            emote.AddTransition(blendOut).AddCondition(AnimatorConditionMode.NotEqual, 2f, "Emote");
+            blendOut.AddExitTransition();
+
+            CollectionAssert.AreEquivalent(new[] { prepare, emote }, RaisedRegionOf(machine).ToList(),
+                "the raised-weight region did not match VRChat's own Prepare/BlendOut boundary");
+        });
+    }
+
+    // A state that hands its own playable back mid-emote -- what the tools that build FX toggles
+    // leave behind -- says nothing about the one that stood in for the tracked pose.
+    [Test]
+    public void ActionPlayableWeightRaisedStates_IsNotClosedByAControlOverAnotherPlayable()
+    {
+        WithIsolatedMachine("RegionOtherPlayableTest", (controller, machine) =>
+        {
+            var wait = machine.AddState("Wait");
+            machine.defaultState = wait;
+            var prepare = WithActionWeightGoal(machine.AddState("Prepare"), 1f);
+            var emote = machine.AddState("Emote");
+            var dropFx = machine.AddState("DropFx");
+            var fxControl = dropFx.AddStateMachineBehaviour<VRCPlayableLayerControl>();
+            fxControl.layer = VRC.SDKBase.VRC_PlayableLayerControl.BlendableLayer.FX;
+            fxControl.goalWeight = 0f;
+            var blendOut = WithActionWeightGoal(machine.AddState("BlendOut"), 0f);
+
+            wait.AddTransition(prepare);
+            prepare.AddTransition(emote);
+            emote.AddTransition(dropFx);
+            dropFx.AddTransition(blendOut);
+
+            CollectionAssert.AreEquivalent(new[] { prepare, emote, dropFx }, RaisedRegionOf(machine).ToList(),
+                "a control over another playable was read as the Action playable's own boundary");
+        });
+    }
+
     [Test]
     public void ActionPlayableWeightRaisedStates_IsNullAndRenameFallsBackToEqualsDispatch_WhenTheMachineHasNoPlayableControlAtAll()
     {
-        var controller = new AnimatorController { name = "RegionFallbackTest" };
-        try
+        WithIsolatedMachine("RegionFallbackTest", (controller, machine) =>
         {
             controller.AddParameter("Emote", AnimatorControllerParameterType.Int);
-            controller.AddLayer("Base");
-            var machine = controller.layers[0].stateMachine;
 
             var wait = machine.AddState("Wait");
             machine.defaultState = wait;
@@ -578,58 +640,106 @@ public class VRC3CVRActionFoldTests
             emote.motion = new AnimationClip { name = "MyOwnWave" };
             wait.AddTransition(emote).AddCondition(AnimatorConditionMode.Equals, 2f, "Emote");
 
-            var raised = typeof(VRC3CVRCore).GetMethod("ActionPlayableWeightRaisedStates", Flags)
-                .Invoke(null, new object[] { machine });
-            Assert.IsNull(raised, "a machine with no VRCPlayableLayerControl anywhere computed a region anyway");
+            Assert.IsNull(RaisedRegionOf(machine),
+                "a machine with no VRCPlayableLayerControl anywhere computed a region anyway");
 
-            var fallback = new[] { emote };
-            typeof(VRC3CVRCore).GetMethod("RenameEmoteClips", Flags)
-                .Invoke(null, new object[] { machine, fallback });
+            RenameEmoteClips(machine, "Emote");
 
             Assert.AreEqual("Emote_MyOwnWave", emote.motion.name,
                 "the Equals-dispatch fallback did not rename the clip on a machine with no playable weight control");
-        }
-        finally
+        });
+    }
+
+    // The shape an emote-adding tool leaves: its emotes raise the playable's weight and nothing
+    // ever drops it, the layer having no blend-out of its own. Read as a span, that one has no end
+    // and runs on through everything downstream of the emote, the layer's own idle included.
+    [Test]
+    public void ActionPlayableWeightRaisedStates_IsNull_WhenNothingDropsTheWeightBackAgain()
+    {
+        WithIsolatedMachine("RegionNoLowerBoundTest", (controller, machine) =>
         {
-            Object.DestroyImmediate(controller);
-        }
+            controller.AddParameter("Emote", AnimatorControllerParameterType.Int);
+
+            var idle = machine.AddState("Idle");
+            machine.defaultState = idle;
+            var emote = WithActionWeightGoal(machine.AddState("Emote1"), 1f);
+            var reset = machine.AddState("Reset1");
+            reset.motion = new AnimationClip { name = "MyOwnReset" };
+
+            idle.AddTransition(emote).AddCondition(AnimatorConditionMode.Equals, 1f, "Emote");
+            emote.AddTransition(reset).AddCondition(AnimatorConditionMode.NotEqual, 1f, "Emote");
+            reset.AddTransition(idle).hasExitTime = true;
+
+            Assert.IsNull(RaisedRegionOf(machine), "a span the machine never closes was read as one anyway");
+
+            RenameEmoteClips(machine, "Emote");
+
+            Assert.AreEqual("MyOwnReset", reset.motion.name,
+                "a state past the end of an unclosed span was renamed as an emote");
+        });
+    }
+
+    // An emote dispatched from AnyState is reached from the idle and from another emote alike, so
+    // there is nothing for it to inherit from whatever ran before it.
+    [Test]
+    public void ActionPlayableWeightRaisedStates_IsNullAndRenameFallsBackToEqualsDispatch_WhenEmotesAreDispatchedFromAnyState()
+    {
+        WithIsolatedMachine("RegionAnyStateTest", (controller, machine) =>
+        {
+            controller.AddParameter("Emote", AnimatorControllerParameterType.Int);
+
+            var idle = machine.AddState("Idle");
+            machine.defaultState = idle;
+            var prepare = WithActionWeightGoal(machine.AddState("Prepare"), 1f);
+            var blendOut = WithActionWeightGoal(machine.AddState("BlendOut"), 0f);
+            var emote = machine.AddState("Emote2");
+            emote.motion = new AnimationClip { name = "MyOwnWave" };
+
+            idle.AddTransition(prepare).AddCondition(AnimatorConditionMode.Greater, 0f, "Emote");
+            prepare.AddTransition(blendOut).hasExitTime = true;
+            machine.AddAnyStateTransition(emote).AddCondition(AnimatorConditionMode.Equals, 2f, "Emote");
+            emote.AddTransition(blendOut).AddCondition(AnimatorConditionMode.NotEqual, 2f, "Emote");
+
+            Assert.IsNull(RaisedRegionOf(machine),
+                "a state reached from AnyState was given whatever the states before it happened to carry");
+
+            RenameEmoteClips(machine, "Emote");
+
+            Assert.AreEqual("Emote_MyOwnWave", emote.motion.name,
+                "an emote dispatched from AnyState was left with a name ChilloutVR's client never reads as emoting");
+        });
     }
 
     [Test]
     public void RenameEmoteClips_RenamesEveryClipInABlendTreeWithoutMutatingItInPlace()
     {
-        var controller = new AnimatorController { name = "RegionBlendTreeTest" };
-        try
+        WithIsolatedMachine("RegionBlendTreeTest", (controller, machine) =>
         {
-            controller.AddLayer("Base");
-            var machine = controller.layers[0].stateMachine;
-
-            var emote = machine.AddState("Emote");
-            emote.AddStateMachineBehaviour<VRCPlayableLayerControl>().goalWeight = 1f;
+            var emote = WithActionWeightGoal(machine.AddState("Emote"), 1f);
+            var low = new AnimationClip { name = "MyOwnWaveLow" };
             var tree = new BlendTree { name = "EmoteTree" };
-            tree.AddChild(new AnimationClip { name = "MyOwnWaveLow" }, 0f);
+            tree.AddChild(low, 0f);
             tree.AddChild(new AnimationClip { name = "MyOwnWaveHigh" }, 1f);
             emote.motion = tree;
             machine.defaultState = machine.AddState("Wait");
+            var blendOut = WithActionWeightGoal(machine.AddState("BlendOut"), 0f);
+            emote.AddTransition(blendOut).hasExitTime = true;
 
-            typeof(VRC3CVRCore).GetMethod("RenameEmoteClips", Flags)
-                .Invoke(null, new object[] { machine, Enumerable.Empty<AnimatorState>() });
+            RenameEmoteClips(machine, "Emote");
 
-            // the tree wrapper itself is never persisted here, so what proves no mutation-in-place is
-            // the wrapper identity, not its children's names -- an unpersisted clip is cost-free to
-            // rename directly, and the copy-on-rename guarantee that matters for those is already
-            // covered where the fixture uses a real, persisted .anim asset
+            // the tree wrapper itself is never persisted here, so what proves no mutation-in-place
+            // is the wrapper identity rather than its children's names
             Assert.AreNotSame(tree, emote.motion, "the rename mutated the tree in place instead of handing back a copy");
             var renamedTree = (BlendTree)emote.motion;
+            // a clip with no asset of its own is no more private to this tree than a persisted one:
+            // the tools that build them hand the same object to several states
+            Assert.AreNotSame(low, renamedTree.children[0].motion,
+                "an unpersisted clip was renamed where it lay instead of into a copy");
             foreach (var child in renamedTree.children)
             {
                 StringAssert.Contains("Emote", child.motion.name, "a blend tree child kept a name ChilloutVR's client never reads as emoting");
             }
-        }
-        finally
-        {
-            Object.DestroyImmediate(controller);
-        }
+        });
     }
 
     [Test]
