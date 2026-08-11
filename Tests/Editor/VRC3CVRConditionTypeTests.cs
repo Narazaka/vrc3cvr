@@ -235,8 +235,7 @@ public class VRC3CVRConditionTypeTests
             // transition, so that combination should never exist on a live controller in the first
             // place. If this call logs an error, the test fails right here -- that failure *is* the
             // regression check for the original bug report.
-            core.Convert();
-            converted = core.chilloutAvatar;
+            try { core.Convert(); } finally { converted = core.chilloutAvatar; }
             Assert.IsNotNull(converted);
 
             var cvrAvatar = converted.GetComponent<CVRAvatar>();
@@ -317,8 +316,7 @@ public class VRC3CVRConditionTypeTests
             });
 
             // No LogAssert.ignoreFailingMessages, deliberately -- see the comment on the test above.
-            core.Convert();
-            converted = core.chilloutAvatar;
+            try { core.Convert(); } finally { converted = core.chilloutAvatar; }
             Assert.IsNotNull(converted);
 
             var cvrAvatar = converted.GetComponent<CVRAvatar>();

@@ -179,6 +179,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             AdjustParameterNames();
             MakeGestureWeightFeedLayers();
             MakeVelocityMagnitudeFeedLayer();
+            MakeVrcEmoteCompatFeedLayer();
             // After AdjustParameterNames, like the feed layers above, so the names are final.
             RemapVelocityToAvatarLocal();
             // Before the streams, twice over: they route AvatarUpright at whatever this leaves
@@ -1218,6 +1219,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         RenameParameterNameIfNeeded(ref task.targetName);
         RenameParameterNameIfNeeded(ref task.aName);
         RenameParameterNameIfNeeded(ref task.bName);
+        RenameParameterNameIfNeeded(ref task.cName);
     }
 
     void AdjustParameterNamesOnAdvancedSettings()
@@ -1403,7 +1405,34 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 continue;
             }
 
+            if (baseAnimatorID == VRCBaseAnimatorID.ACTION)
+            {
+                if (vrcActionFoldsIntoCckLocomotion)
+                {
+                    FoldActionMachine(
+                        chilloutAnimatorController.layers.FirstOrDefault(layer => layer.name == CckLocomotionLayerName),
+                        vrcAnimatorControllers[i]);
+                }
+                else
+                {
+                    Debug.LogWarning("Not converting the Action animator: every clip in it is one of VRChat's proxy_* placeholders, which the client swaps for its own animations at runtime. ChilloutVR's own emote machine is kept instead.");
+                }
+                continue;
+            }
+
             MergeVrcAnimatorIntoChilloutAnimator(vrcAnimatorControllers[i], baseAnimatorID);
+        }
+
+        // Not one of the base animation layers, so it has no turn in the loop above.
+        if (vrcSittingFoldsIntoCckLocomotion)
+        {
+            FoldSittingMachine(
+                chilloutAnimatorController.layers.FirstOrDefault(layer => layer.name == CckLocomotionLayerName),
+                VrcSittingAnimatorController());
+        }
+        else if (convertSittingLayer)
+        {
+            Debug.Log("Not converting the Sitting animator: it has no seated animation of its own. ChilloutVR's own seated state is kept instead.");
         }
 
         Debug.Log("Finished merging all animators");
@@ -2308,12 +2337,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         targetWeight = vrcLocomotionControl.disableLocomotion ? 0f : 1f,
                     });
                 }
-                // The layer standing in for CVR's locomotion is exempt: the layer it replaces never
-                // touches the IK weights (landing included), so tracking controls carried across
-                // would fire where the platform expects none -- VRChat's stock landing states would
-                // seize the legs and hips from full-body trackers for an instant on every landing.
+                // Everything that ends up in the layer standing in for CVR's locomotion is exempt:
+                // the layer it replaces never touches the IK weights, so tracking controls carried
+                // across would fire where the platform expects none -- VRChat's stock landing
+                // states would seize the legs and hips from full-body trackers for an instant on
+                // every landing, and a folded emote would hold the head and hands for its length.
                 else if (behaviour is VRCAnimatorTrackingControl && convertVRCAnimatorTrackingControl
-                    && (convertLocomotionTrackingControl || !processingReplacementLocomotionLayer))
+                    && (convertLocomotionTrackingControl || !processingIntegratedLocomotionLayer))
                 {
                     var vrcTrackingControl = behaviour as VRCAnimatorTrackingControl;
                     if (vrcTrackingControl.trackingHead != VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType.NoChange ||
@@ -2437,18 +2467,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             return false;
         }
-        foreach (var layer in controller.layers)
-        {
-            foreach (var state in AllStatesOf(layer.stateMachine))
-            {
-                if (MotionHasAuthoredClip(state.motion))
-                {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return controller.layers.Any(layer => MachineHasAuthoredMotion(layer.stateMachine));
     }
+
+    static bool MachineHasAuthoredMotion(AnimatorStateMachine machine) =>
+        AllStatesOf(machine).Any(state => MotionHasAuthoredClip(state.motion));
 
     static bool MotionHasAuthoredClip(Motion motion)
     {
@@ -2644,12 +2667,21 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return pose;
     }
 
-    Motion SubstitutedMotion(Motion motion, bool poseOnly)
+    Motion SubstitutedMotion(Motion motion, bool poseOnly) => MapMotion(motion, clip =>
+    {
+        var substituted = SubstitutedClip(clip);
+        return substituted == null ? clip : poseOnly ? PoseClipOf(substituted) : substituted;
+    });
+
+    // Whatever a state plays, one clip at a time. A tree that any of its clips changed under is
+    // handed back as a copy rather than edited: CopyAnimatorController shares rather than copies a
+    // blend tree that lives in an asset of its own, so the tree reached here can still be the
+    // avatar's -- or another controller's.
+    static Motion MapMotion(Motion motion, Func<AnimationClip, AnimationClip> mapClip)
     {
         if (motion is AnimationClip clip)
         {
-            var substituted = SubstitutedClip(clip);
-            return substituted == null ? clip : poseOnly ? PoseClipOf(substituted) : substituted;
+            return mapClip(clip);
         }
         if (motion is BlendTree tree)
         {
@@ -2657,10 +2689,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             var changed = false;
             for (var i = 0; i < children.Length; i++)
             {
-                var substituted = SubstitutedMotion(children[i].motion, poseOnly);
-                if (substituted != children[i].motion)
+                var mapped = MapMotion(children[i].motion, mapClip);
+                if (mapped != children[i].motion)
                 {
-                    children[i].motion = substituted;
+                    children[i].motion = mapped;
                     changed = true;
                 }
             }
@@ -2668,9 +2700,6 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             {
                 return tree;
             }
-            // CopyAnimatorController shares rather than copies any blend tree that lives in an
-            // asset of its own, so the tree reached here can still be the avatar's -- or another
-            // controller's. The substitution goes into a copy the conversion owns.
             var owned = CopyAnimatorController.CopyBlendTree(null, tree, false);
             owned.children = children;
             return owned;
@@ -2687,14 +2716,256 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return AssetDatabase.LoadAssetAtPath<AnimationClip>(CckLocomotionClipPath + replacement + ".anim");
     }
 
+    const string CckEmoteClipPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Emotes/";
+
+    // A stock Action machine's emotes are proxy_* placeholders like its locomotion, and ChilloutVR
+    // ships the eight its own wheel offers -- Emote1..8, one per slot. Filling a slot from that set
+    // plays what the wheel promises, and settles two more things the client reads off the clip's
+    // name: the quick menu labels a slot after the clip it finds named for it, and an avatar counts
+    // as emoting -- which is what holds its gestures back -- while the clip it plays is one of these.
+    // ChilloutVR's own Emote states are native one-shots -- entered, they run their clip once and
+    // leave unconditionally on exit time -- and a state substituted to play one of those clips needs
+    // that same ending, or nothing but a changed number ever carries it out again.
+    static void SubstituteEmoteProxyClips(Dictionary<AnimatorState, int> emoteNumbers, string emoteParameterName)
+    {
+        var substituted = new List<AnimatorState>();
+        foreach (var entry in emoteNumbers)
+        {
+            if (!(entry.Key.motion is AnimationClip clip) || !IsVrchatPlaceholderClip(clip))
+            {
+                continue;
+            }
+            var cckEmote = AssetDatabase.LoadAssetAtPath<AnimationClip>(
+                CckEmoteClipPath + "Emote" + entry.Value + ".anim");
+            if (cckEmote != null)
+            {
+                entry.Key.motion = cckEmote;
+                substituted.Add(entry.Key);
+            }
+        }
+        AddOneShotEmoteEscapes(substituted, emoteParameterName);
+    }
+
+    static void AddOneShotEmoteEscapes(IEnumerable<AnimatorState> states, string emoteParameterName)
+    {
+        foreach (var state in states)
+        {
+            var transitions = state.transitions;
+            var heldByEmote = transitions.FirstOrDefault(
+                transition => transition.conditions.Any(condition =>
+                    condition.parameter == emoteParameterName && condition.mode == AnimatorConditionMode.NotEqual));
+            if (heldByEmote == null)
+            {
+                // Already a one-shot, but of a clip that is no longer there: VRChat cut these exit
+                // times to its own animation, and the substitution would otherwise stop ChilloutVR's
+                // partway through.
+                foreach (var runsOut in transitions.Where(
+                    transition => transition.hasExitTime && transition.conditions.Length == 0))
+                {
+                    runsOut.exitTime = 1f;
+                }
+                continue;
+            }
+            var oneShot = new AnimatorStateTransition
+            {
+                destinationState = heldByEmote.destinationState,
+                destinationStateMachine = heldByEmote.destinationStateMachine,
+                isExit = heldByEmote.isExit,
+                duration = heldByEmote.duration,
+                hasFixedDuration = true,
+                hasExitTime = true,
+                exitTime = 1f,
+            };
+            ArrayUtility.Add(ref transitions, oneShot);
+            state.transitions = transitions;
+        }
+    }
+
+    // True from wherever a VRCPlayableLayerControl on this machine raises the Action playable's
+    // goal to 1, through to wherever one drops it back to 0; a state with no control of its own
+    // carries whatever the states reaching it carried, and a state reached both raised and not
+    // resolves raised, logged as a warning since it means this machine's own Prepare/BlendOut shape
+    // does not hold clean.
+    //
+    // That inheritance is only worth reading where the machine draws the span clearly enough to
+    // bound it, which takes two things, and null -- fall back to what the machine dispatches on --
+    // where either is missing:
+    //
+    // - Both ends present. A machine that only ever raises the weight leaves the region with no
+    //   lower boundary, and it runs on down the blend-out and into the idle, which would tell
+    //   ChilloutVR the avatar is emoting while it stands still.
+    // - Every inheriting state reached from one particular state. An edge out of AnyState or Entry
+    //   says nothing about what its destination inherits -- AnyState reaches it from raised and
+    //   unraised alike, Entry from outside the machine -- and a sub-machine's own Entry/Exit is the
+    //   same edge one level down. A state carrying its own control is not affected: it answers for
+    //   itself however it was reached.
+    static IEnumerable<AnimatorState> ActionPlayableWeightRaisedStates(AnimatorStateMachine machine, string layerName)
+    {
+        var states = AllStatesOf(machine).ToList();
+        var ownGoal = states.ToDictionary(state => state, ActionPlayableLayerControlGoal);
+        if (!ownGoal.Values.Any(goal => goal == true) || !ownGoal.Values.Any(goal => goal == false))
+        {
+            return null;
+        }
+        if (machine.stateMachines.Length > 0 ||
+            machine.anyStateTransitions.Cast<AnimatorTransitionBase>().Concat(machine.entryTransitions).Any(
+                transition => transition.destinationState != null
+                    && !ActionPlayableLayerControlGoal(transition.destinationState).HasValue))
+        {
+            return null;
+        }
+
+        var predecessorsOf = states.ToDictionary(state => state,
+            state => states.Where(candidate => candidate.transitions.Any(t => t.destinationState == state)).ToList());
+        var raised = states.ToDictionary(state => state, state => ownGoal[state] ?? false);
+        bool changed;
+        do
+        {
+            changed = false;
+            foreach (var state in states)
+            {
+                if (ownGoal[state].HasValue || raised[state])
+                {
+                    continue;
+                }
+                if (predecessorsOf[state].Any(predecessor => raised[predecessor]))
+                {
+                    raised[state] = true;
+                    changed = true;
+                }
+            }
+        } while (changed);
+
+        foreach (var state in states)
+        {
+            if (ownGoal[state].HasValue)
+            {
+                continue;
+            }
+            if (predecessorsOf[state].Any(predecessor => raised[predecessor]) &&
+                predecessorsOf[state].Any(predecessor => !raised[predecessor]))
+            {
+                Debug.LogWarning($"\"{state.name}\" in the Action animator's \"{layerName}\" layer is reached both with and without the Action playable's weight raised; treating it as raised.");
+            }
+        }
+
+        return states.Where(state => raised[state]);
+    }
+
+    // One control per playable: a state that drops FX or raises Gesture says nothing about the
+    // playable whose weight stood in for the tracked pose, and reading it as if it did would put
+    // the region's boundary wherever an FX-driving tool happened to leave one.
+    static VRCPlayableLayerControl ActionPlayableLayerControlOf(AnimatorState state) =>
+        state == null
+            ? null
+            : state.behaviours.OfType<VRCPlayableLayerControl>().FirstOrDefault(
+                behaviour => behaviour.layer == VRC.SDKBase.VRC_PlayableLayerControl.BlendableLayer.Action);
+
+    static bool? ActionPlayableLayerControlGoal(AnimatorState state)
+    {
+        var control = ActionPlayableLayerControlOf(state);
+        return control == null ? (bool?)null : control.goalWeight == 1f;
+    }
+
+    // Which emote each state plays, read off the number the machine enters it on, and read before
+    // ProcessStateMachine adapts those conditions to ChilloutVR's parameter types. How a state
+    // leaves does not name its emote: VRChat holds an emote that loops against its own number and
+    // lets one that ends by itself run out on exit time alone, so only the way in covers both.
+    // A state entered on two numbers keeps the first -- one state per emote is the shape every
+    // machine met so far has.
+    static Dictionary<AnimatorState, int> EmoteNumbersOf(AnimatorStateMachine machine, string emoteParameterName)
+    {
+        var numbers = new Dictionary<AnimatorState, int>();
+        foreach (var transition in AllStatesOf(machine).SelectMany(state => state.transitions.Cast<AnimatorTransitionBase>())
+            .Concat(AllMachinesOf(machine).SelectMany(
+                child => child.anyStateTransitions.Cast<AnimatorTransitionBase>().Concat(child.entryTransitions))))
+        {
+            if (transition.destinationState == null || numbers.ContainsKey(transition.destinationState))
+            {
+                continue;
+            }
+            foreach (var condition in transition.conditions)
+            {
+                if (condition.parameter == emoteParameterName && condition.mode == AnimatorConditionMode.Equals)
+                {
+                    numbers[transition.destinationState] = (int)condition.threshold;
+                    break;
+                }
+            }
+        }
+        return numbers;
+    }
+
+    // ChilloutVR reads the name of whichever clip is actually playing on Locomotion/Emotes to
+    // decide an avatar is emoting, and that flag alone is what releases VRIK for the clip's own
+    // duration. The span VRChat kept the Action playable's own weight raised for -- computed above
+    // -- is exactly the span that decision should cover, since that clip is what stood in for the
+    // tracked pose throughout it; a machine whose own shape does not bound that span falls back to
+    // whatever it dispatches on directly. A clip already named for it -- ChilloutVR's
+    // own substituted Emote{n}, or an author who happened to name theirs the same way -- is left
+    // alone, and a VRChat placeholder is never renamed on its own account, substituted or not. The
+    // rename goes into a copy of the clip: the one reached here can be shared -- with a state
+    // outside the span, with another machine, with the avatar's own asset -- and renaming it where
+    // it lies would tell the client every one of those is an emote too.
+    static void RenameEmoteClips(
+        AnimatorStateMachine machine, string layerName, IEnumerable<AnimatorState> equalsDispatchFallback)
+    {
+        // one copy per clip, not per state that plays it: the states of a machine share their clips
+        // freely, and a copy each would be that many identical animations saved into the avatar
+        var renamed = new Dictionary<AnimationClip, AnimationClip>();
+        foreach (var state in (ActionPlayableWeightRaisedStates(machine, layerName) ?? equalsDispatchFallback)
+            .Where(state => state != null))
+        {
+            state.motion = MapMotion(state.motion, clip => EmoteNamedClip(clip, renamed));
+        }
+    }
+
+    static AnimationClip EmoteNamedClip(AnimationClip clip, Dictionary<AnimationClip, AnimationClip> renamed)
+    {
+        if (clip == null || clip.name.Contains("Emote") || IsVrchatPlaceholderClip(clip))
+        {
+            return clip;
+        }
+        if (renamed.TryGetValue(clip, out var cached))
+        {
+            return cached;
+        }
+        var owned = CopyAnimatorController.CopyAnimationClip(clip);
+        owned.name = "Emote_" + owned.name;
+        renamed[clip] = owned;
+        return owned;
+    }
+
     const string CckLocomotionLayerName = "Locomotion/Emotes";
 
     // Set while the CVR locomotion layer is dropped in favour of the avatar's own Base layer.
     bool vrcBaseReplacesCckLocomotion;
 
-    // Set while ProcessStateMachine walks the Base layer that takes the CVR locomotion layer's
-    // place.
-    bool processingReplacementLocomotionLayer;
+    // Set while the VRC Action playable is folded into the integrated locomotion layer instead of
+    // being merged as layers of its own (FoldActionMachine).
+    bool vrcActionFoldsIntoCckLocomotion;
+
+    // Set while FoldActionMachine reads VRCEmote rather than Emote (MakeVrcEmoteCompatFeedLayer).
+    bool vrcActionFoldReadsVrcEmote;
+
+    // The machine FoldActionMachine moved in; MakeVrcEmoteCompatFeedLayer drops the VRCEmote latch
+    // on its way out, once AdjustParameterNames has settled the name to drop.
+    AnimatorStateMachine foldedActionMachine;
+
+    // Which emote each of its states plays (EmoteNumbersOf), kept for MakeVrcEmoteCompatFeedLayer:
+    // the number a state has to let go of is the one it was entered on.
+    Dictionary<AnimatorState, int> foldedActionEmoteNumbers = new Dictionary<AnimatorState, int>();
+
+    // Set while the VRC Sitting playable is folded into the integrated locomotion layer
+    // (FoldSittingMachine).
+    bool vrcSittingFoldsIntoCckLocomotion;
+
+    // Set while CVR's own seated state is carried across with the movement modes (BaseAnswersSitting).
+    bool salvagesCckSitting;
+
+    // Set while ProcessStateMachine walks a machine that ends up in the layer owning ChilloutVR's
+    // locomotion: the Base layer that takes it over, or a machine folded into it.
+    bool processingIntegratedLocomotionLayer;
 
     // Every salvaged mode is wired to the layer's default state, so a first layer without one
     // cannot take the CVR layer's place. Decided before that layer is dropped, or the avatar would be left
@@ -2711,14 +2982,16 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     const string CckFlyingStateName = "LocFlying";
     const string CckSwimmingStateName = "Swimming";
+    const string CckSittingStateName = "Sitting";
     const string CckEmotesMachineName = "Emotes";
 
     Dictionary<string, AnimatorState> salvagedMovementModeStates = new Dictionary<string, AnimatorState>();
     AnimatorStateMachine salvagedEmotesMachine;
 
     // The parts of the CVR locomotion layer nothing in a converted Base layer can answer: the two
-    // movement modes VRChat has no concept of, and the quick-menu emotes, whose Emote/CancelEmote
-    // parameters stay declared and would otherwise drive nothing.
+    // movement modes VRChat has no concept of, the seat when nothing else answers Sitting, and the
+    // quick-menu emotes, whose Emote/CancelEmote parameters stay declared and would otherwise drive
+    // nothing.
     void SalvageCckMovementModeStates(AnimatorControllerLayer[] cckLayers)
     {
         salvagedMovementModeStates = new Dictionary<string, AnimatorState>();
@@ -2731,10 +3004,15 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             }
             foreach (var state in AllStatesOf(layer.stateMachine))
             {
-                if (state.name == CckFlyingStateName || state.name == CckSwimmingStateName)
+                if (state.name == CckFlyingStateName || state.name == CckSwimmingStateName
+                    || (state.name == CckSittingStateName && salvagesCckSitting))
                 {
                     salvagedMovementModeStates[state.name] = state;
                 }
+            }
+            if (vrcActionFoldsIntoCckLocomotion)
+            {
+                continue;
             }
             foreach (var childMachine in layer.stateMachine.stateMachines)
             {
@@ -2746,12 +3024,13 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
     }
 
-    // The CVR locomotion layer is a hub-and-spoke: its default state carries a transition to each
-    // mode and every mode leads back to it, the one exception being flight, which is reached from
-    // AnyState because it has to interrupt whatever stance is running. That wiring is reproduced
-    // here with the avatar's own default state as the hub. Emotes keep their nested machine, whose
-    // states leave through its Exit node -- which only goes anywhere because the hub-bound
-    // transition below is registered for the machine on its parent.
+    // The CVR locomotion layer is a hub-and-spoke: every mode leads back to the state the layer
+    // starts in. What leads into them varies -- swimming and the seat from that same state, the
+    // emotes from each of the three stances, and flight from AnyState, because it has to interrupt
+    // whatever stance is running. Reproduced here with the avatar's own default state as the hub
+    // they all return to, and every stance leading into them (StancesOf), flight excepted. Emotes
+    // keep their nested machine, whose states leave through its Exit node -- which only goes
+    // anywhere because the hub-bound transition below is registered for the machine on its parent.
     void RewireCckMovementModes(AnimatorControllerLayer locomotionLayer)
     {
         var machine = locomotionLayer.stateMachine;
@@ -2762,7 +3041,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
 
         var rewiredFromAnyState = new List<AnimatorStateTransition>();
-        var rewiredFromHub = new List<AnimatorStateTransition>();
+        // read before the modes below join the layer's root, where they would count as stances
+        var rewiredFromStances = StancesOf(machine)
+            .ToDictionary(stance => stance, stance => new List<AnimatorStateTransition>());
         var ownAnyStateTransitionCount = machine.anyStateTransitions.Length;
         var states = machine.states;
         var y = 0f;
@@ -2782,6 +3063,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         var flying = Adopt(CckFlyingStateName);
         var swimming = Adopt(CckSwimmingStateName);
+        var sitting = Adopt(CckSittingStateName);
         machine.states = states;
 
         if (flying != null)
@@ -2802,11 +3084,27 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         if (swimming != null)
         {
-            var enter = Timed(hub.AddTransition(swimming), 0.25f);
-            enter.AddCondition(AnimatorConditionMode.If, 0f, "Swimming");
-            rewiredFromHub.Add(enter);
+            foreach (var stance in rewiredFromStances)
+            {
+                var enter = Timed(stance.Key.AddTransition(swimming), 0.25f);
+                enter.AddCondition(AnimatorConditionMode.If, 0f, "Swimming");
+                stance.Value.Add(enter);
+            }
 
             Timed(swimming.AddTransition(hub), 0.25f).AddCondition(AnimatorConditionMode.IfNot, 0f, "Swimming");
+        }
+
+        if (sitting != null)
+        {
+            // CVR sits down and stands up on the frame the client flips Sitting, with no blend
+            foreach (var stance in rewiredFromStances)
+            {
+                var enter = Timed(stance.Key.AddTransition(sitting), 0f);
+                enter.AddCondition(AnimatorConditionMode.If, 0f, SittingParameterName);
+                stance.Value.Add(enter);
+            }
+
+            Timed(sitting.AddTransition(hub), 0f).AddCondition(AnimatorConditionMode.IfNot, 0f, SittingParameterName);
         }
 
         if (salvagedEmotesMachine != null)
@@ -2819,9 +3117,12 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             });
             machine.stateMachines = childMachines;
 
-            var enter = Timed(hub.AddTransition(salvagedEmotesMachine), 0f);
-            enter.AddCondition(AnimatorConditionMode.Greater, 0f, "Emote");
-            rewiredFromHub.Add(enter);
+            foreach (var stance in rewiredFromStances)
+            {
+                var enter = Timed(stance.Key.AddTransition(salvagedEmotesMachine), 0f);
+                enter.AddCondition(AnimatorConditionMode.Greater, 0f, EmoteParameterName);
+                stance.Value.Add(enter);
+            }
 
             // unconditional, as CVR has it: an emote that ends lands back on the hub and the hub
             // re-dispatches on the next frame, which is what lets the stance it started from resume
@@ -2829,7 +3130,469 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
 
         machine.anyStateTransitions = PutFirst(machine.anyStateTransitions, rewiredFromAnyState);
-        hub.transitions = PutFirst(hub.transitions, rewiredFromHub);
+        foreach (var stance in rewiredFromStances)
+        {
+            stance.Key.transitions = PutFirst(stance.Key.transitions, stance.Value);
+        }
+    }
+
+    const string FoldedActionMachineName = "Action";
+    const string FoldedActionMachineNamePrefix = "Action:";
+    const string AfkParameterName = "AFK";
+    const string CancelEmoteParameterName = "CancelEmote";
+    const string VrcEmoteParameterName = "VRCEmote";
+    const string EmoteParameterName = "Emote";
+
+    // VRChat runs Action on a playable of its own and fades that playable's weight in and out around
+    // it; ChilloutVR has a single Override series, so the weight has to become structure. The machine
+    // moves in as a sub-state-machine of the layer that owns the body, the fade-in becomes a
+    // conditional transition from that layer's hub, and the machine's own Exit node -- which meant
+    // "restart" while it was a layer root and means "leave" as a child -- is caught by the parent's
+    // unconditional transition back to the hub. The states that raised and dropped the playable
+    // weight are left with nothing to say and go out with the rest of the VRC behaviours.
+    // ChilloutVR's own Emotes machine goes too: it answers the same quick-menu Emote the folded
+    // machine now also answers -- directly when the fold reads Emote itself, or through the
+    // Emote-to-VRCEmote compat feed layer below when it reads VRCEmote instead -- and two machines
+    // driving the body off the same value would fight over it. The folded machine takes over its
+    // dispatch as well as its emotes, reached from every stance rather than from the hub alone
+    // (StancesOf).
+    // The AFK entry is only wired when the Action animator declares AFK, since stock answers it and
+    // a machine that never mentions it has no AFK branch to reach. The emote number is read under
+    // whichever name the Action controller itself declares -- VRCEmote when it does, Emote otherwise
+    // -- rather than renamed to ChilloutVR's Emote, since the avatar's own custom expression menu
+    // converts to an Advanced Avatar Settings entry that still drives VRCEmote by that name, and a
+    // rename would leave that entry and ChilloutVR's own quick menu both driving the same value
+    // unguarded. CancelEmote -- the quick menu's cancel -- is answered by duplicating each state's
+    // own NotEqual exit against that same parameter (the exit an emote number changing away already
+    // uses), so the cancel button reaches exactly where deselecting the emote would have; states that
+    // only gate entry are left alone, since duplicating those would consume a cancel by advancing
+    // into the machine instead of leaving it.
+    // Every layer past the first folds the same way and for the same reason: the tools that add
+    // emotes append a layer to the Action playable rather than replacing it, so a built avatar's
+    // Action is stock underneath and the tool's own machine on top, and a machine folded in is
+    // exclusive with the locomotion states by construction -- which is what the playable weight was
+    // doing for all of them. Their entry conditions and their emote parameter are read off each
+    // machine rather than assumed, since only the first layer answers VRChat's own VRCEmote. The
+    // emotes and their Write Defaults are carried across untouched: one layer has room for a single
+    // Write Defaults setting throughout, so there is no way to silence a machine's idle from inside
+    // it. VRChat ran these layers at once with the upper one winning and the fold runs them one at a
+    // time, which looks the same except where two were meant to overlap.
+    void FoldActionMachine(AnimatorControllerLayer integratedLayer, AnimatorController actionController)
+    {
+        var machine = integratedLayer != null ? integratedLayer.stateMachine : null;
+        var hub = machine != null ? machine.defaultState : null;
+        if (hub == null)
+        {
+            Debug.LogWarning("Not converting the Action animator: the converted locomotion layer has no default state to dispatch emotes from.");
+            return;
+        }
+
+        var emoteParameterName = actionController.parameters.Any(parameter => parameter.name == VrcEmoteParameterName)
+            ? VrcEmoteParameterName
+            : EmoteParameterName;
+        vrcActionFoldReadsVrcEmote = emoteParameterName == VrcEmoteParameterName;
+
+        RemoveCckEmotesMachine(machine);
+
+        // read before the clone, whose VRC behaviours the processing below throws away
+        var blendDurations = actionController.layers
+            .Select(layer => ActionPrepareBlendDuration(layer.stateMachine)).ToArray();
+
+        var clonedActionController = new CopyAnimatorController(actionController).CopyController();
+        var clonedLayers = clonedActionController.layers;
+
+        var actionMachine = clonedLayers[0].stateMachine;
+        actionMachine.name = FoldedActionMachineName;
+        foldedActionMachine = actionMachine;
+        // All three read the machine as VRChat left it, so all three run before the processing
+        // below: it adapts these conditions to ChilloutVR's own parameters -- on the Emote path the
+        // NotEqual ones against a float, which drops them entirely -- and throws the VRC behaviours
+        // away with them.
+        foldedActionEmoteNumbers = EmoteNumbersOf(actionMachine, emoteParameterName);
+        SubstituteEmoteProxyClips(foldedActionEmoteNumbers, emoteParameterName);
+        RenameEmoteClips(actionMachine, clonedLayers[0].name, foldedActionEmoteNumbers.Keys);
+        AddCancelEmoteEscapes(actionMachine, emoteParameterName, foldedActionEmoteNumbers);
+
+        var addedMachines = new List<(AnimatorStateMachine machine, float blendDuration, string layerName)>();
+        for (var i = 1; i < clonedLayers.Length; i++)
+        {
+            var refusal = AddedActionLayerRefusal(clonedLayers[i]);
+            if (refusal != null)
+            {
+                Debug.LogWarning($"Not converting the Action animator's \"{clonedLayers[i].name}\" layer: {refusal}");
+                continue;
+            }
+            var added = clonedLayers[i].stateMachine;
+            // kept, since the machine is about to be renamed and the warnings below name the layer
+            var layerName = clonedLayers[i].name;
+            added.name = FoldedActionMachineNamePrefix + layerName;
+            RenameEmoteClips(added, layerName, DispatchTransitionsOf(added).Select(transition => transition.destinationState));
+            foreach (var parameter in DispatchParametersOf(added))
+            {
+                AddCancelEmoteEscapes(added, parameter, EmoteNumbersOf(added, parameter));
+            }
+            addedMachines.Add((added, blendDurations[i], layerName));
+        }
+
+        // registered before the processing below so this machine's conditions are adapted against
+        // the types the merged controller already holds, and again after, since a converted Random
+        // driver declares parameters of its own (see MergeVrcAnimatorIntoChilloutAnimator)
+        new CopyAnimatorController(clonedActionController).CopyParametersTo(chilloutAnimatorController);
+        var parameters = clonedActionController.parameters;
+        processingIntegratedLocomotionLayer = true;
+        ProcessStateMachine(actionMachine, integratedLayer.name, ref parameters);
+        foreach (var added in addedMachines)
+        {
+            ProcessStateMachine(added.machine, integratedLayer.name, ref parameters);
+        }
+        processingIntegratedLocomotionLayer = false;
+        clonedActionController.parameters = parameters;
+        new CopyAnimatorController(clonedActionController).CopyParametersTo(chilloutAnimatorController);
+
+        var childMachines = machine.stateMachines;
+        ArrayUtility.Add(ref childMachines, new ChildAnimatorStateMachine
+        {
+            stateMachine = actionMachine,
+            position = new Vector3(900f, 0f, 0f),
+        });
+        machine.stateMachines = childMachines;
+
+        // after the processing above, as MergeVrcAnimatorIntoChilloutAnimator rewires and for the
+        // reason stated there
+        var answersAfk = chilloutAnimatorController.parameters.Any(parameter => parameter.name == AfkParameterName);
+        foreach (var dispatch in StancesOf(machine).ToList())
+        {
+            var rewired = new List<AnimatorStateTransition>();
+            var onEmote = Timed(dispatch.AddTransition(actionMachine), blendDurations[0]);
+            onEmote.AddCondition(AnimatorConditionMode.Greater, 0f, emoteParameterName);
+            rewired.Add(onEmote);
+
+            if (answersAfk)
+            {
+                var onAfk = Timed(dispatch.AddTransition(actionMachine), blendDurations[0]);
+                onAfk.AddCondition(AnimatorConditionMode.If, 0f, AfkParameterName);
+                rewired.Add(onAfk);
+            }
+
+            dispatch.transitions = PutFirst(dispatch.transitions, rewired);
+        }
+
+        machine.AddStateMachineTransition(actionMachine, hub);
+
+        var y = 0f;
+        foreach (var added in addedMachines)
+        {
+            y += 200f;
+            FoldAddedActionLayer(machine, hub, added.machine, added.blendDuration, added.layerName, new Vector3(1200f, y, 0f));
+        }
+    }
+
+    // What the machine's idle used to leave on is what the stances now enter on. A transition out of
+    // the idle with nothing to say for itself -- unconditional, or riding an exit time alone -- would
+    // carry every stance into the machine as soon as the avatar stood still, so only the conditional
+    // ones dispatch; the same read is what the refusal below tests a layer for, and what the cancel
+    // escapes take their parameter from.
+    static IEnumerable<AnimatorStateTransition> DispatchTransitionsOf(AnimatorStateMachine machine) =>
+        machine != null && machine.defaultState != null
+            ? machine.defaultState.transitions.Where(transition => !transition.isExit && transition.conditions.Length > 0)
+            : Enumerable.Empty<AnimatorStateTransition>();
+
+    static IEnumerable<string> DispatchParametersOf(AnimatorStateMachine machine) =>
+        DispatchTransitionsOf(machine)
+            .SelectMany(transition => transition.conditions)
+            .Select(condition => condition.parameter)
+            .Distinct();
+
+    // What this refuses, with the reason, since the emotes in a refused layer simply go missing. A
+    // fold is a layer running at full override weight whose states all leave through the machine's
+    // own Exit, so anything the layer held back by other means, and any way out that Exit cannot be
+    // made to stand for, is turned away rather than folded in wrong.
+    static string AddedActionLayerRefusal(AnimatorControllerLayer layer)
+    {
+        if (layer.avatarMask != null)
+        {
+            return "it is masked to part of the avatar, and the layer it would fold into owns all of it.";
+        }
+        if (layer.defaultWeight == 0f)
+        {
+            return "it sits at zero weight until something raises it, and the layer it would fold into has no weight of its own to keep it silent with.";
+        }
+        if (layer.blendingMode == AnimatorLayerBlendingMode.Additive)
+        {
+            return "it is added on top of the pose underneath, and the layer it would fold into replaces that pose rather than adding to it.";
+        }
+        if (!DispatchTransitionsOf(layer.stateMachine).Any())
+        {
+            return "the state it starts in has no conditional transition out of it, so there is nothing for the locomotion stances to dispatch on.";
+        }
+        if (layer.stateMachine.anyStateTransitions.Any(transition => transition.destinationState == layer.stateMachine.defaultState))
+        {
+            return "it returns to the state it starts in from AnyState, and Unity has no AnyState transition to Exit to turn that into, so an emote would never hand the body back.";
+        }
+        if (layer.stateMachine.stateMachines.Length > 0)
+        {
+            return "it holds sub-state-machines of its own, whose Exit leads to their own parent rather than out of the fold, so an emote inside one would never hand the body back.";
+        }
+        if (!MachineHasAuthoredMotion(layer.stateMachine))
+        {
+            return "every clip in it is one of VRChat's proxy_* placeholders, which the client swaps for its own animations at runtime.";
+        }
+        return null;
+    }
+
+    void FoldAddedActionLayer(
+        AnimatorStateMachine machine, AnimatorState hub, AnimatorStateMachine added, float blendDuration,
+        string layerName, Vector3 position)
+    {
+        var dispatches = DispatchTransitionsOf(added).Select(transition => transition.conditions).ToList();
+        if (dispatches.Count == 0)
+        {
+            // conditions can be adapted away against a parameter the merged controller holds as a
+            // float, and an entry left without any would fire out of every stance on sight
+            Debug.LogWarning($"Not converting the Action animator's \"{layerName}\" layer: none of its dispatch conditions survived the conversion to ChilloutVR's parameter types.");
+            return;
+        }
+
+        var childMachines = machine.stateMachines;
+        ArrayUtility.Add(ref childMachines, new ChildAnimatorStateMachine { stateMachine = added, position = position });
+        machine.stateMachines = childMachines;
+
+        var rewiredFromStances = StancesOf(machine).ToDictionary(stance => stance, stance => new List<AnimatorStateTransition>());
+        foreach (var conditions in dispatches)
+        {
+            foreach (var stance in rewiredFromStances)
+            {
+                var enter = Timed(stance.Key.AddTransition(added), blendDuration);
+                foreach (var condition in conditions)
+                {
+                    enter.AddCondition(condition.mode, condition.threshold, condition.parameter);
+                }
+                stance.Value.Add(enter);
+            }
+        }
+        foreach (var stance in rewiredFromStances)
+        {
+            stance.Key.transitions = PutFirst(stance.Key.transitions, stance.Value);
+        }
+
+        // The idle is both the way in and the way out: entered, the machine lands there and
+        // dispatches on the condition that just carried it in, and an emote that is done heads back
+        // to it -- which as a child machine means heading out to the parent's hub instead, so the
+        // stance the emote started from can be picked again. The idle itself stays as the landing
+        // point, with the conditions and timing of the transitions to it carried onto the way out.
+        foreach (var state in AllStatesOf(added))
+        {
+            if (state == added.defaultState)
+            {
+                continue;
+            }
+            foreach (var transition in state.transitions)
+            {
+                if (transition.destinationState != added.defaultState)
+                {
+                    continue;
+                }
+                transition.destinationState = null;
+                transition.isExit = true;
+            }
+        }
+
+        machine.AddStateMachineTransition(added, hub);
+    }
+
+    static void AddCancelEmoteEscapes(
+        AnimatorStateMachine actionMachine, string emoteParameterName, Dictionary<AnimatorState, int> emoteNumbers)
+    {
+        foreach (var state in AllStatesOf(actionMachine))
+        {
+            // The state the machine starts in is the way in, not a way out, and a layer whose idle
+            // dispatches on NotEqual would otherwise gain an escape that carries the cancel further
+            // into the machine.
+            if (state == actionMachine.defaultState)
+            {
+                continue;
+            }
+            var transitions = state.transitions;
+            // A cancel leaves the way the state already leaves: by the exit it is held against the
+            // emote number by, or -- for an emote that ends by itself -- by the one it runs out into.
+            var wayOut = transitions.FirstOrDefault(
+                transition => transition.conditions.Any(condition =>
+                    condition.parameter == emoteParameterName && condition.mode == AnimatorConditionMode.NotEqual))
+                ?? (emoteNumbers.ContainsKey(state)
+                    ? transitions.FirstOrDefault(
+                        transition => transition.hasExitTime && transition.conditions.Length == 0)
+                    : null);
+            if (wayOut == null)
+            {
+                continue;
+            }
+            var escape = Timed(new AnimatorStateTransition
+            {
+                destinationState = wayOut.destinationState,
+                destinationStateMachine = wayOut.destinationStateMachine,
+                isExit = wayOut.isExit,
+            }, wayOut.duration);
+            escape.AddCondition(AnimatorConditionMode.If, 0f, CancelEmoteParameterName);
+            ArrayUtility.Add(ref transitions, escape);
+            state.transitions = transitions;
+        }
+    }
+
+    const string FoldedSittingMachineName = "Sitting";
+    const string SittingParameterName = "Sitting";
+    const float SittingBlendDuration = 0.25f;
+
+    AnimatorController VrcSittingAnimatorController() =>
+        (vrcAvatarDescriptor.specialAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0])
+            .FirstOrDefault(layer => layer.type == VRCAvatarDescriptor.AnimLayerType.Sitting)
+            .animatorController as AnimatorController;
+
+    // The Sitting playable is folded the same way the Action one is, but VRChat holds its weight at
+    // zero for as long as the player is standing, which leaves the machine with no exit structure at
+    // all: nothing inside it says how to stand up, because the weight said it. Reducing that weight
+    // to structure therefore means synthesising the way out -- every state gains a transition to the
+    // machine's Exit node the moment Sitting drops -- on top of moving the machine in and wiring an
+    // entry from each stance. ChilloutVR's own seated state is dropped along the way for the same
+    // reason the Emotes machine is (FoldActionMachine): two states answering the same Sitting would
+    // fight over the body.
+    void FoldSittingMachine(AnimatorControllerLayer integratedLayer, AnimatorController sittingController)
+    {
+        var machine = integratedLayer != null ? integratedLayer.stateMachine : null;
+        var hub = machine != null ? machine.defaultState : null;
+        if (hub == null)
+        {
+            Debug.LogWarning("Not converting the Sitting animator: the converted locomotion layer has no default state to sit down from.");
+            return;
+        }
+
+        // when the Base layer took the locomotion layer over, CVR's seat was never salvaged into it
+        if (!vrcBaseReplacesCckLocomotion)
+        {
+            RemoveCckSittingState(machine);
+        }
+
+        var clonedSittingController = new CopyAnimatorController(sittingController).CopyController();
+        var clonedLayers = clonedSittingController.layers;
+        if (clonedLayers.Length > 1)
+        {
+            Debug.LogWarning($"Not converting {clonedLayers.Length - 1} layer(s) of the Sitting animator past the first: VRChat kept them off the avatar by holding the Sitting playable's weight at zero, and the folded machine has no weight of its own to hold them back with.");
+        }
+
+        var sittingMachine = clonedLayers[0].stateMachine;
+        sittingMachine.name = FoldedSittingMachineName;
+
+        // registered around the processing for the reason FoldActionMachine states
+        new CopyAnimatorController(clonedSittingController).CopyParametersTo(chilloutAnimatorController);
+        var parameters = clonedSittingController.parameters;
+        processingIntegratedLocomotionLayer = true;
+        ProcessStateMachine(sittingMachine, integratedLayer.name, ref parameters);
+        processingIntegratedLocomotionLayer = false;
+        clonedSittingController.parameters = parameters;
+        new CopyAnimatorController(clonedSittingController).CopyParametersTo(chilloutAnimatorController);
+
+        var childMachines = machine.stateMachines;
+        ArrayUtility.Add(ref childMachines, new ChildAnimatorStateMachine
+        {
+            stateMachine = sittingMachine,
+            position = new Vector3(900f, 200f, 0f),
+        });
+        machine.stateMachines = childMachines;
+
+        // after the processing above, as the conditions below are already in CVR's own vocabulary
+        foreach (var state in AllStatesOf(sittingMachine))
+        {
+            Timed(state.AddExitTransition(), SittingBlendDuration)
+                .AddCondition(AnimatorConditionMode.IfNot, 0f, SittingParameterName);
+        }
+
+        foreach (var stance in StancesOf(machine).ToList())
+        {
+            var enter = Timed(stance.AddTransition(sittingMachine), SittingBlendDuration);
+            enter.AddCondition(AnimatorConditionMode.If, 0f, SittingParameterName);
+            stance.transitions = PutFirst(stance.transitions, new List<AnimatorStateTransition> { enter });
+        }
+
+        machine.AddStateMachineTransition(sittingMachine, hub);
+    }
+
+    static void RemoveCckSittingState(AnimatorStateMachine machine)
+    {
+        var sitting = machine.states
+            .Select(child => child.state)
+            .FirstOrDefault(state => state != null && state.name == CckSittingStateName);
+        if (sitting == null)
+        {
+            return;
+        }
+        foreach (var child in machine.states)
+        {
+            child.state.transitions = child.state.transitions
+                .Where(transition => transition.destinationState != sitting)
+                .ToArray();
+        }
+        machine.anyStateTransitions = machine.anyStateTransitions
+            .Where(transition => transition.destinationState != sitting)
+            .ToArray();
+        machine.RemoveState(sitting);
+    }
+
+    // Sitting under every name a Base layer could be reading it by: the one below is read before the
+    // conversion, so VRChat's own names for it are still in place.
+    static readonly string[] SittingParameterNames = { SittingParameterName, "Seated", "InStation" };
+
+    // A Base layer derived from VRChat's stock one carries its own seated branch. Handing it CVR's
+    // seated state as well would leave both answering Sitting, so the salvage stands down.
+    static bool BaseAnswersSitting(AnimatorController controller)
+    {
+        var machine = controller != null && controller.layers.Length > 0 ? controller.layers[0].stateMachine : null;
+        if (machine == null)
+        {
+            return false;
+        }
+        return AllStatesOf(machine)
+            .SelectMany(state => state.transitions.Cast<AnimatorTransitionBase>())
+            .Concat(machine.anyStateTransitions)
+            .Concat(machine.entryTransitions)
+            .Any(transition => transition.conditions.Any(condition => SittingParameterNames.Contains(condition.parameter)));
+    }
+
+    static void RemoveCckEmotesMachine(AnimatorStateMachine machine)
+    {
+        var emotes = machine.stateMachines
+            .Select(child => child.stateMachine)
+            .FirstOrDefault(child => child != null && child.name == CckEmotesMachineName);
+        if (emotes == null)
+        {
+            return;
+        }
+        foreach (var child in machine.states)
+        {
+            child.state.transitions = child.state.transitions
+                .Where(transition => transition.destinationStateMachine != emotes)
+                .ToArray();
+        }
+        machine.RemoveStateMachine(emotes);
+    }
+
+    const float DefaultActionBlendDuration = 0.25f;
+
+    // The entry blend the Action playable's own fade-in was worth.
+    static float ActionPrepareBlendDuration(AnimatorStateMachine machine)
+    {
+        var start = machine != null ? machine.defaultState : null;
+        if (start == null)
+        {
+            return DefaultActionBlendDuration;
+        }
+        foreach (var transition in start.transitions)
+        {
+            var raise = ActionPlayableLayerControlOf(transition.destinationState);
+            if (raise != null && raise.goalWeight == 1f)
+            {
+                return raise.blendDuration;
+            }
+        }
+        return DefaultActionBlendDuration;
     }
 
     static AnimatorStateTransition Timed(AnimatorStateTransition transition, float duration)
@@ -2846,7 +3609,28 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     static AnimatorStateTransition[] PutFirst(AnimatorStateTransition[] all, List<AnimatorStateTransition> rewired) =>
         rewired.Concat(all.Where(transition => !rewired.Contains(transition))).ToArray();
 
-    static IEnumerable<AnimatorState> AllStatesOf(AnimatorStateMachine machine)
+    // Everything the integrated locomotion layer answers a game state from. The layer's default
+    // state is not enough on its own: an avatar whose first layer leaves it on a condition that
+    // already holds -- a custom stance gated on a toggle that is off by default, say -- passes
+    // through it in a single frame and lives somewhere else entirely, and every entry hung off the
+    // hub alone would then be unreachable for the rest of the session. Taking the whole root
+    // instead lands between the two clients: above ChilloutVR, which emotes out of its three
+    // stances, and below VRChat, whose Action and Sitting playables faded in over any locomotion
+    // state at all (an avatar's airborne states live in a sub-state-machine and are left out with
+    // it, as they are in ChilloutVR's own dispatch). The movement modes are not stances and stay
+    // out: flight is entered from AnyState and would pull itself straight back in after leaving.
+    // They are recognised by name, which is what makes the layer ChilloutVR's own and the layer that
+    // replaced it read alike -- so the state the layer starts in is held in whatever it is named,
+    // since an avatar that happened to name it one of those would otherwise be left with no way in
+    // at all.
+    static IEnumerable<AnimatorState> StancesOf(AnimatorStateMachine machine) =>
+        machine.states.Select(child => child.state).Where(state => state != null
+            && (state == machine.defaultState
+                || (state.name != CckFlyingStateName
+                    && state.name != CckSwimmingStateName
+                    && state.name != CckSittingStateName)));
+
+    static IEnumerable<AnimatorStateMachine> AllMachinesOf(AnimatorStateMachine machine)
     {
         if (machine == null)
         {
@@ -2862,19 +3646,17 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             {
                 continue;
             }
-            foreach (var child in current.states)
-            {
-                if (child.state != null)
-                {
-                    yield return child.state;
-                }
-            }
+            yield return current;
             foreach (var sub in current.stateMachines)
             {
                 stack.Push(sub.stateMachine);
             }
         }
     }
+
+    static IEnumerable<AnimatorState> AllStatesOf(AnimatorStateMachine machine) =>
+        AllMachinesOf(machine).SelectMany(current => current.states)
+            .Where(child => child.state != null).Select(child => child.state);
 
     static AnimatorDriverTask.ParameterType AnimatorDriverParameterType(AnimatorControllerParameter[] parameters, string name)
     {
@@ -3146,9 +3928,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
                 var parameters = newAnimatorController.parameters;
                 // the replacement takes the animator's first layer, decided below after processing
-                processingReplacementLocomotionLayer = thisAnimatorReplacesCckLocomotion && i == 0;
+                processingIntegratedLocomotionLayer = thisAnimatorReplacesCckLocomotion && i == 0;
                 ProcessStateMachine(layer.stateMachine, layer.name, ref parameters);
-                processingReplacementLocomotionLayer = false;
+                processingIntegratedLocomotionLayer = false;
                 newAnimatorController.parameters = parameters;
 
                 layer.avatarMask = GetAvatarMaskForLayerAndVRCAnimator(animatorID, i, layer.avatarMask);
@@ -3268,6 +4050,16 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         vrcBaseReplacesCckLocomotion = convertLocomotionLayer
             && HasAuthoredMotion(baseAnimatorController)
             && HasLocomotionHub(baseAnimatorController);
+
+        var actionAnimatorController = vrcAnimatorControllers.Length > (int)VRCBaseAnimatorID.ACTION
+            ? vrcAnimatorControllers[(int)VRCBaseAnimatorID.ACTION]
+            : null;
+        vrcActionFoldsIntoCckLocomotion = convertActionLayer && HasAuthoredMotion(actionAnimatorController);
+
+        // A stock Sitting layer only manages tracking and has no seated pose of its own, so it fails
+        // HasAuthoredMotion and leaves the seat to ChilloutVR, which is what it was already doing.
+        vrcSittingFoldsIntoCckLocomotion = convertSittingLayer && HasAuthoredMotion(VrcSittingAnimatorController());
+        salvagesCckSitting = !vrcSittingFoldsIntoCckLocomotion && !BaseAnswersSitting(baseAnimatorController);
 
         if (vrcBaseReplacesCckLocomotion)
         {
@@ -4756,6 +5548,192 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             },
         });
         uprightIsDerived = true;
+    }
+
+    const string VrcEmoteCompatLayerName = "VRC3CVR_VRCEmoteCompat";
+    const int VrcEmoteCount = 8;
+
+    // Bridges ChilloutVR's own quick-menu Emote onto VRCEmote for a fold that reads VRCEmote, so
+    // removing ChilloutVR's own Emotes machine (FoldActionMachine) does not silence that menu.
+    // ChilloutVR reports a press as a pulse of about a tenth of a second rather than a value it
+    // holds, while a VRChat Action layer reads the number for as long as the emote runs -- so the
+    // number is latched here on the way in and let go only on a cancel or as the emote that was
+    // holding it ends. ChilloutVR's own Emotes machine absorbs the same pulse the same way, by
+    // latching its band on entry and leaving on its clip rather than on the number.
+    void MakeVrcEmoteCompatFeedLayer()
+    {
+        if (!vrcActionFoldReadsVrcEmote)
+        {
+            return;
+        }
+
+        var declared = chilloutAnimatorController.parameters;
+        var vrcEmote = declared.FirstOrDefault(p => p.name == VrcEmoteParameterName)
+            ?? declared.FirstOrDefault(p => p.name == NonSyncParameterName(VrcEmoteParameterName));
+        if (vrcEmote == null)
+        {
+            return;
+        }
+        var vrcEmoteType = AnimatorDriverParameterType(declared, vrcEmote.name);
+
+        AnimatorDriverTask SetVrcEmote(float value) => new AnimatorDriverTask
+        {
+            op = AnimatorDriverTask.Operator.Set,
+            targetName = vrcEmote.name,
+            targetType = vrcEmoteType,
+            aType = AnimatorDriverTask.SourceType.Static,
+            aValue = value,
+        };
+
+        var idle = new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = "Idle",
+            writeDefaultValues = false,
+        };
+
+        AnimatorDriver Writes(float value) => new AnimatorDriver
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            localOnly = true,
+            EnterTasks = new List<AnimatorDriverTask> { SetVrcEmote(value) },
+        };
+
+        // Only entering writes, which is what leaves a custom menu driving VRCEmote directly alone:
+        // while Emote sits at 0 this layer holds in Idle and touches nothing.
+        AnimatorState MakeEmoteState(string name, float vrcEmoteValue) => new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = name,
+            writeDefaultValues = false,
+            behaviours = new StateMachineBehaviour[] { Writes(vrcEmoteValue) },
+        };
+
+        var cancel = new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = "Cancel",
+            writeDefaultValues = false,
+            behaviours = new StateMachineBehaviour[] { Writes(0f) },
+        };
+
+        AnimatorStateTransition MakeTransition(AnimatorState destination, AnimatorConditionMode mode, float threshold, string parameter) =>
+            Timed(new AnimatorStateTransition
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                destinationState = destination,
+                conditions = new AnimatorCondition[]
+                {
+                    new AnimatorCondition { mode = mode, parameter = parameter, threshold = threshold },
+                },
+            }, 0f);
+
+        var emoteStates = Enumerable.Range(1, VrcEmoteCount).Select(n => MakeEmoteState("Emote" + n, n)).ToArray();
+
+        // highest band first, mirroring the ordered Greater cascade CCK's own Emotes machine dispatches with
+        idle.transitions = Enumerable.Range(1, VrcEmoteCount).Reverse()
+            .Select(n => MakeTransition(emoteStates[n - 1], AnimatorConditionMode.Greater, n - 1, EmoteParameterName))
+            .ToArray();
+
+        for (var n = 1; n <= VrcEmoteCount; n++)
+        {
+            emoteStates[n - 1].transitions = new[]
+            {
+                MakeTransition(cancel, AnimatorConditionMode.If, 0f, CancelEmoteParameterName),
+                MakeTransition(idle, AnimatorConditionMode.Less, n, EmoteParameterName),
+                MakeTransition(idle, AnimatorConditionMode.Greater, n, EmoteParameterName),
+            };
+        }
+        cancel.transitions = new[]
+        {
+            Timed(new AnimatorStateTransition { hideFlags = HideFlags.HideInHierarchy, destinationState = idle }, 0f),
+        };
+
+        // A one-shot emote ends by running out of its own machine rather than by the number changing,
+        // and the hub dispatches on that number, so the latch comes down as the emote is left --
+        // but only while it is still the number that emote was holding. Leaving because the
+        // selection moved on hands the latch to the emote that comes next, and taking it down there
+        // would strand the new one. The test needs two tasks because one carries a single operator:
+        // the first asks whether the number is still ours, the second answers with 0 or leaves it be.
+        if (foldedActionEmoteNumbers.Count == 0)
+        {
+            Debug.LogWarning($"No state of the Action animator is entered on a value of {VrcEmoteParameterName}, so nothing lowers it once an emote ends and the avatar will play it again as soon as it finishes. Dispatch each emote state on its own number, as VRChat's stock Action layer does.");
+        }
+        else
+        {
+            var stillOurs = NonSyncParameterName("VRCEmoteHeld");
+            var parameters = chilloutAnimatorController.parameters;
+            if (!parameters.Any(p => p.name == stillOurs))
+            {
+                ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+                {
+                    name = stillOurs,
+                    type = AnimatorControllerParameterType.Int,
+                });
+                chilloutAnimatorController.parameters = parameters;
+            }
+            var stillOursType = AnimatorDriverParameterType(chilloutAnimatorController.parameters, stillOurs);
+
+            foreach (var entry in foldedActionEmoteNumbers)
+            {
+                var behaviours = entry.Key.behaviours;
+                ArrayUtility.Add(ref behaviours, new AnimatorDriver
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    localOnly = true,
+                    ExitTasks = new List<AnimatorDriverTask>
+                    {
+                        new AnimatorDriverTask
+                        {
+                            op = AnimatorDriverTask.Operator.Equal,
+                            targetName = stillOurs,
+                            targetType = stillOursType,
+                            aType = AnimatorDriverTask.SourceType.Parameter,
+                            aName = vrcEmote.name,
+                            aParamType = vrcEmoteType,
+                            bType = AnimatorDriverTask.SourceType.Static,
+                            bValue = entry.Value,
+                        },
+                        new AnimatorDriverTask
+                        {
+                            op = AnimatorDriverTask.Operator.Conditional,
+                            targetName = vrcEmote.name,
+                            targetType = vrcEmoteType,
+                            aType = AnimatorDriverTask.SourceType.Parameter,
+                            aName = stillOurs,
+                            aParamType = stillOursType,
+                            bType = AnimatorDriverTask.SourceType.Static,
+                            bValue = 0f,
+                            cType = AnimatorDriverTask.SourceType.Parameter,
+                            cName = vrcEmote.name,
+                            cParamType = vrcEmoteType,
+                        },
+                    },
+                });
+                entry.Key.behaviours = behaviours;
+            }
+        }
+
+        var layerName = chilloutAnimatorController.MakeUniqueLayerName(VrcEmoteCompatLayerName);
+        AddGeneratedLayer(new AnimatorControllerLayer
+        {
+            name = layerName,
+            defaultWeight = 1f,
+            blendingMode = AnimatorLayerBlendingMode.Override,
+            avatarMask = emptyMask,
+            stateMachine = new AnimatorStateMachine
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                name = layerName,
+                entryPosition = new Vector3(0, -100),
+                exitPosition = new Vector3(0, 200),
+                anyStatePosition = new Vector3(0, -300),
+                defaultState = idle,
+                states = new[] { idle }.Concat(emoteStates).Concat(new[] { cancel })
+                    .Select((state, i) => new ChildAnimatorState { state = state, position = new Vector3(0, i * 100) })
+                    .ToArray(),
+            },
+        });
     }
 
     // VRChat built-ins that ChilloutVR does not supply to the animator. The client's parameter

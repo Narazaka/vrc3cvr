@@ -22,6 +22,11 @@ using TrackingType = VRC.SDKBase.VRC_AnimatorTrackingControl.TrackingType;
 //   L2 ChilloutVR's own walk clip took the place of its proxy_walk_forward placeholder
 //   L3 flight, salvaged out of the replaced CVR locomotion layer, is still reachable
 //   L4 landing plays ChilloutVR's landing clip smoothly, with no tracking-control IK seizure
+//   E1 the quick menu's Emote plays the folded Action machine's emote
+//   E2 the emote keeps running once ChilloutVR's own Emote pulse has ended
+//   E3 the quick menu's cancel leaves the emote too
+//   E4 Sitting plays the folded Sitting machine's seated pose
+//   E5 picking a second emote while one plays reaches the second one
 // Each group can be shown/hidden from the expressions menu so items can be checked one at a
 // time. Labels carry the expected behavior (in English: the built-in font has no CJK glyphs).
 // Lives in Tests/ so it ships with the repository but not with the distributed unitypackage.
@@ -45,49 +50,68 @@ public static class VRC3CVRVerificationAvatar
         }
 
         var root = new GameObject("VRC3CVR Verification Avatar");
-        var bones = BuildRig(root);
-        var avatar = BuildHumanAvatar(root, bones, assetFolder);
-        var animator = root.AddComponent<Animator>();
-        animator.avatar = avatar;
-
-        var materials = new Materials(assetFolder);
-        BuildGimmickObjects(root, materials);
-        BuildConstraintObjects(root, bones, materials);
-        BuildContactObjects(root, materials);
-        var faceMesh = BuildFaceMesh(bones.head, assetFolder, materials, out var visemeBlendShapeNames, out var blinkBlendShapeIndex);
-
-        var fx = BuildFxController(assetFolder);
-        var handMask = BuildHandMask(assetFolder);
-        var gesture = BuildGestureController(assetFolder, handMask);
-        var baseLocomotion = BuildBaseController(assetFolder);
-        var descriptor = root.AddComponent<VRCAvatarDescriptor>();
-        descriptor.ViewPosition = new Vector3(0f, 1.45f, 0.1f);
-        descriptor.lipSync = VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape;
-        descriptor.VisemeSkinnedMesh = faceMesh;
-        descriptor.VisemeBlendShapes = visemeBlendShapeNames;
-        descriptor.customEyeLookSettings.eyelidType = VRCAvatarDescriptor.EyelidType.Blendshapes;
-        descriptor.customEyeLookSettings.eyelidsSkinnedMesh = faceMesh;
-        descriptor.customEyeLookSettings.eyelidsBlendshapes = new int[] { blinkBlendShapeIndex, -1, -1 };
-        descriptor.customizeAnimationLayers = true;
-        descriptor.baseAnimationLayers = new VRCAvatarDescriptor.CustomAnimLayer[]
+        try
         {
-            // locomotion of the avatar's own: the conversion replaces ChilloutVR's locomotion
-            // layer with it, which a stock (isDefault) Base layer would never reach
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Base, isDefault = false, animatorController = baseLocomotion },
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Additive, isDefault = true },
-            // dedicated (non-default) gesture controller: exercises the GESTURE avatar mask
-            // branch and the CVR default hand layer deletion branch, both unreachable while
-            // isDefault is true / no controller is assigned
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Gesture, isDefault = false, animatorController = gesture },
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Action, isDefault = true },
-            new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.FX, isDefault = false, animatorController = fx },
-        };
-        descriptor.customExpressions = true;
-        descriptor.expressionParameters = BuildExpressionParameters(assetFolder);
-        descriptor.expressionsMenu = BuildExpressionsMenu(assetFolder);
+            var bones = BuildRig(root);
+            var avatar = BuildHumanAvatar(root, bones, assetFolder);
+            var animator = root.AddComponent<Animator>();
+            animator.avatar = avatar;
 
-        AssetDatabase.SaveAssets();
-        return descriptor;
+            var materials = new Materials(assetFolder);
+            BuildGimmickObjects(root, materials);
+            BuildConstraintObjects(root, bones, materials);
+            BuildContactObjects(root, materials);
+            var faceMesh = BuildFaceMesh(bones.head, assetFolder, materials, out var visemeBlendShapeNames, out var blinkBlendShapeIndex);
+
+            var fx = BuildFxController(assetFolder);
+            var handMask = BuildHandMask(assetFolder);
+            var gesture = BuildGestureController(assetFolder, handMask);
+            var baseLocomotion = BuildBaseController(assetFolder);
+            var action = BuildActionController(assetFolder);
+            var sitting = BuildSittingController(assetFolder);
+            var descriptor = root.AddComponent<VRCAvatarDescriptor>();
+            descriptor.ViewPosition = new Vector3(0f, 1.45f, 0.1f);
+            descriptor.lipSync = VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape;
+            descriptor.VisemeSkinnedMesh = faceMesh;
+            descriptor.VisemeBlendShapes = visemeBlendShapeNames;
+            descriptor.customEyeLookSettings.eyelidType = VRCAvatarDescriptor.EyelidType.Blendshapes;
+            descriptor.customEyeLookSettings.eyelidsSkinnedMesh = faceMesh;
+            descriptor.customEyeLookSettings.eyelidsBlendshapes = new int[] { blinkBlendShapeIndex, -1, -1 };
+            descriptor.customizeAnimationLayers = true;
+            descriptor.baseAnimationLayers = new VRCAvatarDescriptor.CustomAnimLayer[]
+            {
+                // locomotion of the avatar's own: the conversion replaces ChilloutVR's locomotion
+                // layer with it, which a stock (isDefault) Base layer would never reach
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Base, isDefault = false, animatorController = baseLocomotion },
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Additive, isDefault = true },
+                // dedicated (non-default) gesture controller: exercises the GESTURE avatar mask
+                // branch and the CVR default hand layer deletion branch, both unreachable while
+                // isDefault is true / no controller is assigned
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Gesture, isDefault = false, animatorController = gesture },
+                // dedicated (non-default) Action controller: a stock one holds nothing but VRChat's
+                // proxy_* placeholders, which the fold gate turns down
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Action, isDefault = false, animatorController = action },
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.FX, isDefault = false, animatorController = fx },
+            };
+            // Sitting is a special layer rather than a base one, so it is assigned separately
+            descriptor.specialAnimationLayers = new VRCAvatarDescriptor.CustomAnimLayer[]
+            {
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.Sitting, isDefault = false, animatorController = sitting },
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.TPose, isDefault = true },
+                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.IKPose, isDefault = true },
+            };
+            descriptor.customExpressions = true;
+            descriptor.expressionParameters = BuildExpressionParameters(assetFolder);
+            descriptor.expressionsMenu = BuildExpressionsMenu(assetFolder);
+
+            AssetDatabase.SaveAssets();
+            return descriptor;
+        }
+        catch
+        {
+            Object.DestroyImmediate(root);
+            throw;
+        }
     }
 
     // ---- rig ----
@@ -307,6 +331,11 @@ public static class VRC3CVRVerificationAvatar
         // that animates it, and a marker already visible would prove nothing
         Marker("BaseIdleMarker", state, new Vector3(1.1f, 0f, 0f), Vector3.one * 0.06f, materials.yellow,
             "ON standing still, OFF walking forward\ndriven by the avatar's own Base locomotion").SetActive(false);
+
+        // the folded Action and Sitting machines show on the body itself, so this label has no
+        // marker of its own
+        AddLabel(panel, new Vector3(-0.3f, -0.5f, 0f), "Emote / Seat",
+            "quick menu Emote 2 waves and cancel stops it\nsitting holds the avatar's own seated pose");
     }
 
     // ---- constraint objects ----
@@ -767,6 +796,80 @@ public static class VRC3CVRVerificationAvatar
         return baseController;
     }
 
+    // ---- action / sitting controllers (the playables the conversion folds into locomotion) ----
+
+    // ChilloutVR's own animations stand in for the ones a real avatar would author. They move the
+    // whole body, which is both what a wearer looks for and what lets the in-game check name the
+    // clip the layer is actually playing.
+    const string CckEmoteClipPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Emotes/Emote2.anim";
+    const string CckSecondEmoteClipPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Emotes/Emote5.anim";
+    const string CckSittingClipPath = "Assets/CVR.CCK/Assets/Avatar/Animations/Locomotion/LocSitting.anim";
+
+    // VRChat's stock Action shape, down to the VRCEmote it reads: a wait state, a Prepare that raises
+    // the Action playable's weight, the emote itself, and a BlendOut that drops the weight again and
+    // leaves through Exit.
+    static AnimatorController BuildActionController(string assetFolder)
+    {
+        var action = AnimatorController.CreateAnimatorControllerAtPath(assetFolder + "/VerificationAction.controller");
+        action.AddParameter("VRCEmote", AnimatorControllerParameterType.Int);
+
+        var machine = action.layers[0].stateMachine;
+        AnimatorState State(string name)
+        {
+            var state = machine.AddState(name);
+            state.writeDefaultValues = true;
+            return state;
+        }
+        AnimatorStateTransition Immediate(AnimatorStateTransition transition)
+        {
+            transition.hasExitTime = false;
+            transition.duration = 0f;
+            return transition;
+        }
+
+        var wait = State("WaitForAction");
+        machine.defaultState = wait;
+
+        var prepare = State("Prepare");
+        var raiseWeight = prepare.AddStateMachineBehaviour<VRCPlayableLayerControl>();
+        raiseWeight.goalWeight = 1f;
+        raiseWeight.blendDuration = 0.25f;
+
+        var emote = State("Emote2");
+        emote.motion = AssetDatabase.LoadAssetAtPath<AnimationClip>(CckEmoteClipPath);
+
+        // a second emote, so switching from one to another while it plays is something the in-game
+        // checks can actually ask for
+        var secondEmote = State("Emote5");
+        secondEmote.motion = AssetDatabase.LoadAssetAtPath<AnimationClip>(CckSecondEmoteClipPath);
+
+        var blendOut = State("BlendOut");
+        blendOut.AddStateMachineBehaviour<VRCPlayableLayerControl>().goalWeight = 0f;
+
+        Immediate(wait.AddTransition(prepare)).AddCondition(AnimatorConditionMode.Greater, 0f, "VRCEmote");
+        Immediate(prepare.AddTransition(emote)).AddCondition(AnimatorConditionMode.Equals, 2f, "VRCEmote");
+        Immediate(emote.AddTransition(blendOut)).AddCondition(AnimatorConditionMode.NotEqual, 2f, "VRCEmote");
+        Immediate(prepare.AddTransition(secondEmote)).AddCondition(AnimatorConditionMode.Equals, 5f, "VRCEmote");
+        Immediate(secondEmote.AddTransition(blendOut)).AddCondition(AnimatorConditionMode.NotEqual, 5f, "VRCEmote");
+        blendOut.AddExitTransition().hasExitTime = true;
+
+        return action;
+    }
+
+    // The shape a custom Sitting layer has: a single seated pose, with no exit of its own.
+    static AnimatorController BuildSittingController(string assetFolder)
+    {
+        var sitting = AnimatorController.CreateAnimatorControllerAtPath(assetFolder + "/VerificationSitting.controller");
+
+        var machine = sitting.layers[0].stateMachine;
+        var pose = machine.AddState("SitPose");
+        pose.motion = AssetDatabase.LoadAssetAtPath<AnimationClip>(CckSittingClipPath);
+        pose.writeDefaultValues = true;
+        machine.defaultState = pose;
+
+        return sitting;
+    }
+
     // VRChat's stock states set left and right of a pair to the same value, so pairs are enough.
     static void AddTrackingControl(AnimatorState state,
         TrackingType head = TrackingType.NoChange,
@@ -1032,6 +1135,17 @@ public static class VRC3CVRVerificationAvatar
                 networkSynced = true,
             };
         }
+        VRCExpressionParameters.Parameter Int(string name, float defaultValue)
+        {
+            return new VRCExpressionParameters.Parameter
+            {
+                name = name,
+                valueType = VRCExpressionParameters.ValueType.Int,
+                defaultValue = defaultValue,
+                saved = false,
+                networkSynced = true,
+            };
+        }
         var parameters = ScriptableObject.CreateInstance<VRCExpressionParameters>();
         parameters.name = "VerificationParameters";
         parameters.parameters = new VRCExpressionParameters.Parameter[]
@@ -1040,6 +1154,7 @@ public static class VRC3CVRVerificationAvatar
             Bool("ShowGesture", 1f),
             Bool("ShowState", 1f),
             Bool("ShowConstraints", 1f),
+            Int("VRCEmote", 0f),
         };
         AssetDatabase.CreateAsset(parameters, assetFolder + "/VerificationParameters.asset");
         return parameters;

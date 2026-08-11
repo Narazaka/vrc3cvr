@@ -924,11 +924,170 @@ namespace VRC3CVRVerification
                 }
             }
 
+            yield return EmoteAndSeat(animator, locomotionLayer);
             yield return StanceHeights(avatar, animator);
             yield return LandingProfile(avatar, animator);
 
             Flush();
             _running = false;
+        }
+
+        // E1..E4: the Action and Sitting playables, folded into the locomotion layer as sub-state
+        // machines. Each is read twice — which state that layer is in, and which clip it is actually
+        // putting on the body — since a state reached without its animation would prove nothing.
+        IEnumerator EmoteAndSeat(Animator animator, int locomotionLayer)
+        {
+            Step("  E1..E4 folded action/sitting");
+            if (locomotionLayer < 0 || !HasParameter(animator, VrcEmoteOf(animator)))
+            {
+                Run("E", () => Note("E not measured: " + (locomotionLayer < 0
+                    ? "no \"Locomotion/Emotes\" layer"
+                    : "no VRCEmote on the animator — this avatar has no folded Action machine")));
+                yield break;
+            }
+            string Now() => StateNameOf(animator, locomotionLayer);
+            string Playing() => DominantClip(animator, locomotionLayer, out _);
+            // whatever the layer settles on with nothing asked of it: "Locomotion" for an avatar
+            // whose own Base layer took the layer over, "Standard Locomotion" for ChilloutVR's
+            yield return new WaitForSeconds(1f);
+            var hubState = Now();
+
+            // Emote, CancelEmote and Sitting are core parameters, which ChangeAnimatorParam does not
+            // route: the client owns them and hands them to the animator itself. So they are set
+            // where the client sets them -- TriggerEmote is the quick menu's own emote button, and
+            // the rest are the animator manager's own properties.
+            var manager = PlayerSetup.Instance.AnimatorManager;
+
+            // ---- E1: the quick menu's Emote, which reaches a fold that reads VRCEmote through the
+            // compat feed layer rather than directly ----
+            // sampled per frame, because how long the client holds the emote number is what decides
+            // whether a fold that reads it as a level can see it at all
+            var trace = new List<string>();
+            var lastReading = "";
+            var elapsed = 0f;
+            Run("E1 emote on", () => PlayerSetup.Instance.TriggerEmote(2f));
+            while (elapsed < 3f)
+            {
+                yield return null;
+                elapsed += Time.deltaTime;
+                var now = elapsed;
+                Run("E1 sample", () =>
+                {
+                    var reading = ReadParam(animator, "Emote").ToString("0.00") + ":" +
+                        ReadParam(animator, VrcEmoteOf(animator)).ToString("0") + ":" + Now() + ":" + Playing();
+                    if (reading != lastReading)
+                    {
+                        lastReading = reading;
+                        trace.Add(now.ToString("0.000") + ":" + reading);
+                    }
+                });
+            }
+            Run("E1", () =>
+            {
+                Note("E1 trace t:Emote:VRCEmote:state:clip, one sample per change — " + string.Join(";", trace.ToArray()));
+                Check(Now() == "Emote2", "E1 quick menu Emote 2 reaches the folded Action machine's emote state (state \"" +
+                    Now() + "\", Emote " + ReadParam(animator, "Emote").ToString("0.00") +
+                    ", VRCEmote " + ReadParam(animator, VrcEmoteOf(animator)).ToString("0") + ")");
+                Check(Playing() == "Emote2", "E1 the emote's own clip is what drives the body (clip \"" + Playing() + "\")");
+            });
+
+            // ---- E2: the latch. The client's pulse is long over by the time E1 has read three
+            // seconds of it, so the emote is only still running if VRCEmote held the number ----
+            var startedEmote = false;
+            Run("E2", () =>
+            {
+                startedEmote = Now() == "Emote2";
+                Check(ReadParam(animator, "Emote") < 0.5f && ReadParam(animator, VrcEmoteOf(animator)) > 1.5f,
+                    "E2 VRCEmote holds the emote after ChilloutVR's own Emote pulse ended (Emote " +
+                    ReadParam(animator, "Emote").ToString("0.00") + ", VRCEmote " +
+                    ReadParam(animator, VrcEmoteOf(animator)).ToString("0") + ")");
+            });
+
+            // ---- E5: a second emote picked while the first plays. The first one lets go of the
+            // number on its way out, so this is where a latch belonging to the second can be lost.
+            // Traced as well, since whether the client sends a cancel of its own is unmeasured ----
+            var switchTrace = new List<string>();
+            var lastSwitchReading = "";
+            var switchElapsed = 0f;
+            Run("E5 switch", () => PlayerSetup.Instance.TriggerEmote(5f));
+            while (switchElapsed < 3f)
+            {
+                yield return null;
+                switchElapsed += Time.deltaTime;
+                var now = switchElapsed;
+                Run("E5 sample", () =>
+                {
+                    var reading = ReadParam(animator, "Emote").ToString("0.00") + ":" +
+                        ReadParam(animator, VrcEmoteOf(animator)).ToString("0") + ":" +
+                        ReadParam(animator, "CancelEmote").ToString("0") + ":" + Now() + ":" + Playing();
+                    if (reading != lastSwitchReading)
+                    {
+                        lastSwitchReading = reading;
+                        switchTrace.Add(now.ToString("0.000") + ":" + reading);
+                    }
+                });
+            }
+            Run("E5", () =>
+            {
+                Note("E5 trace t:Emote:VRCEmote:CancelEmote:state:clip, one sample per change — " +
+                    string.Join(";", switchTrace.ToArray()));
+                if (!startedEmote)
+                {
+                    Note("E5 not measured: the first emote never started");
+                    return;
+                }
+                Check(Now() == "Emote5", "E5 picking a second emote while the first played reaches it (state \"" +
+                    Now() + "\", VRCEmote " + ReadParam(animator, VrcEmoteOf(animator)).ToString("0") + ")");
+                Check(Playing() == "Emote5", "E5 the second emote's own clip is what drives the body (clip \"" +
+                    Playing() + "\")");
+            });
+
+            // ---- E3: the quick menu's cancel, on whichever emote is running ----
+            Run("E3 cancel", () => manager.CancelEmote = true);
+            yield return new WaitForSeconds(3f);
+            Run("E3", () =>
+            {
+                if (!startedEmote)
+                {
+                    Note("E3 not measured: the emote never started (state \"" + Now() + "\")");
+                    return;
+                }
+                Check(Now() == hubState, "E3 CancelEmote returns the body to the locomotion hub (state \"" +
+                    Now() + "\", expected \"" + hubState + "\")");
+                Check(ReadParam(animator, VrcEmoteOf(animator)) < 0.5f,
+                    "E3 the latch came down with the emote, so the hub does not dispatch straight back in (VRCEmote " +
+                    ReadParam(animator, VrcEmoteOf(animator)).ToString("0") + ")");
+            });
+
+            // ---- E4: Sitting. The client sets it when it seats the player, so this only asks what
+            // the folded machine does with it; an actual chair is a manual item ----
+            var seated = false;
+            Run("E4 sit", () => manager.Sitting = true);
+            yield return new WaitForSeconds(2f);
+            Run("E4", () =>
+            {
+                if (ReadParam(animator, "Sitting") < 0.5f)
+                {
+                    Note("E4 not measured: the client overwrote the injected Sitting (state \"" + Now() + "\")");
+                    return;
+                }
+                seated = true;
+                Check(Now() == "SitPose", "E4 Sitting reaches the folded Sitting machine's seated state (state \"" +
+                    Now() + "\")");
+                Check(Playing() == "LocSitting", "E4 the seated pose is what drives the body (clip \"" + Playing() + "\")");
+            });
+            Run("E4 stand", () => manager.Sitting = false);
+            yield return new WaitForSeconds(2f);
+            Run("E4 stood", () =>
+            {
+                if (!seated)
+                {
+                    Note("E4 standing up not measured: the avatar never sat down");
+                    return;
+                }
+                Check(Now() == hubState, "E4 clearing Sitting returns the body to the locomotion hub (state \"" +
+                    Now() + "\", expected \"" + hubState + "\")");
+            });
         }
 
         // The ChilloutVR-NATIVE probe avatar (built by VRC3CVRCvrProbeAvatar, uploaded as-is).
@@ -1367,6 +1526,8 @@ namespace VRC3CVRVerification
                 "Swimming", "Idle", "Crouch", "Stand", "RestoreTracking",
                 "JumpStart", "JumpAir", "JumpLand", "Sitting",
                 "SmallHop", "Fall", "QuickLand", "HardLand", "Short Fall", "Long Fall", "RestoreToHop",
+                "Standard Locomotion", "Crouching Locomotion", "Prone Locomotion",
+                "WaitForAction", "Prepare", "Emote2", "Emote5", "BlendOut", "SitPose",
             })
             {
                 if (Animator.StringToHash(name) == hash) return name;
@@ -1442,6 +1603,13 @@ namespace VRC3CVRVerification
         static string UprightOf(Animator animator)
         {
             return HasParameter(animator, "Upright") ? "Upright" : "#Upright";
+        }
+
+        // VRCEmote survives under its plain name only while the avatar declares it as a synced
+        // expression parameter; otherwise the conversion keeps it local under the # prefix.
+        static string VrcEmoteOf(Animator animator)
+        {
+            return HasParameter(animator, "VRCEmote") ? "VRCEmote" : "#VRCEmote";
         }
 
         static bool HasFeedLayer(Animator animator)
@@ -1592,7 +1760,8 @@ namespace VRC3CVRVerification
             }
             switch (parameter.type)
             {
-                case AnimatorControllerParameterType.Bool: return animator.GetBool(name) ? 1f : 0f;
+                case AnimatorControllerParameterType.Bool:
+                case AnimatorControllerParameterType.Trigger: return animator.GetBool(name) ? 1f : 0f;
                 case AnimatorControllerParameterType.Int: return animator.GetInteger(name);
                 default: return animator.GetFloat(name);
             }
