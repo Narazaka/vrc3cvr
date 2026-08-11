@@ -2860,8 +2860,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     static Dictionary<AnimatorState, int> EmoteNumbersOf(AnimatorStateMachine machine, string emoteParameterName)
     {
         var numbers = new Dictionary<AnimatorState, int>();
-        foreach (var transition in AllStatesOf(machine).SelectMany(state => state.transitions)
-            .Concat(machine.anyStateTransitions))
+        foreach (var transition in AllStatesOf(machine).SelectMany(state => state.transitions.Cast<AnimatorTransitionBase>())
+            .Concat(AllMachinesOf(machine).SelectMany(
+                child => child.anyStateTransitions.Cast<AnimatorTransitionBase>().Concat(child.entryTransitions))))
         {
             if (transition.destinationState == null || numbers.ContainsKey(transition.destinationState))
             {
@@ -3613,7 +3614,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     && state.name != CckSwimmingStateName
                     && state.name != CckSittingStateName)));
 
-    static IEnumerable<AnimatorState> AllStatesOf(AnimatorStateMachine machine)
+    static IEnumerable<AnimatorStateMachine> AllMachinesOf(AnimatorStateMachine machine)
     {
         if (machine == null)
         {
@@ -3629,19 +3630,17 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             {
                 continue;
             }
-            foreach (var child in current.states)
-            {
-                if (child.state != null)
-                {
-                    yield return child.state;
-                }
-            }
+            yield return current;
             foreach (var sub in current.stateMachines)
             {
                 stack.Push(sub.stateMachine);
             }
         }
     }
+
+    static IEnumerable<AnimatorState> AllStatesOf(AnimatorStateMachine machine) =>
+        AllMachinesOf(machine).SelectMany(current => current.states)
+            .Where(child => child.state != null).Select(child => child.state);
 
     static AnimatorDriverTask.ParameterType AnimatorDriverParameterType(AnimatorControllerParameter[] parameters, string name)
     {
@@ -5640,11 +5639,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         // selection moved on hands the latch to the emote that comes next, and taking it down there
         // would strand the new one. The test needs two tasks because one carries a single operator:
         // the first asks whether the number is still ours, the second answers with 0 or leaves it be.
-        var holding = foldedActionEmoteNumbers.Where(entry => entry.Key != null).ToArray();
-
-        if (holding.Length == 0)
+        if (foldedActionEmoteNumbers.Count == 0)
         {
-            Debug.LogWarning($"No state of the Action animator is entered on a value of {vrcEmote.name}, so nothing lowers {vrcEmote.name} once an emote ends and the avatar will play it again as soon as it finishes. Dispatch each emote state on its own number, as VRChat's stock Action layer does.");
+            Debug.LogWarning($"No state of the Action animator is entered on a value of {VrcEmoteParameterName}, so nothing lowers it once an emote ends and the avatar will play it again as soon as it finishes. Dispatch each emote state on its own number, as VRChat's stock Action layer does.");
         }
         else
         {
@@ -5661,7 +5658,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             }
             var stillOursType = AnimatorDriverParameterType(chilloutAnimatorController.parameters, stillOurs);
 
-            foreach (var entry in holding)
+            foreach (var entry in foldedActionEmoteNumbers)
             {
                 var behaviours = entry.Key.behaviours;
                 ArrayUtility.Add(ref behaviours, new AnimatorDriver
