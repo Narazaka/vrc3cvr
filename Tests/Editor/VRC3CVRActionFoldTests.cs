@@ -20,6 +20,10 @@ public class VRC3CVRActionFoldTests
     const string EmoteStateName = "StandWave";
     const string SecondEmoteStateName = "StandPoint";
     const string OneShotEmoteStateName = "StandClap";
+    const string RunsOutEmoteStateName = "StandWaveRunsOut";
+    // what VRChat cut the exit time of a one-shot to: a fraction of its own clip, not of the one
+    // ChilloutVR's is substituted in its place
+    const float RunsOutExitTime = 0.6f;
     const string SecondLayerStateName = "ActionSecondLayerState";
 
     const string ProxyEmoteClipName = "proxy_stand_dance";
@@ -82,6 +86,11 @@ public class VRC3CVRActionFoldTests
         var oneShotEmote = machine.AddState(OneShotEmoteStateName);
         oneShotEmote.motion = clip;
 
+        // stock's shape for wave, point, backflip and sadkick: the same ending as above and nothing
+        // else at all, so nothing about the way it leaves says which emote it is
+        var runsOutEmote = machine.AddState(RunsOutEmoteStateName);
+        runsOutEmote.motion = clip;
+
         var blendOut = machine.AddState("BlendOut");
         blendOut.AddStateMachineBehaviour<VRCPlayableLayerControl>().goalWeight = 0f;
 
@@ -93,6 +102,10 @@ public class VRC3CVRActionFoldTests
         prepare.AddTransition(oneShotEmote).AddCondition(AnimatorConditionMode.Equals, 7f, emoteParameter);
         oneShotEmote.AddTransition(blendOut).AddCondition(AnimatorConditionMode.NotEqual, 7f, emoteParameter);
         oneShotEmote.AddTransition(blendOut).hasExitTime = true;
+        prepare.AddTransition(runsOutEmote).AddCondition(AnimatorConditionMode.Equals, 1f, emoteParameter);
+        var runsOut = runsOutEmote.AddTransition(blendOut);
+        runsOut.hasExitTime = true;
+        runsOut.exitTime = RunsOutExitTime;
         blendOut.AddExitTransition().hasExitTime = true;
 
         // what a built avatar's Action still is underneath whatever its author replaced: VRChat's
@@ -101,6 +114,7 @@ public class VRC3CVRActionFoldTests
         {
             var proxy = new AnimationClip { name = ProxyEmoteClipName };
             AssetDatabase.CreateAsset(proxy, ActionFoldTestFolder + "/" + ProxyEmoteClipName + ".anim");
+            runsOutEmote.motion = proxy;
             foreach (var (stateName, slot) in ProxyEmotes)
             {
                 var proxyEmote = machine.AddState(stateName);
@@ -339,17 +353,31 @@ public class VRC3CVRActionFoldTests
     }
 
     [Test]
-    public void Convert_WithAnAuthoredActionAnimator_OnlyDuplicatesTheNotEqualExitAgainstCancelEmote()
+    public void Convert_WithAnAuthoredActionAnimator_DuplicatesEveryEmoteStatesOwnExitAgainstCancelEmote()
     {
         var actionMachine = ChildMachineNamed(LocomotionMachineOf(Convert(convertActionLayer: true)), "Action");
 
-        bool HasCancelEmoteEscape(string stateName) =>
+        AnimatorStateTransition CancelEmoteEscape(string stateName) =>
             AllStatesOf(actionMachine).Single(state => state.name == stateName).transitions
-                .Any(transition => transition.conditions.Any(condition => condition.parameter == "CancelEmote"));
+                .FirstOrDefault(transition => transition.conditions.Any(condition => condition.parameter == "CancelEmote"));
 
-        Assert.IsTrue(HasCancelEmoteEscape(EmoteStateName), "the NotEqual exit was not duplicated against CancelEmote");
-        Assert.IsFalse(HasCancelEmoteEscape("Prepare"), "an entry-only (Equals) transition gained a CancelEmote escape");
-        Assert.IsFalse(HasCancelEmoteEscape("WaitForActionOrAFK"), "an entry-only (Greater) transition gained a CancelEmote escape");
+        Assert.IsNotNull(CancelEmoteEscape(EmoteStateName), "the NotEqual exit was not duplicated against CancelEmote");
+
+        // an emote that ends by itself carries no exit condition to duplicate, and its way out is
+        // the one it runs out into
+        var runsOut = CancelEmoteEscape(RunsOutEmoteStateName);
+        Assert.IsNotNull(runsOut, "an emote that leaves on its exit time alone gained no way to cancel it");
+        Assert.IsFalse(runsOut.hasExitTime, "the cancel waits out the emote it is cancelling");
+        var ownEnding = AllStatesOf(actionMachine).Single(state => state.name == RunsOutEmoteStateName)
+            .transitions.Single(transition => transition.hasExitTime && transition.conditions.Length == 0);
+        Assert.AreEqual(ownEnding.destinationState, runsOut.destinationState,
+            "the cancel does not lead where the state's own ending already leads");
+        Assert.AreEqual(ownEnding.destinationStateMachine, runsOut.destinationStateMachine,
+            "the cancel does not lead where the state's own ending already leads");
+
+        Assert.IsNull(CancelEmoteEscape("Prepare"), "an entry-only (Equals) transition gained a CancelEmote escape");
+        Assert.IsNull(CancelEmoteEscape("WaitForActionOrAFK"), "an entry-only (Greater) transition gained a CancelEmote escape");
+        Assert.IsNull(CancelEmoteEscape("BlendOut"), "a state no emote number leads to gained a CancelEmote escape");
     }
 
     [Test]
@@ -573,8 +601,8 @@ public class VRC3CVRActionFoldTests
         typeof(VRC3CVRCore).GetMethod("RenameEmoteClips", Flags).Invoke(null, new object[]
         {
             machine, "Action",
-            typeof(VRC3CVRCore).GetMethod("EqualsDispatchDestinationsOf", Flags)
-                .Invoke(null, new object[] { machine, emoteParameterName }),
+            ((Dictionary<AnimatorState, int>)typeof(VRC3CVRCore).GetMethod("EmoteNumbersOf", Flags)
+                .Invoke(null, new object[] { machine, emoteParameterName })).Keys,
         });
 
     [Test]
@@ -789,6 +817,32 @@ public class VRC3CVRActionFoldTests
             "an author's own emote gained the one-shot ending that belongs to a state ChilloutVR's clip was substituted into");
     }
 
+    static AnimatorStateTransition RunsOutEndingOf(AnimatorStateMachine actionMachine) =>
+        AllStatesOf(actionMachine).Single(state => state.name == RunsOutEmoteStateName).transitions
+            .Single(transition => transition.hasExitTime && transition.conditions.Length == 0);
+
+    // An emote VRChat already ended on its exit time alone needs no second ending -- but the fraction
+    // it ends at was cut to VRChat's own clip, and ChilloutVR's, now in its place, would be dropped
+    // partway through.
+    [Test]
+    public void Convert_WithAStockEmoteProxyThatEndsByItself_WaitsOutTheSubstitutedClipInFull()
+    {
+        var actionMachine = ChildMachineNamed(
+            LocomotionMachineOf(Convert(convertActionLayer: true, proxyEmotes: true)), "Action");
+
+        Assert.AreEqual(1f, RunsOutEndingOf(actionMachine).exitTime, 1e-4f,
+            "a slot ChilloutVR substituted its own emote clip into still ends where VRChat's clip did");
+    }
+
+    [Test]
+    public void Convert_WithAnAuthoredEmoteThatEndsByItself_KeepsTheExitTimeItWasAuthoredWith()
+    {
+        var actionMachine = ChildMachineNamed(LocomotionMachineOf(Convert(convertActionLayer: true)), "Action");
+
+        Assert.AreEqual(RunsOutExitTime, RunsOutEndingOf(actionMachine).exitTime, 1e-4f,
+            "an emote still playing the author's own clip was re-timed against a clip it does not play");
+    }
+
     const string VrcEmoteCompatLayerPrefix = "VRC3CVR_VRCEmoteCompat";
 
     [Test]
@@ -872,9 +926,11 @@ public class VRC3CVRActionFoldTests
         AnimatorDriver ReleaseOn(string stateName) => AllStatesOf(actionMachine)
             .Single(state => state.name == stateName).behaviours.OfType<AnimatorDriver>().SingleOrDefault();
 
-        // every emote state holds a number of its own, and each has to test against its own
+        // every emote state holds a number of its own, and each has to test against its own --
+        // including one whose only way out says nothing about the number it is holding
         foreach (var (stateName, number) in new[]
-                 { (EmoteStateName, 2f), (SecondEmoteStateName, 5f), (OneShotEmoteStateName, 7f) })
+                 { (EmoteStateName, 2f), (SecondEmoteStateName, 5f), (OneShotEmoteStateName, 7f),
+                   (RunsOutEmoteStateName, 1f) })
         {
             var release = ReleaseOn(stateName);
             Assert.IsNotNull(release, stateName + " never lets go of the emote number it holds");
@@ -1151,6 +1207,28 @@ public class VRC3CVRActionFoldTests
         // the number is what the hub dispatches on, so a number left standing shows up as the emote
         // starting over rather than as a stale parameter
         Assert.AreEqual(DrivenFrameLimit, FramesUntil(animator, layer, OneShotEmoteStateName),
+            "the emote started itself again after ending");
+    }
+
+    // The same, for the shape stock gives wave, point, backflip and sadkick: nothing on the way out
+    // names the number the state is holding, so nothing but the way in can say what to let go of.
+    [Test]
+    public void Convert_WithAnEmoteThatOnlyRunsOut_LetsTheNumberGoAndDoesNotStartItAgain()
+    {
+        var controller = Convert(convertActionLayer: true, declareVrcEmote: true);
+        var hub = LocomotionMachineOf(controller).defaultState;
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+
+        Pulse(animator, 1f);
+        Assert.Less(FramesUntil(animator, layer, RunsOutEmoteStateName), DrivenFrameLimit,
+            "fixture: the emote that only runs out never started");
+
+        Assert.Less(FramesUntil(animator, layer, hub.name), DrivenFrameLimit,
+            "the emote never ended on its own");
+        Assert.AreEqual(0, animator.GetInteger("VRCEmote"),
+            "an emote that ended on its own left its number standing, and the hub dispatches on that");
+        Assert.AreEqual(DrivenFrameLimit, FramesUntil(animator, layer, RunsOutEmoteStateName),
             "the emote started itself again after ending");
     }
 

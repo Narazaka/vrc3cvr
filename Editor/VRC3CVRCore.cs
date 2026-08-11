@@ -2707,35 +2707,24 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // plays what the wheel promises, and settles two more things the client reads off the clip's
     // name: the quick menu labels a slot after the clip it finds named for it, and an avatar counts
     // as emoting -- which is what holds its gestures back -- while the clip it plays is one of these.
-    // The slot is the emote number the state is entered on, read here rather than after
-    // ProcessStateMachine has adapted those conditions to ChilloutVR's parameter types.
     // ChilloutVR's own Emote states are native one-shots -- entered, they run their clip once and
     // leave unconditionally on exit time -- and a state substituted to play one of those clips needs
     // that same ending, or nothing but a changed number ever carries it out again.
-    static void SubstituteEmoteProxyClips(AnimatorStateMachine machine, string emoteParameterName)
+    static void SubstituteEmoteProxyClips(Dictionary<AnimatorState, int> emoteNumbers, string emoteParameterName)
     {
         var substituted = new List<AnimatorState>();
-        foreach (var transition in AllStatesOf(machine).SelectMany(state => state.transitions))
+        foreach (var entry in emoteNumbers)
         {
-            var emote = transition.destinationState;
-            if (emote == null || !(emote.motion is AnimationClip clip) || !IsVrchatPlaceholderClip(clip))
+            if (!(entry.Key.motion is AnimationClip clip) || !IsVrchatPlaceholderClip(clip))
             {
                 continue;
             }
-            foreach (var condition in transition.conditions)
+            var cckEmote = AssetDatabase.LoadAssetAtPath<AnimationClip>(
+                CckEmoteClipPath + "Emote" + entry.Value + ".anim");
+            if (cckEmote != null)
             {
-                if (condition.parameter != emoteParameterName || condition.mode != AnimatorConditionMode.Equals)
-                {
-                    continue;
-                }
-                var cckEmote = AssetDatabase.LoadAssetAtPath<AnimationClip>(
-                    CckEmoteClipPath + "Emote" + (int)condition.threshold + ".anim");
-                if (cckEmote != null)
-                {
-                    emote.motion = cckEmote;
-                    substituted.Add(emote);
-                }
-                break;
+                entry.Key.motion = cckEmote;
+                substituted.Add(entry.Key);
             }
         }
         AddOneShotEmoteEscapes(substituted, emoteParameterName);
@@ -2751,6 +2740,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     condition.parameter == emoteParameterName && condition.mode == AnimatorConditionMode.NotEqual));
             if (heldByEmote == null)
             {
+                // Already a one-shot, but of a clip that is no longer there: VRChat cut these exit
+                // times to its own animation, and the substitution would otherwise stop ChilloutVR's
+                // partway through.
+                foreach (var runsOut in transitions.Where(
+                    transition => transition.hasExitTime && transition.conditions.Length == 0))
+                {
+                    runsOut.exitTime = 1f;
+                }
                 continue;
             }
             var oneShot = new AnimatorStateTransition
@@ -2854,12 +2851,33 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return control == null ? (bool?)null : control.goalWeight == 1f;
     }
 
-    static IEnumerable<AnimatorState> EqualsDispatchDestinationsOf(AnimatorStateMachine machine, string emoteParameterName) =>
-        AllStatesOf(machine).SelectMany(state => state.transitions).Concat(machine.anyStateTransitions)
-            .Where(transition => transition.destinationState != null && transition.conditions.Any(condition =>
-                condition.parameter == emoteParameterName && condition.mode == AnimatorConditionMode.Equals))
-            .Select(transition => transition.destinationState)
-            .Distinct();
+    // Which emote each state plays, read off the number the machine enters it on, and read before
+    // ProcessStateMachine adapts those conditions to ChilloutVR's parameter types. How a state
+    // leaves does not name its emote: VRChat holds an emote that loops against its own number and
+    // lets one that ends by itself run out on exit time alone, so only the way in covers both.
+    // A state entered on two numbers keeps the first -- one state per emote is the shape every
+    // machine met so far has.
+    static Dictionary<AnimatorState, int> EmoteNumbersOf(AnimatorStateMachine machine, string emoteParameterName)
+    {
+        var numbers = new Dictionary<AnimatorState, int>();
+        foreach (var transition in AllStatesOf(machine).SelectMany(state => state.transitions)
+            .Concat(machine.anyStateTransitions))
+        {
+            if (transition.destinationState == null || numbers.ContainsKey(transition.destinationState))
+            {
+                continue;
+            }
+            foreach (var condition in transition.conditions)
+            {
+                if (condition.parameter == emoteParameterName && condition.mode == AnimatorConditionMode.Equals)
+                {
+                    numbers[transition.destinationState] = (int)condition.threshold;
+                    break;
+                }
+            }
+        }
+        return numbers;
+    }
 
     // ChilloutVR reads the name of whichever clip is actually playing on Locomotion/Emotes to
     // decide an avatar is emoting, and that flag alone is what releases VRIK for the clip's own
@@ -2916,6 +2934,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     // The machine FoldActionMachine moved in; MakeVrcEmoteCompatFeedLayer drops the VRCEmote latch
     // on its way out, once AdjustParameterNames has settled the name to drop.
     AnimatorStateMachine foldedActionMachine;
+
+    // Which emote each of its states plays (EmoteNumbersOf), kept for MakeVrcEmoteCompatFeedLayer:
+    // the number a state has to let go of is the one it was entered on.
+    Dictionary<AnimatorState, int> foldedActionEmoteNumbers = new Dictionary<AnimatorState, int>();
 
     // Set while the VRC Sitting playable is folded into the integrated locomotion layer
     // (FoldSittingMachine).
@@ -3169,10 +3191,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         // below: it adapts these conditions to ChilloutVR's own parameters -- on the Emote path the
         // NotEqual ones against a float, which drops them entirely -- and throws the VRC behaviours
         // away with them.
-        SubstituteEmoteProxyClips(actionMachine, emoteParameterName);
-        RenameEmoteClips(actionMachine, clonedLayers[0].name,
-            EqualsDispatchDestinationsOf(actionMachine, emoteParameterName));
-        AddCancelEmoteEscapes(actionMachine, emoteParameterName);
+        foldedActionEmoteNumbers = EmoteNumbersOf(actionMachine, emoteParameterName);
+        SubstituteEmoteProxyClips(foldedActionEmoteNumbers, emoteParameterName);
+        RenameEmoteClips(actionMachine, clonedLayers[0].name, foldedActionEmoteNumbers.Keys);
+        AddCancelEmoteEscapes(actionMachine, emoteParameterName, foldedActionEmoteNumbers);
 
         var addedMachines = new List<(AnimatorStateMachine machine, float blendDuration, string layerName)>();
         for (var i = 1; i < clonedLayers.Length; i++)
@@ -3190,7 +3212,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             RenameEmoteClips(added, layerName, DispatchTransitionsOf(added).Select(transition => transition.destinationState));
             foreach (var parameter in DispatchParametersOf(added))
             {
-                AddCancelEmoteEscapes(added, parameter);
+                AddCancelEmoteEscapes(added, parameter, EmoteNumbersOf(added, parameter));
             }
             addedMachines.Add((added, blendDurations[i], layerName));
         }
@@ -3361,7 +3383,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         machine.AddStateMachineTransition(added, hub);
     }
 
-    static void AddCancelEmoteEscapes(AnimatorStateMachine actionMachine, string emoteParameterName)
+    static void AddCancelEmoteEscapes(
+        AnimatorStateMachine actionMachine, string emoteParameterName, Dictionary<AnimatorState, int> emoteNumbers)
     {
         foreach (var state in AllStatesOf(actionMachine))
         {
@@ -3373,19 +3396,25 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 continue;
             }
             var transitions = state.transitions;
-            var heldByEmote = transitions.FirstOrDefault(
+            // A cancel leaves the way the state already leaves: by the exit it is held against the
+            // emote number by, or -- for an emote that ends by itself -- by the one it runs out into.
+            var wayOut = transitions.FirstOrDefault(
                 transition => transition.conditions.Any(condition =>
-                    condition.parameter == emoteParameterName && condition.mode == AnimatorConditionMode.NotEqual));
-            if (heldByEmote == null)
+                    condition.parameter == emoteParameterName && condition.mode == AnimatorConditionMode.NotEqual))
+                ?? (emoteNumbers.ContainsKey(state)
+                    ? transitions.FirstOrDefault(
+                        transition => transition.hasExitTime && transition.conditions.Length == 0)
+                    : null);
+            if (wayOut == null)
             {
                 continue;
             }
             var escape = Timed(new AnimatorStateTransition
             {
-                destinationState = heldByEmote.destinationState,
-                destinationStateMachine = heldByEmote.destinationStateMachine,
-                isExit = heldByEmote.isExit,
-            }, heldByEmote.duration);
+                destinationState = wayOut.destinationState,
+                destinationStateMachine = wayOut.destinationStateMachine,
+                isExit = wayOut.isExit,
+            }, wayOut.duration);
             escape.AddCondition(AnimatorConditionMode.If, 0f, CancelEmoteParameterName);
             ArrayUtility.Add(ref transitions, escape);
             state.transitions = transitions;
@@ -5611,22 +5640,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         // selection moved on hands the latch to the emote that comes next, and taking it down there
         // would strand the new one. The test needs two tasks because one carries a single operator:
         // the first asks whether the number is still ours, the second answers with 0 or leaves it be.
-        var holding = AllStatesOf(foldedActionMachine)
-            .Select(state => new
-            {
-                state,
-                number = state.transitions.SelectMany(transition => transition.conditions)
-                    .Where(condition => condition.parameter == vrcEmote.name
-                        && condition.mode == AnimatorConditionMode.NotEqual)
-                    .Select(condition => (float?)condition.threshold)
-                    .FirstOrDefault(),
-            })
-            .Where(entry => entry.number.HasValue)
-            .ToArray();
+        var holding = foldedActionEmoteNumbers.Where(entry => entry.Key != null).ToArray();
 
         if (holding.Length == 0)
         {
-            Debug.LogWarning($"No state of the Action animator leaves its emote on a {vrcEmote.name} condition, so nothing lowers {vrcEmote.name} once an emote ends and the avatar will play it again as soon as it finishes. Give each emote state an exit condition on the emote number, as VRChat's stock Action layer does.");
+            Debug.LogWarning($"No state of the Action animator is entered on a value of {vrcEmote.name}, so nothing lowers {vrcEmote.name} once an emote ends and the avatar will play it again as soon as it finishes. Dispatch each emote state on its own number, as VRChat's stock Action layer does.");
         }
         else
         {
@@ -5645,7 +5663,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
             foreach (var entry in holding)
             {
-                var behaviours = entry.state.behaviours;
+                var behaviours = entry.Key.behaviours;
                 ArrayUtility.Add(ref behaviours, new AnimatorDriver
                 {
                     hideFlags = HideFlags.HideInHierarchy,
@@ -5661,7 +5679,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                             aName = vrcEmote.name,
                             aParamType = vrcEmoteType,
                             bType = AnimatorDriverTask.SourceType.Static,
-                            bValue = entry.number.Value,
+                            bValue = entry.Value,
                         },
                         new AnimatorDriverTask
                         {
@@ -5679,7 +5697,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                         },
                     },
                 });
-                entry.state.behaviours = behaviours;
+                entry.Key.behaviours = behaviours;
             }
         }
 
