@@ -377,10 +377,12 @@ public class VRC3CVRGestureConversionTests
     [Test]
     public void GameStateStream_GeneratesEntriesForDeclaredParameters()
     {
-        var controller = new AnimatorController { name = "streamTest" };
-        var avatar = new GameObject("StreamTestAvatar");
+        AnimatorController controller = null;
+        GameObject avatar = null;
         try
         {
+            controller = new AnimatorController { name = "streamTest" };
+            avatar = new GameObject("StreamTestAvatar");
             controller.AddParameter("MuteSelf", AnimatorControllerParameterType.Bool);
             controller.AddParameter("Upright", AnimatorControllerParameterType.Float);
             var core = MakeStreamCore(controller, avatar);
@@ -401,18 +403,20 @@ public class VRC3CVRGestureConversionTests
         }
         finally
         {
-            Object.DestroyImmediate(avatar);
-            Object.DestroyImmediate(controller);
+            if (avatar != null) Object.DestroyImmediate(avatar);
+            if (controller != null) Object.DestroyImmediate(controller);
         }
     }
 
     [Test]
     public void GameStateStream_IsIdempotentAndKeepsForeignEntries()
     {
-        var controller = new AnimatorController { name = "streamTest" };
-        var avatar = new GameObject("StreamTestAvatar");
+        AnimatorController controller = null;
+        GameObject avatar = null;
         try
         {
+            controller = new AnimatorController { name = "streamTest" };
+            avatar = new GameObject("StreamTestAvatar");
             controller.AddParameter("VRMode", AnimatorControllerParameterType.Int);
             var core = MakeStreamCore(controller, avatar);
 
@@ -435,20 +439,22 @@ public class VRC3CVRGestureConversionTests
         }
         finally
         {
-            Object.DestroyImmediate(avatar);
-            Object.DestroyImmediate(controller);
+            if (avatar != null) Object.DestroyImmediate(avatar);
+            if (controller != null) Object.DestroyImmediate(controller);
         }
     }
 
     [Test]
     public void GameStateStream_SkippedWhenDisabledOrUnused()
     {
-        var controller = new AnimatorController { name = "streamTest" };
-        var avatarDisabled = new GameObject("StreamTestAvatarDisabled");
+        AnimatorController controller = null;
+        GameObject avatarDisabled = null;
         AnimatorController controllerUnused = null;
         GameObject avatarUnused = null;
         try
         {
+            controller = new AnimatorController { name = "streamTest" };
+            avatarDisabled = new GameObject("StreamTestAvatarDisabled");
             controller.AddParameter("MuteSelf", AnimatorControllerParameterType.Bool);
             var coreDisabled = MakeStreamCore(controller, avatarDisabled, feed: false);
             var method = typeof(VRC3CVRCore).GetMethod("MakeGameStateParameterStreams", Flags);
@@ -465,9 +471,9 @@ public class VRC3CVRGestureConversionTests
         }
         finally
         {
-            Object.DestroyImmediate(avatarDisabled);
+            if (avatarDisabled != null) Object.DestroyImmediate(avatarDisabled);
             if (avatarUnused != null) Object.DestroyImmediate(avatarUnused);
-            Object.DestroyImmediate(controller);
+            if (controller != null) Object.DestroyImmediate(controller);
             if (controllerUnused != null) Object.DestroyImmediate(controllerUnused);
         }
     }
