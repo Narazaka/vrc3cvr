@@ -6,7 +6,6 @@ Convert a VRChat SDK3 avatar to ChilloutVR with this Unity script.
 
 - Keep a BACKUP of your original project.
 - This is a fork of the forked project (https://github.com/SaracenOne/vrc3cvr) that is a fork of the original project (https://github.com/imagitama/vrc3cvr).
-- It is not recommended you convert avatars with custom locomotion controllers, only FX and Gesture controllers.
 
 Tested with:
 
@@ -16,7 +15,7 @@ Tested with:
 
 ## What does it do?
 
-Most things work as-is, except for PhysBone-specific features and features that require layers other than FX/Gesture.
+Most things work as-is, except for PhysBone-specific features.
 
 - adds a ChilloutVR avatar component (if missing)
 - sets the face mesh
@@ -30,6 +29,9 @@ Most things work as-is, except for PhysBone-specific features and features that 
 - converts each animator controller (gestures, FX, etc.) to support ChilloutVR's gesture system
   - references to `GestureLeftWeight`/`GestureRightWeight` are converted (two selectable modes: rewrite onto `GestureLeft`/`GestureRight` with no latency, or generate a weight parameter that reproduces every usage with one frame of latency)
   - converts VRCParameterDriver etc.
+- replaces ChilloutVR's own locomotion layer with the avatar's Base layer
+- folds the Action layer into that layer, so emotes play from ChilloutVR's own emote menu
+- folds the Sitting layer in the same way for an avatar with its own seated animation
 - Convert VRC Contact Senders and Receivers to CVR Pointer and CVR Advanced Avatar Trigger
   - Unlike VRC Contact, CVR Pointer and Trigger only change values when the contact collides. This difference may cause compatibility issues.
   - Changing Shape Type in game is not supported.
