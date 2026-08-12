@@ -3894,6 +3894,34 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
     }
 
+    static readonly string[] CckHandLayerNames = { "LeftHand", "RightHand" };
+
+    // ChilloutVR mutes the hands for the length of an emote by layer name -- SetLayerWeight on
+    // "LeftHand" and "RightHand" -- and its own layers under those names are the ones the Gesture
+    // playable displaces. VRChat's are named with a space in the middle, so the client's lookup
+    // finds nothing and a held gesture rides through the emote on the fingers, which is what
+    // neither platform does on its own.
+    //
+    // The client restores the layer to weight 1 when the emote ends rather than to what it found,
+    // so the name only goes to a layer that survives being handed over: one candidate for the side,
+    // weight already 1, and no layer of that name in the animator this merges into.
+    bool NameHandLayersForTheEmoteMute(AnimatorControllerLayer[] layers)
+    {
+        var renamed = false;
+        foreach (var cckName in CckHandLayerNames)
+        {
+            if (chilloutAnimatorController.layers.Any(existing => existing.name == cckName)) continue;
+            var candidates = layers.Where(layer => LettersAndDigits(layer.name) == LettersAndDigits(cckName)).ToArray();
+            if (candidates.Length != 1 || candidates[0].defaultWeight != 1f) continue;
+            candidates[0].name = cckName;
+            renamed = true;
+        }
+        return renamed;
+    }
+
+    static string LettersAndDigits(string name) =>
+        new string(name.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+
     void MergeVrcAnimatorIntoChilloutAnimator(AnimatorController originalAnimatorController, VRCBaseAnimatorID animatorID)
     {
         Debug.Log("Merging vrc animator \"" + originalAnimatorController.name + "\"...");
@@ -3950,6 +3978,10 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 controllerLayers[i] = layer;
                 layersModified = true;
             }
+        }
+        if (animatorID == VRCBaseAnimatorID.GESTURE && NameHandLayersForTheEmoteMute(controllerLayers))
+        {
+            layersModified = true;
         }
         // After the loop above, so the conditions this adds are already in CVR's own vocabulary
         // and must not go through ProcessStateMachine's VRChat-to-CVR adaptation.

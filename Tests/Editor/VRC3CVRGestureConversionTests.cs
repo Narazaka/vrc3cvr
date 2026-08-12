@@ -478,6 +478,54 @@ public class VRC3CVRGestureConversionTests
         }
     }
 
+    // ---- the hand layer names ChilloutVR mutes an emote with ----
+
+    static string[] NameHandLayers(AnimatorController destination, params AnimatorControllerLayer[] layers)
+    {
+        var core = new VRC3CVRCore();
+        typeof(VRC3CVRCore).GetField("chilloutAnimatorController", Flags).SetValue(core, destination);
+        typeof(VRC3CVRCore).GetMethod("NameHandLayersForTheEmoteMute", Flags).Invoke(core, new object[] { layers });
+        return layers.Select(layer => layer.name).ToArray();
+    }
+
+    static AnimatorControllerLayer Layer(string name, float weight = 1f)
+    {
+        return new AnimatorControllerLayer { name = name, defaultWeight = weight };
+    }
+
+    [Test]
+    public void HandLayers_TakeTheNameChilloutVrMutesThemBy_OnlyWhereTheRestoreIsHarmless()
+    {
+        var destination = new AnimatorController { name = "handLayerTest" };
+        try
+        {
+            // the stock gesture controller's names, which differ from CVR's by the space alone
+            Assert.AreEqual(
+                new[] { "LeftHand", "RightHand" },
+                NameHandLayers(destination, Layer("Left Hand"), Layer("Right Hand")));
+
+            // the client restores the layer to 1, so anything else is left where the avatar put it
+            Assert.AreEqual(
+                new[] { "Left Hand", "RightHand" },
+                NameHandLayers(destination, Layer("Left Hand", 0.5f), Layer("Right Hand")));
+
+            // one name cannot cover two layers
+            Assert.AreEqual(
+                new[] { "Left Hand", "left_hand", "RightHand" },
+                NameHandLayers(destination, Layer("Left Hand"), Layer("left_hand"), Layer("Right Hand")));
+
+            destination.AddLayer(new AnimatorControllerLayer { name = "LeftHand", defaultWeight = 1f });
+            Assert.AreEqual(
+                new[] { "Left Hand", "RightHand" },
+                NameHandLayers(destination, Layer("Left Hand"), Layer("Right Hand")),
+                "a layer already answering to the name keeps it");
+        }
+        finally
+        {
+            Object.DestroyImmediate(destination);
+        }
+    }
+
     // ---- the derived TrackingType ----
 
     static VRC3CVRCore MakeTrackingTypeCore(AnimatorController controller, GameObject avatar)
