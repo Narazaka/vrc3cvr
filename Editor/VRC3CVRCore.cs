@@ -879,12 +879,25 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         { "IsOnFriendsList", "IsFriend" },
     };
 
-    static Dictionary<string, float> nonZeroDefaultValueMap = new Dictionary<string, float>
+    // What each of these declares is what the avatar reads for the whole session, so the value is
+    // written onto the declaration rather than left at whatever the VRChat animator carried: over
+    // there the client overwrites the declared value on the first frame, which lets an author leave
+    // anything at all in it, and here nothing does.
+    static Dictionary<string, float> platformAnswerDefaultValueMap = new Dictionary<string, float>
     {
         { "Grounded", 1f },
+        // VRChat answers these from its own avatar scaling, which the wearer drives at runtime and
+        // ChilloutVR has no counterpart for, so they hold the unscaled reading.
         { "ScaleFactor", 1f },
         { "ScaleFactorInverse", 1f },
-        { "EyeHeightAsPercent", 1f },
+        { "ScaleModified", 0f },
+        // likewise a feature the platform does not have, so it is never on
+        { "Earmuffs", 0f },
+        // "3 if the avatar was built using VRChat's SDK3 or later", which is the only input there is
+        { "AvatarVersion", 3f },
+        // not derived from anything ChilloutVR reports, so the avatar reads the one value that is
+        // true of a player nobody is turning
+        { "AngularY", 0f },
         // zero is the prone band, so an unset Upright shows a frame of lying down on load
         { "Upright", 1f },
     };
@@ -4005,10 +4018,19 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     void SetNonZeroDefaultValueParameters()
     {
+        // The eye height is the avatar's own, so it is not one value for every avatar -- but it is
+        // still a constant, for the same reason the scale parameters above are: nothing on this
+        // platform moves it once the avatar is worn. VRChat states the percent against the scaling
+        // limits it would have allowed, 0.2m to 5.0m.
+        var defaults = new Dictionary<string, float>(platformAnswerDefaultValueMap)
+        {
+            ["EyeHeightAsMeters"] = vrcViewPosition.y,
+            ["EyeHeightAsPercent"] = Mathf.Clamp01((vrcViewPosition.y - 0.2f) / (5f - 0.2f)),
+        };
         var parameters = chilloutAnimatorController.parameters;
         for (var i = 0; i < parameters.Length; i++)
         {
-            if (nonZeroDefaultValueMap.TryGetValue(parameters[i].name, out var value))
+            if (defaults.TryGetValue(parameters[i].name, out var value))
             {
                 parameters[i] = new AnimatorControllerParameter
                 {

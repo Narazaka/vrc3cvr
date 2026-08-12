@@ -478,6 +478,49 @@ public class VRC3CVRGestureConversionTests
         }
     }
 
+    // ---- the parameters ChilloutVR never moves, answered with a constant ----
+
+    [Test]
+    public void UnansweredParameters_HoldTheReadingThePlatformWouldNeverChange()
+    {
+        var controller = new AnimatorController { name = "defaultsTest" };
+        try
+        {
+            // declared the way an author is free to declare them, since VRChat overwrites the
+            // declared value on the first frame and nothing here does
+            controller.parameters = new[]
+            {
+                new AnimatorControllerParameter { name = "EyeHeightAsMeters", type = AnimatorControllerParameterType.Float, defaultFloat = 99f },
+                new AnimatorControllerParameter { name = "EyeHeightAsPercent", type = AnimatorControllerParameterType.Float, defaultFloat = 99f },
+                new AnimatorControllerParameter { name = "AvatarVersion", type = AnimatorControllerParameterType.Int, defaultInt = 99 },
+                new AnimatorControllerParameter { name = "ScaleFactor", type = AnimatorControllerParameterType.Float, defaultFloat = 99f },
+                new AnimatorControllerParameter { name = "Earmuffs", type = AnimatorControllerParameterType.Bool, defaultBool = true },
+                new AnimatorControllerParameter { name = "ScaleModified", type = AnimatorControllerParameterType.Bool, defaultBool = true },
+                new AnimatorControllerParameter { name = "AngularY", type = AnimatorControllerParameterType.Float, defaultFloat = 99f },
+            };
+            var core = new VRC3CVRCore();
+            typeof(VRC3CVRCore).GetField("chilloutAnimatorController", Flags).SetValue(core, controller);
+            typeof(VRC3CVRCore).GetField("vrcViewPosition", Flags).SetValue(core, new Vector3(0f, 1.6f, 0.1f));
+
+            typeof(VRC3CVRCore).GetMethod("SetNonZeroDefaultValueParameters", Flags).Invoke(core, null);
+
+            float DefaultFloat(string name) => controller.parameters.Single(p => p.name == name).defaultFloat;
+            Assert.AreEqual(1.6f, DefaultFloat("EyeHeightAsMeters"), 1e-4f, "the avatar's own view height, in metres");
+            // (1.6 - 0.2) / (5.0 - 0.2), the scaling limits VRChat states the percent against
+            Assert.AreEqual(0.2917f, DefaultFloat("EyeHeightAsPercent"), 1e-4f);
+            Assert.AreEqual(3, controller.parameters.Single(p => p.name == "AvatarVersion").defaultInt, "SDK3 is the only input the conversion has");
+            Assert.AreEqual(1f, DefaultFloat("ScaleFactor"), 1e-4f, "unscaled, which is the only state ChilloutVR has");
+            bool DefaultBool(string name) => controller.parameters.Single(p => p.name == name).defaultBool;
+            Assert.IsFalse(DefaultBool("Earmuffs"), "a feature the platform does not have is never on");
+            Assert.IsFalse(DefaultBool("ScaleModified"));
+            Assert.AreEqual(0f, DefaultFloat("AngularY"), 1e-4f, "nobody is turning the player the conversion cannot measure");
+        }
+        finally
+        {
+            Object.DestroyImmediate(controller);
+        }
+    }
+
     // ---- the hand layer names ChilloutVR mutes an emote with ----
 
     static string[] NameHandLayers(AnimatorController destination, params AnimatorControllerLayer[] layers)
