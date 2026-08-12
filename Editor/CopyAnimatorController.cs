@@ -83,6 +83,11 @@ public class CopyAnimatorController
     {
         foreach (var param in sourceController.parameters)
         {
+            // VRChat ignores a parameter with no name, so tools generate them by accident and the
+            // avatar still uploads. ChilloutVR keys a dictionary by the name in
+            // CVRAnimatorManager.Setup() and throws, which drops the whole avatar to the default one.
+            if (string.IsNullOrEmpty(param.name)) continue;
+
             if (!targetController.parameters.Any(p => p.name == param.name))
             {
                 targetController.AddParameter(new AnimatorControllerParameter

@@ -141,5 +141,34 @@ public class VRC3CVRConversionRobustnessTests
         Object.DestroyImmediate(clip);
         Object.DestroyImmediate(controller);
     }
+
+    // VRChat ignores a parameter with no name, so a generator that adds one by accident still
+    // uploads fine and the author has no reason to suspect it. ChilloutVR keys a dictionary by the
+    // name in CVRAnimatorManager.Setup() and throws, and the client answers that by falling back to
+    // its default avatar — the whole avatar is gone, with nothing in the build log to explain it.
+    [Test]
+    public void MergedController_DropsParametersWithNoName()
+    {
+        var descriptor = VRC3CVRVerificationAvatar.Generate(TestFolder);
+        original = descriptor.gameObject;
+
+        var fx = descriptor.baseAnimationLayers
+            .First(layer => layer.type == VRC.SDK3.Avatars.Components.VRCAvatarDescriptor.AnimLayerType.FX)
+            .animatorController as AnimatorController;
+        Assert.IsNotNull(fx);
+        fx.AddParameter("", AnimatorControllerParameterType.Float);
+
+        var core = VRC3CVRCore.FromConfig(new VRC3CVRConvertConfig
+        {
+            vrcAvatarDescriptor = descriptor,
+            shouldCloneAvatar = true,
+            saveAssets = false,
+        });
+        try { core.Convert(); } finally { converted = core.chilloutAvatar; }
+
+        var merged = converted.GetComponent<ABI.CCK.Components.CVRAvatar>().avatarSettings.baseController as AnimatorController;
+        CollectionAssert.IsEmpty(merged.parameters.Where(parameter => string.IsNullOrEmpty(parameter.name)).ToArray(),
+            "the merged controller declares a parameter with no name, which makes ChilloutVR drop the avatar");
+    }
 }
 #endif

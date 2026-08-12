@@ -32,6 +32,7 @@
 - fix: the hands stop gesturing during an emote
   - ChilloutVR mutes the hands by zeroing the weight of the layers named `LeftHand` and `RightHand`. A converted Gesture layer kept the name VRChat gave it, which is spelled differently (`Left Hand` in the stock controller), so nothing was muted and the fingers kept animating
   - the Gesture layer whose name matches once case and non-alphanumeric characters are ignored is renamed to ChilloutVR's spelling. A layer is left alone if it is not the only such match, if it does not run at full weight, or if a layer of that name is already there
+- fix: a parameter with no name is dropped instead of carried over. VRChat ignores such a parameter, so a tool that generates one by accident leaves no trace and the avatar uploads normally, but ChilloutVR cannot load that avatar and leaves you in its own default avatar instead
 
 # 3.0.0-rc.2
 
