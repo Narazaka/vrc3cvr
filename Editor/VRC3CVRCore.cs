@@ -186,6 +186,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             // reading it, and this is what declares VRMode, without which they emit no DeviceMode
             // entry at all -- and an unfed VRMode reads 0, silently discretising Upright in VR.
             MakeUprightFeedLayer();
+            // Before the streams too: this is what declares the full body flag they route
+            MakeTrackingTypeFeedLayer();
             MakeGameStateParameterStreams();
             InsertChilloutOverride();
 
@@ -954,6 +956,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         // an avatar whose locomotion replaced CVR's derives Upright rather than receiving it, so it
         // stops being a synced input and becomes a driven local value (MakeUprightFeedLayer, same guard)
         if (feedGameStateParameters && vrcBaseReplacesCckLocomotion) preserveParameters.Remove("Upright");
+        // likewise TrackingType, which every client derives from the synced flag instead of receiving
+        // (MakeTrackingTypeFeedLayer)
+        if (feedGameStateParameters) preserveParameters.Remove("TrackingType");
         if (!addActionMenuModAnnotations)
         {
             impulseParameters = new HashSet<string>();
@@ -5407,6 +5412,24 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         });
     }
 
+    static AnimatorDriverTask DriverTask(AnimatorControllerParameter[] declared, AnimatorDriverTask.Operator op,
+        string target, AnimatorDriverTask.ParameterType targetType, string a, string b, float bValue)
+    {
+        return new AnimatorDriverTask
+        {
+            op = op,
+            targetName = target,
+            targetType = targetType,
+            aType = AnimatorDriverTask.SourceType.Parameter,
+            aParamType = AnimatorDriverParameterType(declared, a),
+            aName = a,
+            bType = b == null ? AnimatorDriverTask.SourceType.Static : AnimatorDriverTask.SourceType.Parameter,
+            bParamType = b == null ? AnimatorDriverTask.ParameterType.Float : AnimatorDriverParameterType(declared, b),
+            bName = b ?? "",
+            bValue = bValue,
+        };
+    }
+
     const string UprightSensorParameter = "UprightSensor";
 
     // Set while Upright is computed by the layer below instead of received from the client.
@@ -5460,22 +5483,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         chilloutAnimatorController.parameters = parameters;
 
         var declared = chilloutAnimatorController.parameters;
-        AnimatorDriverTask Task(AnimatorDriverTask.Operator op, string target, string a, string b, float bValue = 0f)
-        {
-            return new AnimatorDriverTask
-            {
-                op = op,
-                targetName = target,
-                targetType = AnimatorDriverTask.ParameterType.Float,
-                aType = AnimatorDriverTask.SourceType.Parameter,
-                aParamType = AnimatorDriverParameterType(declared, a),
-                aName = a,
-                bType = b == null ? AnimatorDriverTask.SourceType.Static : AnimatorDriverTask.SourceType.Parameter,
-                bParamType = b == null ? AnimatorDriverTask.ParameterType.Float : AnimatorDriverParameterType(declared, b),
-                bName = b ?? "",
-                bValue = bValue,
-            };
-        }
+        AnimatorDriverTask Task(AnimatorDriverTask.Operator op, string target, string a, string b, float bValue = 0f) =>
+            DriverTask(declared, op, target, AnimatorDriverTask.ParameterType.Float, a, b, bValue);
 
         var tickClip = new AnimationClip { name = "VRC3CVR_UprightTick" };
         tickClip.SetCurve("", typeof(Animator), NonSyncParameterName("UprightTick"), AnimationCurve.Constant(0f, 1f / 60f, 0f));
@@ -5548,6 +5557,95 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             },
         });
         uprightIsDerived = true;
+    }
+
+    const string FullBodyParameter = "TrackingTypeFullBody";
+
+    // VRChat's TrackingType counts the wearer's tracked points; ChilloutVR reports only whether full
+    // body is on, which leaves two values a converted humanoid can honestly report. 3 covers both
+    // head-and-hands VR and desktop -- VRChat gives desktop humanoids 3 as well, and has the avatar
+    // tell the two apart by VRMode -- and 6 covers full body. The 4 and 5 of a hip-only or feet-only
+    // rig are indistinguishable from 6 behind a single flag, and 1 belongs to generic rigs.
+    //
+    // The flag is what gets synced and every client derives the number from it, so a remote copy
+    // costs a bool rather than TrackingType's int (see MakeGameStateParameterStreams).
+    void MakeTrackingTypeFeedLayer()
+    {
+        var trackingType = NonSyncParameterName("TrackingType");
+        var parameters = chilloutAnimatorController.parameters;
+        if (!feedGameStateParameters || !parameters.Any(p => p.name == trackingType))
+        {
+            return;
+        }
+        if (!parameters.Any(p => p.name == FullBodyParameter))
+        {
+            ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+            {
+                name = FullBodyParameter,
+                type = AnimatorControllerParameterType.Bool,
+            });
+            chilloutAnimatorController.parameters = parameters;
+        }
+
+        var declared = chilloutAnimatorController.parameters;
+        var targetType = AnimatorDriverParameterType(declared, trackingType);
+        var tickClip = new AnimationClip { name = "VRC3CVR_TrackingTypeTick" };
+        tickClip.SetCurve("", typeof(Animator), NonSyncParameterName("TrackingTypeTick"), AnimationCurve.Constant(0f, 1f / 60f, 0f));
+        var recomputeState = new AnimatorState
+        {
+            hideFlags = HideFlags.HideInHierarchy,
+            name = "Recompute",
+            writeDefaultValues = false,
+            motion = tickClip,
+            behaviours = new StateMachineBehaviour[]
+            {
+                new AnimatorDriver
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    localOnly = false,
+                    EnterTasks = new List<AnimatorDriverTask>
+                    {
+                        // 3 + 3 * FullBody
+                        DriverTask(declared, AnimatorDriverTask.Operator.Multiplication, trackingType, targetType, FullBodyParameter, null, 3f),
+                        DriverTask(declared, AnimatorDriverTask.Operator.Addition, trackingType, targetType, trackingType, null, 3f),
+                    },
+                },
+            },
+        };
+        recomputeState.transitions = new AnimatorStateTransition[]
+        {
+            new AnimatorStateTransition
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                hasExitTime = true,
+                exitTime = 1f,
+                hasFixedDuration = true,
+                duration = 0f,
+                offset = 0f,
+                destinationState = recomputeState,
+            },
+        };
+        var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_TrackingType");
+        AddGeneratedLayer(new AnimatorControllerLayer
+        {
+            name = layerName,
+            defaultWeight = 1f,
+            blendingMode = AnimatorLayerBlendingMode.Override,
+            avatarMask = emptyMask,
+            stateMachine = new AnimatorStateMachine
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                name = layerName,
+                entryPosition = new Vector3(0, -100),
+                exitPosition = new Vector3(0, 200),
+                anyStatePosition = new Vector3(0, -300),
+                defaultState = recomputeState,
+                states = new ChildAnimatorState[]
+                {
+                    new ChildAnimatorState { state = recomputeState, position = new Vector3(0, 0) },
+                },
+            },
+        });
     }
 
     const string VrcEmoteCompatLayerName = "VRC3CVR_VRCEmoteCompat";
@@ -5738,15 +5836,17 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
     // VRChat built-ins that ChilloutVR does not supply to the animator. The client's parameter
     // stream provides equivalent sources; each stream type's semantics were verified against the
-    // decompiled client (DeviceMode: isUsingVr ? 1 : 0, matching VRMode).
+    // decompiled client (DeviceMode: isUsingVr ? 1 : 0, matching VRMode). The last entry is not a
+    // VRChat name: it is the input the derived TrackingType is built from (MakeTrackingTypeFeedLayer).
     static readonly (string parameterName, CVRParameterStreamEntry.Type streamType)[] GameStateParameterStreams =
     {
         ("MuteSelf", CVRParameterStreamEntry.Type.LocalPlayerMuted),
         ("VRMode", CVRParameterStreamEntry.Type.DeviceMode),
         ("Upright", CVRParameterStreamEntry.Type.AvatarUpright),
+        (FullBodyParameter, CVRParameterStreamEntry.Type.LocalPlayerFullBodyEnabled),
     };
 
-    // Feed MuteSelf/VRMode/Upright on the wearer's client via CVRParameterStream; the parameters
+    // Feed the parameters above on the wearer's client via CVRParameterStream; the parameters
     // are kept synced (AdjustParameterNames) so remotes receive the values through CVR's normal
     // parameter sync. Runs after AdjustParameterNames so parameter names are final.
     void MakeGameStateParameterStreams()
