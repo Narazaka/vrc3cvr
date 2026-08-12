@@ -4,7 +4,6 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
 
 - 元のプロジェクトのバックアップを必ず取ってください。
 - 本プロジェクトは、元のプロジェクト（ https://github.com/imagitama/vrc3cvr ）をフォークしたプロジェクト（ https://github.com/SaracenOne/vrc3cvr ）をさらにフォークしたものです。
-- Locomotionレイヤーの変換は非推奨です。FXとGestureレイヤーのみの変換を推奨します。
 
 ## 動作確認済み環境
 
@@ -14,7 +13,7 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
 
 ## 変換で行われること
 
-全体的にPhysBone固有の機能とFX/Gestureレイヤー以外が必要な機能を除けば多くの部分がそのまま動作します。
+全体的にPhysBone固有の機能を除けば多くの部分がそのまま動作します。
 
 - ChilloutVR用アバターコンポーネントの追加（存在しない場合）
 - 顔メッシュの設定
@@ -28,6 +27,9 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
 - 各Animator Controller（Gesture、FXなど）をCVR用に変換  
   - `GestureLeftWeight` / `GestureRightWeight` の参照を変換（選択可能な2方式: 遅延なしの`GestureLeft`/`GestureRight`への書き換え、または全用途を再現するweightパラメータ生成（1フレーム遅延））
   - VRCParameterDriverなども変換
+- ChilloutVR自身のlocomotionレイヤーをアバターのBaseレイヤーで置き換え
+- Actionレイヤーをそのレイヤーに畳み込み、ChilloutVR自身のエモートメニューでエモートを再生
+- 独自の着席アニメーションを持つアバターでは、Sittingレイヤーも同様に畳み込み
 - VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換
   - VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。
   - プレイ中のContactのShape Typeの変更は非対応です。
