@@ -1,5 +1,20 @@
 **[日本語](CHANGELOG.ja.md)**
 
+# Unreleased
+
+- feat: an avatar with locomotion of its own now replaces ChilloutVR's locomotion layer with it (`Convert Locomotion Animator`). VRChat's `proxy_*` placeholder clips are swapped for ChilloutVR's own, and ChilloutVR's flying, swimming and emote states are rewired onto the avatar's own state machine so they keep working. A Base layer holding only placeholders, or whose first layer has no default state, is left to ChilloutVR's locomotion with a warning
+- feat: the landing plays ChilloutVR's own landing animation on its own timing (`Play the landing animation`, on by default). Without it the converted landing freezes to a single pose and the body dips sharply
+- feat: Tracking Control in the layer that owns locomotion is left unconverted (`Convert Tracking Control in the locomotion layer`, off by default). VRChat's landing states commonly carry one, and converting it makes full-body tracking jitter in ChilloutVR
+- feat: the Action layer is folded into the locomotion layer and driven by ChilloutVR's own emote menu (`Convert Action Animator`). Layers past the first are folded too where they can be; one that cannot stand in — masked, zero default weight, additive, no conditional entry — is skipped with a warning. This works whether or not the locomotion layer is replaced. An avatar that reads `VRCEmote` gets a compatibility layer that bridges ChilloutVR's own emote parameter onto it, so the quick menu's emote and cancel buttons drive it
+- feat: the Sitting layer is folded in the same way (`Convert Sitting Animator`). Only an avatar with a seated animation of its own is affected; a stock Sitting layer is left to ChilloutVR's own seated pose. Layers past the first are not folded
+- feat: `TrackingType` is fed from the game. ChilloutVR only knows whether full body tracking is on, so only 3 (head and hands) and 6 (full body) are produced — hip-only and feet-only cannot be told apart from full body, and the generic value 1 has no equivalent
+- feat: every playable layer is converted by default. Each of these conversions judges for itself whether it can stand in for what ChilloutVR already does and leaves ChilloutVR's own layer alone when it cannot, so there is nothing left to opt into by hand. An avatar that already carries a `VRC3CVR Avatar` component keeps the settings it was saved with
+- feat: the locomotion option is no longer labelled `NOT RECOMMEND`, and the Additive option no longer warns about the bicycle pose, which the additive blending fix below removed the cause of
+- fix: the Additive layers are blended additively. They were carried over with whatever blending mode the controller had them on, which is usually Override, since the Additive playable is additive by platform rule rather than by anything in the controller — so they replaced the whole merged pose instead of adding to it. The first layer's avatar mask is no longer applied either, because VRChat ignores it and the avatar was authored with it having no effect
+- fix: `VelocityX` / `VelocityZ` are avatar-local. ChilloutVR hands the animator a world-space velocity, so a blend tree authored against VRChat's avatar-local one played the wrong motion depending on which way the avatar faced. Converted layers that read them are pointed at a generated avatar-local pair instead, which costs no sync budget
+- fix: int dropdown options line up with the values they write. ChilloutVR addresses dropdown options by list index, so an avatar whose option values did not start at 0 wrote a different value than the option said
+- fix: the hands stop gesturing during an emote. ChilloutVR mutes the hands by looking for layers named `LeftHand` / `RightHand`, which a converted Gesture layer was not called, so fingers kept animating through emotes
+
 # 3.0.0-rc.2
 
 - **BREAKING**: the NDMF plugin path is gone. `Tools -> Modular Avatar -> Manual bake avatar` no longer converts. The `VRC3CVRNDMF` component becomes `VRC3CVR Avatar` and its settings are preserved
