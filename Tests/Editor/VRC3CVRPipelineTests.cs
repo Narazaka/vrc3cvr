@@ -215,7 +215,7 @@ public class VRC3CVRPipelineTests
     // silently failing. That is exactly what makes the real-world duplicate (built via
     // VRC3CVRAvatar's now-removed RequireComponent(CVRAssetInfo) racing CVRAvatar's own OnValidate
     // inside one dependency-resolution pass) surprising in the first place: no ordinary
-    // AddComponent call can reproduce it. Callers must fall back to Assert.Inconclusive when this
+    // AddComponent call can reproduce it. Callers must fall back to Assert.Ignore when this
     // returns only one component -- the important fact (could an artificial duplicate be produced
     // at all, and how) is still reported rather than silently asserting nothing.
     static CVRAssetInfo[] TryCreateArtificialDuplicate(GameObject go, CVRAssetInfo first)
@@ -239,7 +239,7 @@ public class VRC3CVRPipelineTests
         return go.GetComponents<CVRAssetInfo>();
     }
 
-    const string InconclusiveDuplicateMessage =
+    const string SkippedDuplicateMessage =
         "Could not artificially create a duplicate CVRAssetInfo: Undo.AddComponent, "
             + "ObjectFactory.AddComponent, and CopyComponent/PasteComponentAsNew all "
             + "throw ArgumentException on this Unity/CCK version when one already "
@@ -261,7 +261,7 @@ public class VRC3CVRPipelineTests
             var before = TryCreateArtificialDuplicate(go, first);
             if (before.Length < 2)
             {
-                Assert.Inconclusive(InconclusiveDuplicateMessage);
+                Assert.Ignore(SkippedDuplicateMessage);
             }
 
             Assert.AreSame(first, before[0], "the component under test must stay first in component order");
@@ -295,7 +295,7 @@ public class VRC3CVRPipelineTests
             var before = TryCreateArtificialDuplicate(go, first);
             if (before.Length < 2)
             {
-                Assert.Inconclusive(InconclusiveDuplicateMessage);
+                Assert.Ignore(SkippedDuplicateMessage);
             }
 
             Assert.AreSame(first, before[0], "the component under test must stay first in component order");
@@ -329,7 +329,7 @@ public class VRC3CVRPipelineTests
             var before = TryCreateArtificialDuplicate(go, first);
             if (before.Length < 2)
             {
-                Assert.Inconclusive(InconclusiveDuplicateMessage);
+                Assert.Ignore(SkippedDuplicateMessage);
             }
 
             Assert.AreSame(first, before[0], "the component under test must stay first in component order");

@@ -1,0 +1,101 @@
+# The editor, its licence and the test run belong to game-ci/unity-test-runner
+# (https://game.ci/docs/github/test-runner). Nothing here touches a credential.
+#
+# That is why setup.ps1 unpacks the CCK instead of importing it: an import needs an editor,
+# an editor needs a licence, and a licence this workflow handled itself would be a licence
+# this workflow could leak.
+#
+# One deviation from the documented example, on the last step: it uploads the artifacts
+# folder whole, which includes the editor log, and an editor log names the licence serial
+# with its last four characters blanked. Masking covers the console, not the contents of a
+# file. The action prints that same log to the console anyway, so uploading only the
+# results costs nothing.
+
+name: Tests
+
+on:
+  push:
+    branches: [master, saracen]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+# One licence, one seat, returned when a run ends. Two runs at once means one of them has
+# its licence taken away part-way through.
+concurrency:
+  group: tests
+  cancel-in-progress: false
+
+jobs:
+  editmode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      # Same layout as release.yml: the repository is a package that lives under Assets.
+      - uses: actions/checkout@v4
+        with:
+          path: vrc3cvr
+
+      - name: Install vrc-get
+        run: |
+          curl -sSL -o /usr/local/bin/vrc-get https://github.com/vrc-get/vrc-get/releases/download/v1.9.2/x86_64-unknown-linux-musl-vrc-get
+          echo "ed3ebff3f896fee05ab971877fe4431279ae5321409473212ed19ad5f836a652  /usr/local/bin/vrc-get" | sha256sum -c -
+          chmod +x /usr/local/bin/vrc-get
+
+      # Files only -- no editor, so nothing here needs a licence. pwsh ships with the runner.
+      - name: Build the test project
+        run: >
+          pwsh -NoProfile -File vrc3cvr/Tests/Project~/setup.ps1
+          -Path "$GITHUB_WORKSPACE/test-project"
+
+      # An editor opening this project for the first time imports it while it runs, and the
+      # tests are collected from whatever had compiled by then: 7 of 241, all of them the
+      # SDK's own, in the run that found this. The second editor opens a project that is
+      # already there. Warming it needs an editor, and an editor outside this action would
+      # mean a licence in this workflow.
+      - name: Import the project
+        uses: game-ci/unity-test-runner@v4
+        continue-on-error: true
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: test-project
+          testMode: editmode
+          unityVersion: 2022.3.22f1
+          artifactsPath: import-artifacts
+
+      - uses: game-ci/unity-test-runner@v4
+        id: tests
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: test-project
+          testMode: editmode
+          unityVersion: 2022.3.22f1
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          checkName: EditMode tests
+
+      # A run that collects none of this repository's tests passes: it has nothing to fail.
+      # That is what the step above exists to prevent, so it is worth saying out loud when
+      # it did not work.
+      - name: Check the suite was collected
+        run: |
+          total=$(grep -o '<test-run [^>]*' "${{ steps.tests.outputs.artifactsPath }}/editmode-results.xml" \
+            | grep -o 'total="[0-9]*"' | head -1 | tr -dc '0-9')
+          echo "collected $total tests"
+          test "${total:-0}" -ge 100 || { echo "the suite did not come out of the project"; exit 1; }
+
+      # The results, not the folder they sit in: see the header.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: ${{ steps.tests.outputs.artifactsPath }}/*-results.xml

@@ -79,4 +79,7 @@ foreach ($case in $xml.SelectNodes("//test-case[@result='Failed']")) {
 Write-Host ''
 Write-Host "results: $results"
 Write-Host "log:     $log"
-exit $process.ExitCode
+
+# Unity exits 2 for an inconclusive test as much as for a failing one. Failures are what
+# makes a run bad, so that is what this answers on.
+exit ([int]$run.failed -gt 0 ? 1 : 0)

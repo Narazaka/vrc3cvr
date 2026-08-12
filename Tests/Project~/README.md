@@ -28,14 +28,41 @@ state, so it is something on the machine holding a handle rather than a step tha
 
 ## Requirements
 
-- Unity 2022.3.22f1 (the version the project template pins). Pass `-UnityPath` if it is
-  not in the Hub's default location
+`setup.ps1` starts no editor: it clones, downloads, unpacks and links, and that is all.
+Only `run-tests.ps1` needs Unity.
+
 - [`vrc-get`](https://github.com/vrc-get/vrc-get) on `PATH` — `winget install anatawa12.vrc-get`
 - `git`
+- Unity 2022.3.22f1, for `run-tests.ps1`. Pass `-UnityPath` if it is not in the Hub's
+  default location
 
 The VRChat SDK and the CCK are both fetched without credentials: the SDK through
 `vrc-get`, the CCK from the same public API the CCK download page reads, which reports the
 current version and its download URL.
+
+The CCK is unpacked rather than imported. A `.unitypackage` is a gzipped tar holding one
+directory per asset — the file, its `.meta`, and the path it belongs at — so putting those
+where they belong is all an import does to a project on disk. Doing it without an editor is
+what keeps a licence out of this script, and out of CI.
+
+## In CI
+
+`.github/workflows/tests.yml` builds the project with `setup.ps1` and then hands the
+editor, the licence and the test run to
+[game-ci/unity-test-runner](https://game.ci/docs/github/test-runner). `run-tests.ps1` is not
+used there: it is for running the suite by hand.
+
+Three secrets, all of them the action's: `UNITY_LICENSE`, `UNITY_EMAIL`, `UNITY_PASSWORD`.
+`UNITY_LICENSE` holds a Personal licence file (`.ulf`), contents and all — activate one in
+Unity Hub under `Preferences → Licenses → Add` and copy what lands in
+`C:\ProgramData\Unity\Unity_lic.ulf`. A licence is not tied to a platform, so one activated
+on Windows is what a Linux runner uses. Taking a licence overwrites that file, so put the
+one already there aside first if it belongs to a different account.
+
+**A licence file carries a serial, and an editor prints that serial into its log** with the
+last four characters blanked. GitHub's masking covers the console and not the contents of a
+file, so the workflow uploads the test results rather than the folder the action puts them
+in, which also holds that log. The console shows the log either way.
 
 ## This does not replace the Test Runner window
 
