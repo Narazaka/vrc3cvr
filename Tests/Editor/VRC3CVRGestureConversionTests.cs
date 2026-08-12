@@ -477,5 +477,89 @@ public class VRC3CVRGestureConversionTests
             if (controllerUnused != null) Object.DestroyImmediate(controllerUnused);
         }
     }
+
+    // ---- the derived TrackingType ----
+
+    static VRC3CVRCore MakeTrackingTypeCore(AnimatorController controller, GameObject avatar)
+    {
+        var core = MakeStreamCore(controller, avatar);
+        typeof(VRC3CVRCore).GetField("generatedLayerNames", Flags).SetValue(core, new System.Collections.Generic.HashSet<string>());
+        typeof(VRC3CVRCore).GetMethod("MakeTrackingTypeFeedLayer", Flags).Invoke(core, null);
+        return core;
+    }
+
+    [Test]
+    public void TrackingTypeFeedLayer_DerivesThreeAndSixFromTheSyncedFlag()
+    {
+        AnimatorController controller = null;
+        GameObject avatar = null;
+        try
+        {
+            controller = new AnimatorController { name = "trackingTypeTest" };
+            avatar = new GameObject("TrackingTypeTestAvatar");
+            controller.AddParameter("#TrackingType", AnimatorControllerParameterType.Int);
+            var core = MakeTrackingTypeCore(controller, avatar);
+
+            var flag = controller.parameters.Single(p => p.name == "TrackingTypeFullBody");
+            Assert.AreEqual(AnimatorControllerParameterType.Bool, flag.type, "a bool is what makes this cheaper than syncing the int");
+            var driver = (ABI.CCK.Components.AnimatorDriver)controller.layers
+                .Single(l => l.name.StartsWith("VRC3CVR_TrackingType"))
+                .stateMachine.states.Single().state.behaviours.Single();
+            Assert.IsFalse(driver.localOnly, "a remote copy has to derive the same value the wearer does");
+
+            // run the tasks the way the client would, so the constants are checked by the numbers
+            // they produce: head and hands (which is also desktop) is 3, full body is 6
+            float Derive(float fullBody)
+            {
+                var values = new System.Collections.Generic.Dictionary<string, float>
+                {
+                    { "TrackingTypeFullBody", fullBody }, { "#TrackingType", 0f },
+                };
+                foreach (var task in driver.EnterTasks)
+                {
+                    var a = values[task.aName];
+                    values[task.targetName] =
+                        task.op == ABI.CCK.Components.AnimatorDriverTask.Operator.Multiplication
+                            ? a * task.bValue
+                            : a + task.bValue;
+                }
+                return values["#TrackingType"];
+            }
+            Assert.AreEqual(3f, Derive(0f));
+            Assert.AreEqual(6f, Derive(1f));
+
+            typeof(VRC3CVRCore).GetMethod("MakeGameStateParameterStreams", Flags).Invoke(core, null);
+            Assert.AreEqual(
+                new[] { "LocalPlayerFullBodyEnabled -> TrackingTypeFullBody" },
+                avatar.GetComponent<ABI.CCK.Components.CVRParameterStream>().entries
+                    .Select(e => e.type + " -> " + e.parameterName).ToArray());
+        }
+        finally
+        {
+            if (avatar != null) Object.DestroyImmediate(avatar);
+            if (controller != null) Object.DestroyImmediate(controller);
+        }
+    }
+
+    [Test]
+    public void TrackingTypeFeedLayer_SkippedWhenParameterUnused()
+    {
+        AnimatorController controller = null;
+        GameObject avatar = null;
+        try
+        {
+            controller = new AnimatorController { name = "trackingTypeTest" };
+            avatar = new GameObject("TrackingTypeTestAvatar");
+            MakeTrackingTypeCore(controller, avatar);
+
+            Assert.AreEqual(0, controller.layers.Length);
+            Assert.IsEmpty(controller.parameters, "the flag costs sync, so an avatar that ignores TrackingType must not get one");
+        }
+        finally
+        {
+            if (avatar != null) Object.DestroyImmediate(avatar);
+            if (controller != null) Object.DestroyImmediate(controller);
+        }
+    }
 }
 #endif
