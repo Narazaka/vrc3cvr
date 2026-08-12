@@ -478,6 +478,37 @@ public class VRC3CVRGestureConversionTests
         }
     }
 
+    // ---- the parameters ChilloutVR never moves, answered with a constant ----
+
+    [Test]
+    public void UnansweredParameters_HoldTheReadingThePlatformWouldNeverChange()
+    {
+        var controller = new AnimatorController { name = "defaultsTest" };
+        try
+        {
+            controller.AddParameter("EyeHeightAsMeters", AnimatorControllerParameterType.Float);
+            controller.AddParameter("EyeHeightAsPercent", AnimatorControllerParameterType.Float);
+            controller.AddParameter("AvatarVersion", AnimatorControllerParameterType.Int);
+            controller.AddParameter("ScaleFactor", AnimatorControllerParameterType.Float);
+            var core = new VRC3CVRCore();
+            typeof(VRC3CVRCore).GetField("chilloutAnimatorController", Flags).SetValue(core, controller);
+            typeof(VRC3CVRCore).GetField("vrcViewPosition", Flags).SetValue(core, new Vector3(0f, 1.6f, 0.1f));
+
+            typeof(VRC3CVRCore).GetMethod("SetNonZeroDefaultValueParameters", Flags).Invoke(core, null);
+
+            float DefaultFloat(string name) => controller.parameters.Single(p => p.name == name).defaultFloat;
+            Assert.AreEqual(1.6f, DefaultFloat("EyeHeightAsMeters"), 1e-4f, "the avatar's own view height, in metres");
+            // (1.6 - 0.2) / (5.0 - 0.2), the scaling limits VRChat states the percent against
+            Assert.AreEqual(0.2917f, DefaultFloat("EyeHeightAsPercent"), 1e-4f);
+            Assert.AreEqual(3, controller.parameters.Single(p => p.name == "AvatarVersion").defaultInt, "SDK3 is the only input the conversion has");
+            Assert.AreEqual(1f, DefaultFloat("ScaleFactor"), 1e-4f, "unscaled, which is the only state ChilloutVR has");
+        }
+        finally
+        {
+            Object.DestroyImmediate(controller);
+        }
+    }
+
     // ---- the hand layer names ChilloutVR mutes an emote with ----
 
     static string[] NameHandLayers(AnimatorController destination, params AnimatorControllerLayer[] layers)
