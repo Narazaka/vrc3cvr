@@ -17,6 +17,10 @@ reached with reflection.
 Run them from **Window → General → Test Runner → EditMode → Run All**, or filter on the
 `VRC3CVR` class-name prefix.
 
+They can also be run from a command line, in a Unity project built to hold nothing but the
+dependencies — which is far quicker than a project full of avatar assets, and is the shape
+a CI job needs. See `Project~/README.md`.
+
 - `VRC3CVRGestureConversionTests` — gesture number conversion, both `gestureWeightConversionMode`
   modes, weight-driven blend tree restructuring, the derived-weight feed layer, the
   VelocityMagnitude layer, the game-state parameter streams
