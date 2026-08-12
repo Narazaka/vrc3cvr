@@ -30,17 +30,17 @@ public class VRC3CVRConvertConfig
     public bool autoBake = true;
     public bool saveAssets = true;
 
-    public bool convertLocomotionLayer = false;
+    public bool convertLocomotionLayer = true;
     // Only takes effect when the Base layer replaces the CVR locomotion layer, which
     // convertLocomotionLayer gates.
     public bool playLandingAnimation = true;
     // Covers every machine that ends up in the layer owning CVR's locomotion: the Base layer that
     // takes it over and the machines folded into it.
     public bool convertLocomotionTrackingControl = false;
-    public bool convertAdditiveLayer = false;
+    public bool convertAdditiveLayer = true;
     public bool convertGestureLayer = true;
-    public bool convertActionLayer = false;
-    public bool convertSittingLayer = false;
+    public bool convertActionLayer = true;
+    public bool convertSittingLayer = true;
     public bool convertFXLayer = true;
     public bool preserveParameterSyncState = true;
     public bool convertVRCAnimatorLocomotionControl = true;
