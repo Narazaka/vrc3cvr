@@ -248,10 +248,15 @@ public class VRC3CVRActionFoldTests
     static AnimatorStateMachine ChildMachineNamed(AnimatorStateMachine machine, string name) =>
         machine.stateMachines.Select(child => child.stateMachine).FirstOrDefault(child => child != null && child.name == name);
 
+    // Every fold puts the entries it adds at the front of the state's own transitions, so which
+    // one sits at index 0 is decided by which fold ran last. Read the entry by what it answers.
     static void AssertEntry(
-        AnimatorStateTransition transition, AnimatorStateMachine destination, string parameter, AnimatorConditionMode mode)
+        AnimatorState from, AnimatorStateMachine destination, string parameter, AnimatorConditionMode mode)
     {
-        Assert.AreEqual(destination, transition.destinationStateMachine, parameter + " entry leads elsewhere");
+        var transition = from.transitions.SingleOrDefault(candidate =>
+            candidate.destinationStateMachine == destination &&
+            candidate.conditions.Any(condition => condition.parameter == parameter));
+        Assert.IsNotNull(transition, parameter + " entry is missing");
         Assert.IsFalse(transition.hasExitTime, parameter + " entry waits for an exit time");
         Assert.AreEqual(0.25f, transition.duration, 1e-4f, parameter + " entry does not blend for the Action fade-in");
         Assert.AreEqual(1, transition.conditions.Length, parameter + " entry");
@@ -272,9 +277,8 @@ public class VRC3CVRActionFoldTests
         Assert.IsNull(ChildMachineNamed(root, "Emotes"),
             "ChilloutVR's own emote machine was kept alongside the folded one");
 
-        var hubTransitions = hub.transitions;
-        AssertEntry(hubTransitions[0], actionMachine, "Emote", AnimatorConditionMode.Greater);
-        AssertEntry(hubTransitions[1], actionMachine, "AFK", AnimatorConditionMode.If);
+        AssertEntry(hub, actionMachine, "Emote", AnimatorConditionMode.Greater);
+        AssertEntry(hub, actionMachine, "AFK", AnimatorConditionMode.If);
 
         var leave = root.GetStateMachineTransitions(actionMachine).Single();
         Assert.AreEqual(hub, leave.destinationState, "the folded machine has no way back to the hub");
@@ -341,8 +345,8 @@ public class VRC3CVRActionFoldTests
         foreach (var stance in new[] { "Standard Locomotion", "Crouching Locomotion", "Prone Locomotion" })
         {
             var state = root.states.Single(child => child.state.name == stance).state;
-            AssertEntry(state.transitions[0], actionMachine, "Emote", AnimatorConditionMode.Greater);
-            AssertEntry(state.transitions[1], actionMachine, "AFK", AnimatorConditionMode.If);
+            AssertEntry(state, actionMachine, "Emote", AnimatorConditionMode.Greater);
+            AssertEntry(state, actionMachine, "AFK", AnimatorConditionMode.If);
         }
         Assert.AreEqual(hub, root.states.Single(child => child.state.name == "Standard Locomotion").state,
             "fixture: ChilloutVR's hub is no longer Standard Locomotion");
@@ -389,7 +393,7 @@ public class VRC3CVRActionFoldTests
         var hub = root.defaultState;
         var actionMachine = ChildMachineNamed(root, "Action");
 
-        AssertEntry(hub.transitions[0], actionMachine, "VRCEmote", AnimatorConditionMode.Greater);
+        AssertEntry(hub, actionMachine, "VRCEmote", AnimatorConditionMode.Greater);
 
         var standWave = AllStatesOf(actionMachine).Single(state => state.name == EmoteStateName);
         Assert.IsTrue(
