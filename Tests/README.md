@@ -14,12 +14,14 @@ EditMode NUnit tests. They live in the predefined `Assembly-CSharp-Editor` (the 
 asmdef, and a test asmdef cannot reference predefined assemblies), so private members are
 reached with reflection.
 
-Run them from **Window → General → Test Runner → EditMode → Run All**, or filter on the
-`VRC3CVR` class-name prefix.
+Run them in a project built to hold nothing but the dependencies, which `Project~/setup.ps1`
+builds and `Project~/run-tests.ps1` runs the suite in. A test costs a second there against
+nearly three in a project carrying an avatar's assets, and it leaves the editor you are
+working in alone. `.github/workflows/tests.yml` runs the same thing on every push. See
+`Project~/README.md`.
 
-They can also be run from a command line, in a Unity project built to hold nothing but the
-dependencies — which is far quicker than a project full of avatar assets, and is the shape
-a CI job needs. See `Project~/README.md`.
+The **Window → General → Test Runner → EditMode** window is the way to run them against a
+real avatar, in a project that has one.
 
 - `VRC3CVRGestureConversionTests` — gesture number conversion, both `gestureWeightConversionMode`
   modes, weight-driven blend tree restructuring, the derived-weight feed layer, the
