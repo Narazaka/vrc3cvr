@@ -21,6 +21,24 @@ public class VRC3CVRConvertConfig
         DerivedParameter,
     }
 
+    // What becomes of the states an Action layer ran with the Action playable's weight at zero --
+    // stock's own blend-out, and the cleanup an emote tool parks in once an emote is over, which
+    // VRChat showed nothing of while the machine sat there. VRChat could do that because the
+    // playable's weight is separate from the machine running; the fold has one layer playing one
+    // state at a time and no weight left, so it can keep the wait or keep the pose but not both,
+    // and which one matters is the avatar's own business.
+    public enum ActionZeroWeightStateMode
+    {
+        // Cut the wait, by moving the exit time to just past the way in. The avatar is back on its
+        // feet within a frame, and the next emote starts about that clip earlier than in VRChat.
+        PassThrough,
+        // Leave the machine as its author left it and let the wait be seen: the timing is VRChat's
+        // own and so is the pose waited in, which VRChat never showed -- and a cleanup clip that
+        // animates nothing leaves the avatar in Unity's own humanoid default, the bicycle pose,
+        // for as long as that clip runs.
+        KeepAsAuthored,
+    }
+
     public VRCAvatarDescriptor vrcAvatarDescriptor;
     public string outputDirName = "VRC3CVR_Output";
     public bool shouldCloneAvatar = true;
@@ -46,6 +64,7 @@ public class VRC3CVRConvertConfig
     public bool convertVRCAnimatorLocomotionControl = true;
     public bool convertVRCAnimatorTrackingControl = true;
     public GestureWeightConversionMode gestureWeightConversionMode = GestureWeightConversionMode.FoldToGestureLeft;
+    public ActionZeroWeightStateMode actionZeroWeightStateMode = ActionZeroWeightStateMode.PassThrough;
     // Feed MuteSelf/VRMode/Upright from the game via CVRParameterStream. The stream only runs on
     // the wearer's client, so these parameters are declared synced (no # prefix) and CVR's normal
     // parameter sync carries the values to remotes. Sync cost per CVRAvatar.GetParameterSyncUsage:
@@ -86,6 +105,7 @@ public class VRC3CVRConvertConfig
         convertVRCAnimatorLocomotionControl = other.convertVRCAnimatorLocomotionControl;
         convertVRCAnimatorTrackingControl = other.convertVRCAnimatorTrackingControl;
         gestureWeightConversionMode = other.gestureWeightConversionMode;
+        actionZeroWeightStateMode = other.actionZeroWeightStateMode;
         feedGameStateParameters = other.feedGameStateParameters;
         convertVRCContactSendersAndReceivers = other.convertVRCContactSendersAndReceivers;
         collisionTagConvertionConfig = other.collisionTagConvertionConfig;

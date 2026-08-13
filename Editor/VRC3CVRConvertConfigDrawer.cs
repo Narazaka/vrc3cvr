@@ -33,10 +33,14 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring ConvertVRCAnimatorTrackingControl => new istring("Convert VRC Animator Tracking Control", "VRC Animator Tracking Controlを変換");
         public static istring ConvertVRCAnimatorTrackingControlDescription => new istring("Converts the VRC Animator Tracking Control to BodyControl", "VRC Animator Tracking ControlをBodyControlに変換");
         public static istring GestureWeight => new istring("Gesture Weight", "ジェスチャーWeight");
-        public static istring GestureWeightConversionMode => new istring("GestureLeftWeight/GestureRightWeight conversion", "GestureLeftWeight/GestureRightWeightの変換方式");
+        public static istring GestureWeightConversionMode => new istring("GestureWeight", "GestureWeight");
         public static istring GestureWeightModeFold => new istring("No latency (a few rare usages incompatible)", "遅延なし (一部の稀な使い方で非互換)");
         public static istring GestureWeightModeDerived => new istring("Covers every usage (1 frame latency)", "すべての使い方に対応 (1フレーム遅延)");
-        public static istring GestureWeightConversionModeDescription => new istring("\"No latency\" reacts instantly but misses one rare usage (weight-driven motion outside Fist). \"Covers every usage\" handles it too, one frame late. The default is fine for most avatars.", "「遅延なし」は即応ですが、Fist以外でweight駆動が動く稀な使い方のみ非対応。「すべての使い方に対応」はそれも再現しますが1フレーム遅れます。通常は既定のままで問題ありません。");
+        public static istring GestureWeightConversionModeDescription => new istring("\"No latency\" misses one rare usage (weight-driven motion outside Fist). \"Covers every usage\" handles it too, one frame late. The default is fine for most avatars.", "「遅延なし」はFist以外でweight駆動が動く稀な使い方のみ非対応。「すべての使い方に対応」はそれも再現しますが1フレーム遅れます。通常は既定のままで問題ありません。");
+        public static istring ActionZeroWeightStateMode => new istring("Zero-Weight States", "ウエイト0ステート");
+        public static istring ActionZeroWeightStatePassThrough => new istring("Leave at once (emotes follow on sooner)", "すぐ抜ける (次のエモートが早く始まる)");
+        public static istring ActionZeroWeightStateKeep => new istring("Change nothing (the bicycle pose is seen)", "変更しない (自転車ポーズが見える)");
+        public static istring ActionZeroWeightStateModeDescription => new istring("Fixes the time an avatar spends in the bicycle pose -- Unity's own humanoid default -- once an emote is switched or cancelled.", "エモートの切り替え・キャンセル直後に、一定時間アバターが自転車ポーズ（Unity Humanoidの既定ポーズ）になる問題への対処です。");
         public static istring GameStateParameters => new istring("Game State Parameters", "ゲーム状態パラメータ");
         public static istring FeedGameStateParameters => new istring("Feed MuteSelf / VRMode / Upright", "MuteSelf / VRMode / Upright を供給");
         public static istring FeedGameStateParametersDescription => new istring("Feeds VRChat's VRMode / MuteSelf / Upright from the game state and syncs them to remote viewers (only the ones the avatar uses; costs sync bits).", "VRChat組み込みのVRMode / MuteSelf / Uprightをゲーム状態から供給し、リモートにも同期します（アバターが使うもののみ。同期容量を消費します）。");
@@ -259,6 +263,14 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             Toggle(nameof(VRC3CVRConvertConfig.convertGestureLayer), T.ConvertGestureAnimator, T.ConvertGestureAnimatorDescription);
             
             Toggle(nameof(VRC3CVRConvertConfig.convertActionLayer), T.ConvertActionAnimator, T.ConvertActionAnimatorDescription);
+
+            EditorGUI.indentLevel++;
+
+            EnumPopup(nameof(VRC3CVRConvertConfig.actionZeroWeightStateMode), T.ActionZeroWeightStateMode,
+                new string[] { T.ActionZeroWeightStatePassThrough, T.ActionZeroWeightStateKeep },
+                T.ActionZeroWeightStateModeDescription);
+
+            EditorGUI.indentLevel--;
 
             Toggle(nameof(VRC3CVRConvertConfig.convertSittingLayer), T.ConvertSittingAnimator, T.ConvertSittingAnimatorDescription);
 

@@ -32,6 +32,11 @@
 - fix: the hands stop gesturing during an emote
   - ChilloutVR mutes the hands by zeroing the weight of the layers named `LeftHand` and `RightHand`. A converted Gesture layer kept the name VRChat gave it, which is spelled differently (`Left Hand` in the stock controller), so nothing was muted and the fingers kept animating
   - the Gesture layer whose name matches once case and non-alphanumeric characters are ignored is renamed to ChilloutVR's spelling. A layer is left alone if it is not the only such match, if it does not run at full weight, or if a layer of that name is already there
+- fix: an emote no longer leaves the avatar in the bicycle pose for a time before the next one starts (`Zero-Weight States`)
+  - an emote layer parks the body in a state once the emote is over -- stock's own blend-out, and the cleanup an emote tool waits a whole clip out in -- and VRChat showed nothing of either, since the Action playable's weight was already down by then. The fold has one layer playing one state at a time and no weight left to hide them with, so they played for real, and a cleanup clip that animates nothing plays Unity's own humanoid default
+  - these states are now left as soon as they are reached, which keeps whatever they carry firing. Choose `Change nothing` to keep VRChat's own timing instead, at the price of seeing what it was spent on. Leaving at once means the next emote follows on sooner than it does in VRChat, and the two cannot both be had in one layer
+  - whatever the weight had left to fade over is handed to the way out, which is the same crossfade by another name. Stock asks for half a second of it and leaves a fifth of the way through its own clip, so the return to locomotion after an emote now blends over the rest rather than cutting
+  - a layer whose weight control does not bound the raised span clearly enough to say which states were unseen is left alone
 - fix: a parameter with no name is dropped instead of carried over. VRChat ignores such a parameter, so a tool that generates one by accident leaves no trace and the avatar uploads normally, but ChilloutVR cannot load that avatar and leaves you in its own default avatar instead
 
 # 3.0.0-rc.2

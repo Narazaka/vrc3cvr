@@ -23,6 +23,9 @@ public class VRC3CVRActionFoldTests
     const string RunsOutEmoteStateName = "StandWaveRunsOut";
     const float RunsOutExitTime = 0.6f;
     const string SecondLayerStateName = "ActionSecondLayerState";
+    // read off the Action controller the VRChat SDK ships (vrc_AvatarV3ActionLayer)
+    const float StockBlendOutFade = 0.5f;
+    const float StockBlendOutExitTime = 0.2f;
 
     const string ProxyEmoteClipName = "proxy_stand_dance";
     // ChilloutVR's wheel offers eight emotes, so the seated slot has nothing standing in the same place
@@ -54,7 +57,7 @@ public class VRC3CVRActionFoldTests
     // weight, the emote itself, and a BlendOut that drops the weight and leaves through Exit.
     static AnimatorController MakeActionController(bool authored, bool declareVrcEmote = false,
         bool addedLayer = false, bool addedLayerMasked = false, string addedLayerParameter = AddedLayerParameterName,
-        bool proxyEmotes = false)
+        bool proxyEmotes = false, bool addedLayerLeavesTheWeightRaised = false, float addedLayerFadeSeconds = 0f)
     {
         var controller = AnimatorController.CreateAnimatorControllerAtPath(ActionFoldTestFolder + "/Action.controller");
         var emoteParameter = declareVrcEmote ? "VRCEmote" : "Emote";
@@ -90,7 +93,11 @@ public class VRC3CVRActionFoldTests
         runsOutEmote.motion = clip;
 
         var blendOut = machine.AddState("BlendOut");
-        blendOut.AddStateMachineBehaviour<VRCPlayableLayerControl>().goalWeight = 0f;
+        // stock's own numbers: the weight is asked for half a second of fade, and the state is left
+        // a fifth of the way through its clip -- well before that fade is over
+        var dropWeight = blendOut.AddStateMachineBehaviour<VRCPlayableLayerControl>();
+        dropWeight.goalWeight = 0f;
+        dropWeight.blendDuration = StockBlendOutFade;
 
         wait.AddTransition(prepare).AddCondition(AnimatorConditionMode.Greater, 0f, emoteParameter);
         prepare.AddTransition(emote).AddCondition(AnimatorConditionMode.Equals, 2f, emoteParameter);
@@ -104,7 +111,11 @@ public class VRC3CVRActionFoldTests
         var runsOut = runsOutEmote.AddTransition(blendOut);
         runsOut.hasExitTime = true;
         runsOut.exitTime = RunsOutExitTime;
-        blendOut.AddExitTransition().hasExitTime = true;
+        var blendOutExit = blendOut.AddExitTransition();
+        blendOutExit.hasExitTime = true;
+        blendOutExit.exitTime = StockBlendOutExitTime;
+        blendOutExit.hasFixedDuration = true;
+        blendOutExit.duration = 0f;
 
         // what a built avatar's Action still is underneath whatever its author replaced: VRChat's
         // own placeholders, which nothing outside its client swaps for an animation
@@ -127,7 +138,8 @@ public class VRC3CVRActionFoldTests
 
         if (addedLayer)
         {
-            AddNEmoteShapedLayer(controller, clip, addedLayerMasked, addedLayerParameter);
+            AddNEmoteShapedLayer(controller, clip, addedLayerMasked, addedLayerParameter,
+                addedLayerLeavesTheWeightRaised, addedLayerFadeSeconds);
         }
 
         return controller;
@@ -135,8 +147,9 @@ public class VRC3CVRActionFoldTests
 
     // What an emote-adding tool leaves on the Action playable, NEmote's shape down to the state
     // names: an empty idle the layer sits in, one state per emote entered on its own number, and a
-    // Reset that runs out and drops back to the idle.
-    static void AddNEmoteShapedLayer(AnimatorController controller, AnimationClip clip, bool masked, string parameterName)
+    // Reset that drops the playable weight again, runs out, and drops back to the idle.
+    static void AddNEmoteShapedLayer(AnimatorController controller, AnimationClip clip, bool masked,
+        string parameterName, bool leavesTheWeightRaised = false, float fadeSeconds = 0f)
     {
         if (!controller.parameters.Any(parameter => parameter.name == parameterName))
         {
@@ -174,16 +187,28 @@ public class VRC3CVRActionFoldTests
             var reset = machine.AddState("Reset" + n);
             reset.motion = clip;
             reset.writeDefaultValues = false;
+            if (!leavesTheWeightRaised)
+            {
+                var dropWeight = reset.AddStateMachineBehaviour<VRCPlayableLayerControl>();
+                dropWeight.goalWeight = 0f;
+                dropWeight.blendDuration = fadeSeconds;
+            }
 
             idle.AddTransition(emote).AddCondition(AnimatorConditionMode.Equals, n, parameterName);
             emote.AddTransition(reset).AddCondition(AnimatorConditionMode.NotEqual, n, parameterName);
-            reset.AddTransition(idle).hasExitTime = true;
+            // the tool's own timing: the reset plays the idle clip through in full before dropping back
+            var back = reset.AddTransition(idle);
+            back.hasExitTime = true;
+            back.exitTime = 1f;
         }
     }
 
     AnimatorController Convert(bool convertActionLayer, bool authoredAction = true, bool authoredBase = true,
         bool declareVrcEmote = false, bool vrcEmoteIsSynced = true, bool addedLayer = false, bool addedLayerMasked = false,
-        string addedLayerParameter = AddedLayerParameterName, bool proxyEmotes = false)
+        string addedLayerParameter = AddedLayerParameterName, bool proxyEmotes = false,
+        bool addedLayerLeavesTheWeightRaised = false, float addedLayerFadeSeconds = 0f,
+        VRC3CVRConvertConfig.ActionZeroWeightStateMode actionZeroWeightStateMode =
+            VRC3CVRConvertConfig.ActionZeroWeightStateMode.PassThrough)
     {
         var descriptor = VRC3CVRVerificationAvatar.Generate(ActionFoldTestFolder);
         originalAvatar = descriptor.gameObject;
@@ -222,7 +247,8 @@ public class VRC3CVRActionFoldTests
             type = VRCAvatarDescriptor.AnimLayerType.Action,
             isDefault = false,
             animatorController = MakeActionController(
-                authoredAction, declareVrcEmote, addedLayer, addedLayerMasked, addedLayerParameter, proxyEmotes),
+                authoredAction, declareVrcEmote, addedLayer, addedLayerMasked, addedLayerParameter, proxyEmotes,
+                addedLayerLeavesTheWeightRaised, addedLayerFadeSeconds),
         };
         descriptor.baseAnimationLayers = layers;
 
@@ -233,6 +259,7 @@ public class VRC3CVRActionFoldTests
             saveAssets = false,
             convertLocomotionLayer = true,
             convertActionLayer = convertActionLayer,
+            actionZeroWeightStateMode = actionZeroWeightStateMode,
         });
         try { core.Convert(); } finally { convertedAvatar = core.chilloutAvatar; }
         Assert.IsNotNull(convertedAvatar);
@@ -450,13 +477,104 @@ public class VRC3CVRActionFoldTests
         var back = AllStatesOf(added).Single(state => state.name == "Reset1").transitions.Single();
         Assert.IsTrue(back.isExit, "the way back to the idle was not turned into a way out of the machine");
         Assert.IsNull(back.destinationState);
-        Assert.IsTrue(back.hasExitTime, "the exit time the reset was timed against was lost");
         Assert.IsNotNull(AllStatesOf(added).SingleOrDefault(state => state.name == AddedLayerIdleStateName),
             "the idle the machine is entered through was removed");
 
         var leave = root.GetStateMachineTransitions(added).Single();
         Assert.AreEqual(root.defaultState, leave.destinationState, "the folded machine has no way back to the hub");
         Assert.AreEqual(0, leave.conditions.Length, "the return to the hub is conditional");
+    }
+
+    // The first layer answers the same rule as the ones a tool adds: stock's own blend-out sits past
+    // the control that dropped the weight, so VRChat showed nothing of it either.
+    [Test]
+    public void Convert_WithAnAuthoredActionAnimator_PassesStraightThroughItsBlendOut()
+    {
+        var action = ChildMachineNamed(LocomotionMachineOf(Convert(convertActionLayer: true)), "Action");
+
+        var back = AllStatesOf(action).Single(state => state.name == "BlendOut").transitions
+            .Single(transition => transition.isExit);
+        Assert.LessOrEqual(back.exitTime, StockBlendOutExitTime,
+            "the blend-out is held for longer than its author asked");
+        // it has no clip of its own, so a second is what it runs for and its exit time is that second
+        // read as a fraction: whatever of the fade is not waited out in the state is blended out on
+        // the way to the hub, and the half second is neither lost nor served twice
+        Assert.AreEqual(StockBlendOutFade, back.exitTime + back.duration, 1e-2f,
+            "the fade the weight was dropped over came out a different length");
+        Assert.IsTrue(back.hasFixedDuration, "a fade measured in seconds was written as a fraction of a clip");
+    }
+
+    [Test]
+    public void Convert_WithTheZeroWeightStatesKeptAsAuthored_LeavesTheBlendOutAlone()
+    {
+        var action = ChildMachineNamed(
+            LocomotionMachineOf(Convert(convertActionLayer: true,
+                actionZeroWeightStateMode: VRC3CVRConvertConfig.ActionZeroWeightStateMode.KeepAsAuthored)),
+            "Action");
+
+        var back = AllStatesOf(action).Single(state => state.name == "BlendOut").transitions
+            .Single(transition => transition.isExit);
+        Assert.AreEqual(StockBlendOutExitTime, back.exitTime, 1e-4f, "the wait stock wrote was rewritten");
+        Assert.AreEqual(0f, back.duration, 1e-4f, "the way out stock wrote was given a blend of its own");
+    }
+
+    [Test]
+    public void Convert_WithAnAddedActionLayer_PassesStraightThroughTheStatesItRanAtZeroWeight()
+    {
+        var added = ChildMachineNamed(
+            LocomotionMachineOf(Convert(convertActionLayer: true, addedLayer: true)), AddedLayerMachineName);
+
+        foreach (var name in new[] { "Reset1", "Reset2" })
+        {
+            var back = AllStatesOf(added).Single(state => state.name == name).transitions.Single();
+            // the way in is a tenth of the clip, so anything past that and well short of the whole
+            Assert.Less(back.exitTime, 0.2f,
+                name + " still waits its clip out, which VRChat played with the layer's weight down");
+            Assert.Greater(back.exitTime, 0.1f,
+                name + " is left on an exit time it has already gone past, which waits a whole clip more");
+        }
+    }
+
+    [Test]
+    public void Convert_WithTheCleanupKeptAsAuthored_LeavesTheStatesItRanAtZeroWeightAlone()
+    {
+        var added = ChildMachineNamed(
+            LocomotionMachineOf(Convert(convertActionLayer: true, addedLayer: true,
+                actionZeroWeightStateMode: VRC3CVRConvertConfig.ActionZeroWeightStateMode.KeepAsAuthored)),
+            AddedLayerMachineName);
+
+        var reset = AllStatesOf(added).Single(state => state.name == "Reset1");
+        Assert.AreEqual(1f, reset.transitions.Single().exitTime, 1e-4f, "the wait its author wrote was rewritten");
+        Assert.AreEqual("MyOwnWave", reset.motion.name, "the clip its author gave it was replaced");
+    }
+
+    // A drop the tool asked to be faded is a stretch the state was still part of the pose through,
+    // and what VRChat mixed it away over the way out now mixes it away over.
+    [Test]
+    public void Convert_WithTheWeightFadedOutRatherThanDropped_HandsTheFadeToTheWayOut()
+    {
+        var added = ChildMachineNamed(
+            LocomotionMachineOf(Convert(convertActionLayer: true, addedLayer: true, addedLayerFadeSeconds: 0.25f)),
+            AddedLayerMachineName);
+
+        var back = AllStatesOf(added).Single(state => state.name == "Reset1").transitions.Single();
+        Assert.Less(back.exitTime, 0.2f, "the state is waited out rather than left on sight");
+        Assert.IsTrue(back.hasFixedDuration, "a fade measured in seconds was written as a fraction of a clip");
+        // its clip runs a second, so its exit time reads straight off as one
+        Assert.AreEqual(0.25f, back.exitTime + back.duration, 1e-2f,
+            "the crossfade the weight was faded out over came out a different length");
+    }
+
+    [Test]
+    public void Convert_WithAnAddedActionLayerThatNeverDropsTheWeight_LeavesItsTimingAlone()
+    {
+        var added = ChildMachineNamed(
+            LocomotionMachineOf(Convert(convertActionLayer: true, addedLayer: true, addedLayerLeavesTheWeightRaised: true)),
+            AddedLayerMachineName);
+
+        var back = AllStatesOf(added).Single(state => state.name == "Reset1").transitions.Single();
+        Assert.AreEqual(1f, back.exitTime, 1e-4f,
+            "a machine that never says where its raised span ends had its timing rewritten on a guess");
     }
 
     [Test]
@@ -1126,6 +1244,30 @@ public class VRC3CVRActionFoldTests
         animator.SetInteger(AddedLayerParameterName, 0);
         Assert.Less(FramesUntil(animator, layer, hub.name), DrivenFrameLimit,
             "clearing the number never carried the avatar back to the hub through the reset");
+    }
+
+    // What the state VRChat ran at zero weight costs once the fold plays it for real: the reset holds
+    // the body still for as long as its clip runs, between the emote just left and whatever comes
+    // next. A state with an empty clip runs a second, which is what the wait measured on a converted
+    // avatar came to.
+    [Test]
+    public void Convert_WithAnAddedActionLayersNumberCleared_PassesStraightThroughTheReset()
+    {
+        Convert(convertActionLayer: true, addedLayer: true);
+        var animator = DriveAnimator(convertedAvatar);
+        var layer = LocomotionLayerIndex(animator);
+
+        animator.SetInteger(AddedLayerParameterName, 1);
+        Assert.Less(FramesUntil(animator, layer, "Emote1"), DrivenFrameLimit,
+            "fixture: the added layer's emote never started");
+
+        animator.SetInteger(AddedLayerParameterName, 0);
+        Assert.Less(FramesUntil(animator, layer, "Reset1"), DrivenFrameLimit,
+            "fixture: clearing the number never reached the reset");
+        // the state is still current while the transition out of it blends, so what is left is that
+        // blend and the frame it took to answer -- against a clip that would have held it 60
+        Assert.LessOrEqual(FramesUntilNot(animator, layer, "Reset1"), 10,
+            "the reset stood the avatar still, and for as long as the clip VRChat played unseen");
     }
 
     [Test]

@@ -2879,6 +2879,24 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             : state.behaviours.OfType<VRCPlayableLayerControl>().FirstOrDefault(
                 behaviour => behaviour.layer == VRC.SDKBase.VRC_PlayableLayerControl.BlendableLayer.Action);
 
+    // The other side of the span above: the states VRChat ran the Action playable at zero weight
+    // through, each against the seconds its own control spent fading that weight out -- the stretch
+    // it was still partly seen through, zero wherever the drop was immediate or came from elsewhere.
+    // Null wherever the span itself is, since a state is only known to be unseen if the span is.
+    static Dictionary<AnimatorState, float> ActionPlayableWeightZeroStates(
+        AnimatorStateMachine machine, string layerName)
+    {
+        var raised = ActionPlayableWeightRaisedStates(machine, layerName);
+        if (raised == null)
+        {
+            return null;
+        }
+        var raisedStates = new HashSet<AnimatorState>(raised);
+        return AllStatesOf(machine)
+            .Where(state => !raisedStates.Contains(state))
+            .ToDictionary(state => state, state => ActionPlayableLayerControlOf(state)?.blendDuration ?? 0f);
+    }
+
     static bool? ActionPlayableLayerControlGoal(AnimatorState state)
     {
         var control = ActionPlayableLayerControlOf(state);
@@ -3222,16 +3240,18 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         var actionMachine = clonedLayers[0].stateMachine;
         actionMachine.name = FoldedActionMachineName;
         foldedActionMachine = actionMachine;
-        // All three read the machine as VRChat left it, so all three run before the processing
+        // All of these read the machine as VRChat left it, so all of them run before the processing
         // below: it adapts these conditions to ChilloutVR's own parameters -- on the Emote path the
         // NotEqual ones against a float, which drops them entirely -- and throws the VRC behaviours
         // away with them.
+        var actionWeightZeroStates = ActionPlayableWeightZeroStates(actionMachine, clonedLayers[0].name);
         foldedActionEmoteNumbers = EmoteNumbersOf(actionMachine, emoteParameterName);
         SubstituteEmoteProxyClips(foldedActionEmoteNumbers, emoteParameterName);
         RenameEmoteClips(actionMachine, clonedLayers[0].name, foldedActionEmoteNumbers.Keys);
         AddCancelEmoteEscapes(actionMachine, emoteParameterName, foldedActionEmoteNumbers);
 
-        var addedMachines = new List<(AnimatorStateMachine machine, float blendDuration, string layerName)>();
+        var addedMachines = new List<(AnimatorStateMachine machine, float blendDuration, string layerName,
+            Dictionary<AnimatorState, float> weightZeroStates)>();
         for (var i = 1; i < clonedLayers.Length; i++)
         {
             var refusal = AddedActionLayerRefusal(clonedLayers[i]);
@@ -3244,12 +3264,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             // kept, since the machine is about to be renamed and the warnings below name the layer
             var layerName = clonedLayers[i].name;
             added.name = FoldedActionMachineNamePrefix + layerName;
+            // read here, since the processing below throws away the controls it is read off
+            var weightZero = ActionPlayableWeightZeroStates(added, layerName);
             RenameEmoteClips(added, layerName, DispatchTransitionsOf(added).Select(transition => transition.destinationState));
             foreach (var parameter in DispatchParametersOf(added))
             {
                 AddCancelEmoteEscapes(added, parameter, EmoteNumbersOf(added, parameter));
             }
-            addedMachines.Add((added, blendDurations[i], layerName));
+            addedMachines.Add((added, blendDurations[i], layerName, weightZero));
         }
 
         // registered before the processing below so this machine's conditions are adapted against
@@ -3296,12 +3318,14 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         }
 
         machine.AddStateMachineTransition(actionMachine, hub);
+        PassZeroWeightStatesThrough(actionMachine, actionWeightZeroStates);
 
         var y = 0f;
         foreach (var added in addedMachines)
         {
             y += 200f;
-            FoldAddedActionLayer(machine, hub, added.machine, added.blendDuration, added.layerName, new Vector3(1200f, y, 0f));
+            FoldAddedActionLayer(machine, hub, added.machine, added.blendDuration, added.layerName,
+                added.weightZeroStates, new Vector3(1200f, y, 0f));
         }
     }
 
@@ -3358,9 +3382,95 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         return null;
     }
 
+    // How far past the way in the exit time below is put. Small enough to be crossed by the frame
+    // after the state became current, at any frame rate a client runs and any length the clip is.
+    const float PassThroughMargin = 0.01f;
+
+    // The earliest exit time a state can actually be left on, which is neither of the two ways of
+    // writing "at once" that read like it: an exit time is answered where the state's own normalized
+    // time crosses it, and a state is not current until the transition into it has run, by which
+    // point it has already played that transition's worth of itself. An exit time behind that point
+    // went by while the machine was still in transition and could not answer it, and is not answered
+    // until the clip comes round to it again -- exactly the wait this is meant to take out -- while
+    // a transition with no exit time and no condition is never evaluated at all and the state keeps
+    // the body for good. So the earliest one that answers is just past the longest way in.
+    static float PassThroughExitTime(AnimatorStateMachine machine, AnimatorState state)
+    {
+        var length = MotionSeconds(state);
+        var speed = Mathf.Max(state.speed, 0f);
+        var waysIn = AllStatesOf(machine)
+            .SelectMany(from => from.transitions.Select(transition => (transition, from)))
+            .Concat(machine.anyStateTransitions.Select(transition => (transition, from: (AnimatorState)null)))
+            .Where(way => way.transition.destinationState == state)
+            // an entry transition has no length of its own, and neither has one measured in the
+            // state it leaves once that state is gone: a second stands in for a length there is none of
+            .Select(way => way.transition.offset +
+                (way.transition.hasFixedDuration ? way.transition.duration : way.transition.duration * MotionSeconds(way.from))
+                * speed / length);
+        return Mathf.Min(waysIn.DefaultIfEmpty(0f).Max() + PassThroughMargin, 1f);
+    }
+
+    // A state with nothing to play, or nothing with a length, runs for a second.
+    static float MotionSeconds(AnimatorState state)
+    {
+        var seconds = state != null && state.motion != null ? state.motion.averageDuration : 0f;
+        return seconds > 0f ? seconds : 1f;
+    }
+
+    // Every state a folded machine ran with the Action playable's weight at zero, left as soon as it
+    // is reached. What VRChat put there is the stretch after an emote that the weight was already
+    // down over: stock's own blend-out, and the cleanup an emote tool waits a whole clip out in. The
+    // fold has one layer playing one state at a time and no weight left to hide either with, so the
+    // pose is either seen or the wait it was spent on is dropped, and which of those an avatar wants
+    // is what the mode answers. Where the machine does not bound the span at all its states are not
+    // known to have been unseen, and nothing is touched.
+    void PassZeroWeightStatesThrough(
+        AnimatorStateMachine machine, Dictionary<AnimatorState, float> weightZeroStates)
+    {
+        if (weightZeroStates == null || actionZeroWeightStateMode != ActionZeroWeightStateMode.PassThrough)
+        {
+            return;
+        }
+        // the state a machine is entered at is its landing point, and a way out taken on sight would
+        // carry the fold straight back out of the machine it was just dispatched into
+        foreach (var zero in weightZeroStates.Where(zero => zero.Key != machine.defaultState))
+        {
+            PassThroughAtOnce(machine, zero.Key, zero.Value);
+        }
+    }
+
+    // Left through the first exit the machine can answer after the state was entered, so that the
+    // pose VRChat kept to itself is held for a frame rather than a clip. The state is still entered
+    // and still left through its own way out, so what it carries -- the driver an emote tool clears
+    // its own number from -- fires as it did. What VRChat spent that clip on is not spent: the next
+    // emote starts that much earlier here than there.
+    //
+    // Whatever the weight had left to fade out over is not skipped but handed to the way out, which
+    // is the same crossfade by another name: VRChat mixed the state away over those seconds, and a
+    // transition of that length mixes it away over the same ones. What the state itself is still
+    // held for comes off that, since the fade started when the state was entered and stock's own
+    // blend-out leaves partway through its own -- half a second asked for, a fifth of a clip waited.
+    static void PassThroughAtOnce(AnimatorStateMachine machine, AnimatorState state, float fadeSeconds)
+    {
+        foreach (var transition in state.transitions.Where(
+            transition => transition.isExit && transition.hasExitTime))
+        {
+            transition.exitTime = Mathf.Min(transition.exitTime, PassThroughExitTime(machine, state));
+            var authored = transition.hasFixedDuration
+                ? transition.duration
+                : transition.duration * MotionSeconds(state);
+            var left = fadeSeconds - transition.exitTime * MotionSeconds(state);
+            if (left > authored)
+            {
+                transition.hasFixedDuration = true;
+                transition.duration = left;
+            }
+        }
+    }
+
     void FoldAddedActionLayer(
         AnimatorStateMachine machine, AnimatorState hub, AnimatorStateMachine added, float blendDuration,
-        string layerName, Vector3 position)
+        string layerName, Dictionary<AnimatorState, float> weightZeroStates, Vector3 position)
     {
         var dispatches = DispatchTransitionsOf(added).Select(transition => transition.conditions).ToList();
         if (dispatches.Count == 0)
@@ -3414,6 +3524,8 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 transition.isExit = true;
             }
         }
+
+        PassZeroWeightStatesThrough(added, weightZeroStates);
 
         machine.AddStateMachineTransition(added, hub);
     }
