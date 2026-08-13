@@ -16,6 +16,7 @@ using ABI.CCK.Scripts;
 using VRC.SDK3.Dynamics.Contact.Components;
 using VRC.SDK3.Dynamics.Constraint.Components;
 using VRCConstraintBase = VRC.Dynamics.VRCConstraintBase;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 [Serializable]
 public class VRC3CVRCore : VRC3CVRConvertConfig
@@ -134,6 +135,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         {
             Debug.Log("Starting to convert...");
 
+            var totalStopwatch = Stopwatch.StartNew();
+
+            var setupStopwatch = Stopwatch.StartNew();
             AssetDatabase.Refresh();
 
             // Generate Combined hand animations
@@ -148,13 +152,21 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             emptyMask = LoadMask("vrc3cvrEmptyMask.mask");
             fullMask = LoadMask("vrc3cvrFullMask.mask");
             musclesOnlyMask = LoadMask("vrc3cvrMusclesOnly.mask");
+            setupStopwatch.Stop();
 
+            var cloneStopwatch = Stopwatch.StartNew();
             CreateChilloutAvatar();
             GetValuesFromVrcAvatar();
             CreateChilloutComponentIfNeeded();
             PopulateChilloutComponent();
+            cloneStopwatch.Stop();
+
+            var mergeStopwatch = Stopwatch.StartNew();
             CreateEmptyChilloutAnimator();
             MergeVrcAnimatorsIntoChilloutAnimator();
+            mergeStopwatch.Stop();
+
+            var contactsStopwatch = Stopwatch.StartNew();
             contactReceiverParameters = new HashSet<string>();
             if (convertVRCContactSendersAndReceivers)
             {
@@ -173,6 +185,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 ConvertVrcConstraintsToUnityConstraints();
                 RemapAnimationOfConstraintComponent();
             }
+            contactsStopwatch.Stop();
+
+            var parametersStopwatch = Stopwatch.StartNew();
             SetAnimator();
             ConvertVrcParametersToChillout();
             SetNonZeroDefaultValueParameters();
@@ -190,7 +205,9 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             MakeTrackingTypeFeedLayer();
             MakeGameStateParameterStreams();
             InsertChilloutOverride();
+            parametersStopwatch.Stop();
 
+            var componentsStopwatch = Stopwatch.StartNew();
             ConvertVrcComponents();
             if (shouldDeleteVRCAvatarDescriptorAndPipelineManager)
             {
@@ -201,19 +218,25 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             {
                 HideOriginalAvatar();
             }
+            componentsStopwatch.Stop();
 
+            var saveStopwatch = Stopwatch.StartNew();
             if (saveAssets)
             {
                 SaveChilloutAnimator();
                 SaveChilloutOverride();
             }
+            saveStopwatch.Stop();
 
             // Clear the cache
             avatarMaskCombineCache = new Dictionary<(AvatarMask, AvatarMask), AvatarMask>();
             gestureMask = null;
             generatedLayerNames = new HashSet<string>();
 
+            totalStopwatch.Stop();
+
             Debug.Log("Conversion complete!");
+            Debug.Log($"VRC3CVR: convert timings setup={setupStopwatch.Elapsed.TotalSeconds:0.000}s clone={cloneStopwatch.Elapsed.TotalSeconds:0.000}s merge={mergeStopwatch.Elapsed.TotalSeconds:0.000}s contacts={contactsStopwatch.Elapsed.TotalSeconds:0.000}s parameters={parametersStopwatch.Elapsed.TotalSeconds:0.000}s components={componentsStopwatch.Elapsed.TotalSeconds:0.000}s save={saveStopwatch.Elapsed.TotalSeconds:0.000}s total={totalStopwatch.Elapsed.TotalSeconds:0.000}s");
         }
         finally
         {
