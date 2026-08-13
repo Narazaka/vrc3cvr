@@ -8,19 +8,24 @@
   - the landing plays ChilloutVR's landing animation on its own timing (`Play the landing animation`, on by default). Without it the landing freezes to a single pose and the body dips sharply
   - Tracking Control in this layer is left unconverted (`Convert Tracking Control in the locomotion layer`, off by default). VRChat's landing states commonly carry one, and converting it makes full-body tracking jitter in ChilloutVR
   - a Base layer holding only placeholders, or whose first layer has no default state, is left to ChilloutVR's own locomotion with a warning
-- feat: the Action layer is folded into the locomotion layer and driven from ChilloutVR's own emote menu (`Convert Action Animator`)
+- feat: the Action layer is merged into the locomotion layer and played from ChilloutVR's own emote menu (`Convert Action Animator`)
   - this works whether or not the locomotion layer is replaced
   - an Action animator that reads `VRCEmote` gets a generated layer feeding it from ChilloutVR's own emote parameter, so the quick menu's emote and cancel buttons drive it
-  - layers past the first are folded too, unless the layer holds its emotes back by a means the fold has no equivalent for: an avatar mask, a zero default weight, additive blending, a first state with no conditional transition out of it, a return to that state from AnyState, or sub-state-machines of its own. Such a layer is skipped with a warning naming the reason, since its emotes simply go missing
-- feat: the Sitting layer is folded in the same way (`Convert Sitting Animator`)
+  - layers past the first are merged too, unless the layer holds its emotes back by a means the merge cannot handle: an avatar mask, a zero default weight, additive blending, a first state with no conditional transition out of it, a return to that state from AnyState, or sub-state-machines of its own. Such a layer is skipped with a warning naming the reason, since its emotes simply go missing
+- feat: the Sitting layer is merged in the same way (`Convert Sitting Animator`)
   - only an avatar with a seated animation of its own is affected; a stock Sitting layer is left to ChilloutVR's own seated pose
-  - layers past the first are not folded
+  - layers past the first are left out
 - feat: `TrackingType` is fed from the game
   - ChilloutVR only knows whether full body tracking is on, so only 3 (head and hands) and 6 (full body) are produced
   - hip-only and feet-only cannot be told apart from full body, and the generic value 1 has no equivalent
 - feat: every playable layer is converted by default
   - each conversion judges for itself whether it can stand in for what ChilloutVR already does, and leaves ChilloutVR's own layer alone when it cannot
   - an avatar that already carries a `VRC3CVR Avatar` component keeps the settings it was saved with
+- feat: the settings are sorted into sections that fold
+  - every heading folds and starts folded, so what greets you is the list of what can be set rather than all of it at once, with the convert button in reach
+  - the parameter settings share one heading, the VRC components another, and the ones kept only for the conversions that came before them sit under `Legacy` at the end
+  - the step numbers are gone, and each setting is named after what it sits on rather than after the machinery behind it
+- feat: the `VRC3CVR Avatar` component has an icon of its own, and does not wear it in the scene view where it would sit over the avatar
 - feat: the locomotion option is no longer labelled `NOT RECOMMEND`, and the Additive option no longer warns about the bicycle pose
 - fix: Additive layers are blended additively
   - the Additive playable is additive by platform rule rather than by anything in the controller, so its layers are usually authored on Override. They were carried over on Override and replaced the merged pose instead of adding to it
@@ -33,7 +38,7 @@
   - ChilloutVR mutes the hands by zeroing the weight of the layers named `LeftHand` and `RightHand`. A converted Gesture layer kept the name VRChat gave it, which is spelled differently (`Left Hand` in the stock controller), so nothing was muted and the fingers kept animating
   - the Gesture layer whose name matches once case and non-alphanumeric characters are ignored is renamed to ChilloutVR's spelling. A layer is left alone if it is not the only such match, if it does not run at full weight, or if a layer of that name is already there
 - fix: an emote no longer leaves the avatar in the bicycle pose for a time before the next one starts (`Zero-Weight States`)
-  - an emote layer parks the body in a state once the emote is over -- stock's own blend-out, and the cleanup an emote tool waits a whole clip out in -- and VRChat showed nothing of either, since the Action playable's weight was already down by then. The fold has one layer playing one state at a time and no weight left to hide them with, so they played for real, and a cleanup clip that animates nothing plays Unity's own humanoid default
+  - an emote layer parks the body in a state once the emote is over -- stock's own blend-out, and the cleanup an emote tool waits a whole clip out in -- and VRChat showed nothing of either, since the Action playable's weight was already down by then. The merged layer plays one state at a time and has no weight left to hide them with, so they played for real, and a cleanup clip that animates nothing plays Unity's own humanoid default
   - these states are now left as soon as they are reached, which keeps whatever they carry firing. Choose `Change nothing` to keep VRChat's own timing instead, at the price of seeing what it was spent on. Leaving at once means the next emote follows on sooner than it does in VRChat, and the two cannot both be had in one layer
   - whatever the weight had left to fade over is handed to the way out, which is the same crossfade by another name. Stock asks for half a second of it and leaves a fifth of the way through its own clip, so the return to locomotion after an emote now blends over the rest rather than cutting
   - a layer whose weight control does not bound the raised span clearly enough to say which states were unseen is left alone

@@ -30,8 +30,8 @@ Most things work as-is, except for PhysBone-specific features.
   - references to `GestureLeftWeight`/`GestureRightWeight` are converted (two selectable modes: rewrite onto `GestureLeft`/`GestureRight` with no latency, or generate a weight parameter that reproduces every usage with one frame of latency)
   - converts VRCParameterDriver etc.
 - replaces ChilloutVR's own locomotion layer with the avatar's Base layer
-- folds the Action layer into that layer, so emotes play from ChilloutVR's own emote menu
-- folds the Sitting layer in the same way for an avatar with its own seated animation
+- merges the Action layer into that layer, so emotes play from ChilloutVR's own emote menu
+- merges the Sitting layer in the same way for an avatar with its own seated animation
 - Convert VRC Contact Senders and Receivers to CVR Pointer and CVR Advanced Avatar Trigger
   - Unlike VRC Contact, CVR Pointer and Trigger only change values when the contact collides. This difference may cause compatibility issues.
   - Changing Shape Type in game is not supported.

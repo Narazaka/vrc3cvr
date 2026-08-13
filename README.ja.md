@@ -28,8 +28,8 @@ VRChat SDK3のアバターをChilloutVR用に変換します。
   - `GestureLeftWeight` / `GestureRightWeight` の参照を変換（選択可能な2方式: 遅延なしの`GestureLeft`/`GestureRight`への書き換え、または全用途を再現するweightパラメータ生成（1フレーム遅延））
   - VRCParameterDriverなども変換
 - ChilloutVR自身のlocomotionレイヤーをアバターのBaseレイヤーで置き換え
-- Actionレイヤーをそのレイヤーに畳み込み、ChilloutVR自身のエモートメニューでエモートを再生
-- 独自の着席アニメーションを持つアバターでは、Sittingレイヤーも同様に畳み込み
+- Actionレイヤーをそのレイヤーにまとめ、ChilloutVR自身のエモートメニューでエモートを再生
+- 独自の着席アニメーションを持つアバターでは、Sittingレイヤーも同様にまとめる
 - VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換
   - VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。
   - プレイ中のContactのShape Typeの変更は非対応です。
