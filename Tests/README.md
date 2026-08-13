@@ -74,9 +74,9 @@ CCK Control Panel, or drive both programmatically — the CCK exposes
 `ContentBuilderAPI.BuildAndUpload(assetInfo, BuildConfig.Default, uploadInfo, new LegalAssurance(true, true), ct)`,
 which needs no UI (see issue #23).
 
-Tick **Convert locomotion animator**, **Convert action animator** and **Convert sitting animator**:
-all three are off by default, and the L and E checks are about the avatar's own Base, Action and
-Sitting layers, which the conversion only looks at when they are on.
+Leave **Convert locomotion animator**, **Convert action animator** and **Convert sitting animator**
+on: the L and E checks are about the avatar's own Base, Action and Sitting layers, which the
+conversion only looks at when they are.
 
 Upload once, then **reuse the same content ids on every later run**: an upload replaces whatever
 id it is given, and CVR accounts have a limited number of content slots, so uploading fresh each

@@ -21,7 +21,7 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring ConvertGestureAnimator => new istring("Convert Gesture Animator (hands)", "Gestureレイヤーを変換 (手)");
         public static istring ConvertGestureAnimatorDescription => new istring("If your avatar overwrites the default finger animations when performing expressions", "アバターが表情を実行するときにデフォルトの指のアニメーションを上書きする場合はON");
         public static istring ConvertActionAnimator => new istring("Convert Action Animator (emotes)", "Actionレイヤーを変換 (エモート)");
-        public static istring ConvertActionAnimatorDescription => new istring("Folds the emote machine into the locomotion layer, driven by ChilloutVR's own emote menu. Only the first layer of the Action animator comes across.", "エモートの機械をlocomotionレイヤーに畳み込み、ChilloutVR自身のエモートメニューで動かします。Actionアニメーターは1層目のみが対象です。");
+        public static istring ConvertActionAnimatorDescription => new istring("Folds the emote machine into the locomotion layer, driven by ChilloutVR's own emote menu. A layer the fold has no equivalent for is left out, with a warning naming the reason.", "エモートの機械をlocomotionレイヤーに畳み込み、ChilloutVR自身のエモートメニューで動かします。畳み込みでは代替できないレイヤーは、理由を挙げた警告を出して対象外になります。");
         public static istring ConvertSittingAnimator => new istring("Convert Sitting Animator (seats)", "Sittingレイヤーを変換 (着席)");
         public static istring ConvertSittingAnimatorDescription => new istring("Only applies to an avatar with its own sitting animations; a stock Sitting layer is left to ChilloutVR's own seated pose.", "独自の着席アニメーションを持つアバターのみが対象で、標準のSittingレイヤーはChilloutVRの着席ポーズに任せます。");
         public static istring ConvertFXAnimator => new istring("Convert FX Animator (blendshapes, particles, ect.)", "FXレイヤーを変換 (ブレンドシェイプ、パーティクルなど)");
