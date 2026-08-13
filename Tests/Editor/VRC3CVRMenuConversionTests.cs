@@ -65,6 +65,13 @@ public class VRC3CVRMenuConversionTests
         };
     }
 
+    static VRCExpressionsMenu.Control Button(string name, string paramName, float value)
+    {
+        var control = Toggle(name, paramName, value);
+        control.type = VRCExpressionsMenu.Control.ControlType.Button;
+        return control;
+    }
+
     static VRCExpressionsMenu.Control RadialPuppet(string name, string subParamName)
     {
         return new VRCExpressionsMenu.Control
@@ -427,12 +434,12 @@ public class VRC3CVRMenuConversionTests
     }
 
     [Test]
-    public void NegativeToggleValue_IsDroppedWithWarning()
+    public void NegativeToggleValue_IsKeptThroughTheIndirectionLayer()
     {
         // CVR dropdown options carry no per-option value field -- the option's list index is the
         // value it sets (AddCondition(Equals, i, ...) in CVRAdvancedAvatarSettings) -- so there is
-        // no index that could stand in for a negative control.value. It is dropped, with a warning,
-        // rather than shifting the whole option list to make room for it.
+        // no index that could stand for a negative control.value. The menu drives a local selector
+        // instead, and the generated layer writes the negative value the option means.
         core.useHierarchicalDropdownMenuName = false; // isolate from the flat-menu naming bug below
         SetMenu(Menu(
             Toggle("Negative", "Mode", -1f),
@@ -440,15 +447,228 @@ public class VRC3CVRMenuConversionTests
             Toggle("One", "Mode", 1f)));
         SetParams(Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue: 0f));
 
-        LogAssert.Expect(LogType.Warning, new Regex(Regex.Escape(
-            "Param \"Mode\" has option value(s) -1 which are negative; CVR dropdown options are "
-                + "addressed by list index and can't represent a negative value, so those option(s) are dropped.")));
-
         Convert();
+        MakeIntMenuIndirectionLayers();
 
         var dropdown = (CVRAdvancesAvatarSettingGameObjectDropdown)Settings[0].setting;
-        Assert.AreEqual(new[] { "Zero", "One" }, dropdown.options.Select(o => o.name).ToArray());
-        Assert.AreEqual(0, dropdown.defaultValue);
+        Assert.AreEqual(new[] { "Negative", "Zero", "One" }, dropdown.options.Select(o => o.name).ToArray());
+        Assert.AreEqual(1, dropdown.defaultValue);
+        Assert.AreEqual("#ModeIdx", Settings[0].machineName);
+        Assert.AreEqual(new[] { -1f, 0f, 1f }, WrittenValues("#ModeIdx"));
+    }
+
+    [Test]
+    public void GappedToggleValues_AreWrittenByTheIndirectionLayer()
+    {
+        // The values a menu assigns are the avatar's own business -- an animator can dispatch on 3
+        // and 7 with nothing in between -- but a dropdown can only offer them in a row. Padding the
+        // gaps with placeholder options would put values in the menu that the avatar has no state
+        // for, so the options stay exactly the ones the menu has and the layer writes their values.
+        var subMenu = Menu(
+            Toggle("Three", "Mode", 3f),
+            Toggle("Seven", "Mode", 7f));
+        SetMenu(Menu(SubMenuControl("Modes", subMenu)));
+        SetParams(Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue: 7f));
+
+        Convert();
+        MakeIntMenuIndirectionLayers();
+
+        var dropdown = (CVRAdvancesAvatarSettingGameObjectDropdown)Settings[0].setting;
+        // index 0 is the deselected state: VRChat leaves the parameter at 0 with no toggle picked,
+        // and a CVR dropdown always has one option selected
+        Assert.AreEqual(new[] { "---", "Three", "Seven" }, dropdown.options.Select(o => o.name).ToArray());
+        Assert.AreEqual(2, dropdown.defaultValue);
+        Assert.AreEqual(new[] { 0f, 3f, 7f }, WrittenValues("#ModeIdx"));
+        Assert.AreEqual(2, Controller.parameters.Single(p => p.name == "#ModeIdx").defaultInt);
+    }
+
+    [Test]
+    public void ContiguousToggleValues_IncompatibleOnly_KeepDrivingTheParameterDirectly()
+    {
+        // Numbered 0..N-1 the option's own index is already the value it sets, so there is nothing
+        // for a layer to translate -- which is what the "only incompatible menus" mode is for.
+        core.intMenuIndirectionMode = VRC3CVRConvertConfig.IntMenuIndirectionMode.IncompatibleOnly;
+        SetUpContiguousColorMenu();
+
+        Convert();
+        MakeIntMenuIndirectionLayers();
+
+        Assert.AreEqual("Color", Settings[0].machineName);
+        Assert.AreEqual(0, Controller.layers.Length);
+    }
+
+    [Test]
+    public void ContiguousToggleValues_AreRebuiltTooByDefault()
+    {
+        // The default mode: every Int menu is built the same way whatever it is numbered.
+        SetUpContiguousColorMenu();
+
+        Convert();
+        MakeIntMenuIndirectionLayers();
+
+        Assert.AreEqual("#ColorIdx", Settings[0].machineName);
+        Assert.AreEqual(new[] { 0f, 1f }, WrittenValues("#ColorIdx"));
+    }
+
+    [Test]
+    public void ParameterMovedByTheAvatarItself_MovesTheMenuSelectionWithIt()
+    {
+        // The menu no longer sets the parameter directly, so a parameter driver, a contact or a
+        // second menu moving it would leave the dropdown showing the option it last picked. Each
+        // option is entered from the parameter's side as well, which puts the menu back in step.
+        Controller.AddParameter("Mode", AnimatorControllerParameterType.Int);
+        var subMenu = Menu(
+            Toggle("Three", "Mode", 3f),
+            Toggle("Seven", "Mode", 7f));
+        SetMenu(Menu(SubMenuControl("Modes", subMenu)));
+        SetParams(Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue: 3f));
+
+        Convert();
+        MakeIntMenuIndirectionLayers();
+
+        // option index 2 ("Seven") is entered either by the menu picking it or by Mode reaching 7
+        var toSeven = Layer("#ModeIdx").stateMachine.anyStateTransitions
+            .Where(t => t.destinationState.name == "7")
+            .Select(t => t.conditions.Single())
+            .ToArray();
+        Assert.AreEqual(new[] { "#ModeIdx", "Mode" }, toSeven.Select(c => c.parameter).ToArray());
+        Assert.AreEqual(new[] { 2f, 7f }, toSeven.Select(c => c.threshold).ToArray());
+        // and entering it writes both sides, so neither can drift from the other
+        Assert.AreEqual(new[] { 7f, 2f }, Layer("#ModeIdx").stateMachine.states
+            .Single(s => s.state.name == "7").state.behaviours
+            .OfType<AnimatorDriver>().Single().EnterTasks.Select(t => t.aValue).ToArray());
+    }
+
+    [Test]
+    public void TheIndirectionLayerWritesNothingOnARemoteCopy()
+    {
+        // A remote copy runs its state machines just the same, but the selector never reaches it --
+        // # parameters are not synced -- so it would sit in the default option and overwrite the
+        // value that sync had just delivered. localOnly is what stops that.
+        SetUpContiguousColorMenu();
+
+        Convert();
+        MakeIntMenuIndirectionLayers();
+
+        Assert.That(Layer("#ColorIdx").stateMachine.states
+            .SelectMany(s => s.state.behaviours.OfType<AnimatorDriver>())
+            .All(d => d.localOnly));
+    }
+
+    [Test]
+    public void FloatTypedParameter_IsReadBackByABandRatherThanEquals()
+    {
+        // A menu's Int parameter can end up declared Float -- a blend tree axis has to be one, and
+        // the merge takes the first declaration. Equals only reads an Int, so the value comes back
+        // through the half-unit band around it instead.
+        Controller.AddParameter("Mode", AnimatorControllerParameterType.Float);
+        var subMenu = Menu(
+            Toggle("Three", "Mode", 3f),
+            Toggle("Seven", "Mode", 7f));
+        SetMenu(Menu(SubMenuControl("Modes", subMenu)));
+        SetParams(Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue: 3f));
+
+        Convert();
+        MakeIntMenuIndirectionLayers();
+
+        var readBack = Layer("#ModeIdx").stateMachine.anyStateTransitions
+            .Single(t => t.destinationState.name == "7" && t.conditions[0].parameter == "Mode");
+        Assert.AreEqual(new[] { AnimatorConditionMode.Greater, AnimatorConditionMode.Less },
+            readBack.conditions.Select(c => c.mode).ToArray());
+        Assert.AreEqual(new[] { 6.5f, 7.5f }, readBack.conditions.Select(c => c.threshold).ToArray());
+    }
+
+    [Test]
+    public void ButtonMenu_CarriesItsActionMenuModAnnotationOnTheMenuParameter()
+    {
+        // The annotation says how the menu control behaves, so it belongs on the parameter the menu
+        // drives -- which is the selector once the menu has been rebuilt.
+        var subMenu = Menu(
+            Button("Three", "Mode", 3f),
+            Button("Seven", "Mode", 7f));
+        SetMenu(Menu(SubMenuControl("Modes", subMenu)));
+        SetParams(Param("Mode", VRCExpressionParameters.ValueType.Int));
+
+        Convert();
+        MakeIntMenuIndirectionLayers();
+
+        Assert.AreEqual("#ModeIdx<impulse=0.1>", Settings[0].machineName);
+    }
+
+    [Test]
+    public void DefaultValueNoOptionCarries_OpensOnTheFirstOption()
+    {
+        // Nothing in the menu sets 5, so no option can be shown as the one selected at start.
+        var subMenu = Menu(
+            Toggle("Three", "Mode", 3f),
+            Toggle("Seven", "Mode", 7f));
+        SetMenu(Menu(SubMenuControl("Modes", subMenu)));
+        SetParams(Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue: 5f));
+
+        Convert();
+        MakeIntMenuIndirectionLayers();
+
+        Assert.AreEqual(0, ((CVRAdvancesAvatarSettingGameObjectDropdown)Settings[0].setting).defaultValue);
+        Assert.AreEqual(0, Controller.parameters.Single(p => p.name == "#ModeIdx").defaultInt);
+    }
+
+    [Test]
+    public void UnsyncedParameter_IsWrittenUnderTheNameTheConversionGaveIt()
+    {
+        // The rebuild runs after the parameters have been renamed -- a parameter VRChat did not sync
+        // is given a "#" here too -- so it has to write the name the rest of the animator ended up
+        // reading, not the one the menu asset named.
+        Controller.AddParameter("Mode", AnimatorControllerParameterType.Int);
+        var subMenu = Menu(
+            Toggle("Three", "Mode", 3f),
+            Toggle("Seven", "Mode", 7f));
+        SetMenu(Menu(SubMenuControl("Modes", subMenu)));
+        var unsynced = Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue: 3f);
+        unsynced.networkSynced = false;
+        SetParams(unsynced);
+
+        Convert();
+        typeof(VRC3CVRCore).GetField("contactReceiverParameters", Flags).SetValue(core, new HashSet<string>());
+        typeof(VRC3CVRCore).GetMethod("AdjustParameterNames", Flags).Invoke(core, null);
+        MakeIntMenuIndirectionLayers();
+
+        Assert.AreEqual("#ModeIdx", Settings[0].machineName);
+        var written = Layer("#ModeIdx").stateMachine.states
+            .Single(s => s.state.name == "7").state.behaviours
+            .OfType<AnimatorDriver>().Single().EnterTasks[0];
+        Assert.AreEqual("#Mode", written.targetName);
+        Assert.AreEqual(7f, written.aValue);
+    }
+
+    void SetUpContiguousColorMenu()
+    {
+        var subMenu = Menu(
+            Toggle("Red", "Color", 0f),
+            Toggle("Green", "Color", 1f));
+        SetMenu(Menu(SubMenuControl("Colors", subMenu)));
+        SetParams(Param("Color", VRCExpressionParameters.ValueType.Int, defaultValue: 1f));
+    }
+
+    void MakeIntMenuIndirectionLayers()
+    {
+        typeof(VRC3CVRCore).GetMethod("MakeIntMenuIndirectionLayers", Flags).Invoke(core, null);
+    }
+
+    AnimatorController Controller =>
+        (AnimatorController)typeof(VRC3CVRCore).GetField("chilloutAnimatorController", Flags).GetValue(core);
+
+    AnimatorControllerLayer Layer(string selector) =>
+        Controller.layers.Single(l => l.stateMachine.anyStateTransitions
+            .Any(t => t.conditions.Any(c => c.parameter == selector)));
+
+    // The value each option of the selector's generated layer writes, by option index.
+    float[] WrittenValues(string selector)
+    {
+        return Layer(selector).stateMachine.anyStateTransitions
+            .Where(t => t.conditions[0].parameter == selector)
+            .OrderBy(t => t.conditions[0].threshold)
+            .Select(t => t.destinationState.behaviours.OfType<AnimatorDriver>().Single().EnterTasks[0].aValue)
+            .ToArray();
     }
 
     [Test]

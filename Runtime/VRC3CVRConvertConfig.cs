@@ -39,6 +39,19 @@ public class VRC3CVRConvertConfig
         KeepAsAuthored,
     }
 
+    // A ChilloutVR dropdown option carries no value of its own: the option's position in the list
+    // is the value it writes. Values that are not exactly 0..N-1 -- gaps, or anything negative --
+    // therefore have no option that can stand for them. Indirection gives the menu a local
+    // selector parameter instead and generates a layer that carries the value each option means.
+    public enum IntMenuIndirectionMode
+    {
+        // Every Int menu, so they are all built the same way whatever they are numbered.
+        All,
+        // Only the menus whose numbering a dropdown cannot address. A menu numbered 0..N-1 keeps
+        // driving its parameter straight from the dropdown, with nothing generated for it.
+        IncompatibleOnly,
+    }
+
     public VRCAvatarDescriptor vrcAvatarDescriptor;
     public string outputDirName = "VRC3CVR_Output";
     public bool shouldCloneAvatar = true;
@@ -78,6 +91,7 @@ public class VRC3CVRConvertConfig
     public bool adjustToVrcMenuOrder = true;
     public bool useHierarchicalMenuName = true;
     public bool useHierarchicalDropdownMenuName = true;
+    public IntMenuIndirectionMode intMenuIndirectionMode = IntMenuIndirectionMode.All;
     public bool addActionMenuModAnnotations = true;
     public bool convertVrcConstraints = true;
     public bool convertVrcHeadChops = true;
@@ -115,6 +129,7 @@ public class VRC3CVRConvertConfig
         adjustToVrcMenuOrder = other.adjustToVrcMenuOrder;
         useHierarchicalMenuName = other.useHierarchicalMenuName;
         useHierarchicalDropdownMenuName = other.useHierarchicalDropdownMenuName;
+        intMenuIndirectionMode = other.intMenuIndirectionMode;
         addActionMenuModAnnotations = other.addActionMenuModAnnotations;
         convertVrcConstraints = other.convertVrcConstraints;
         convertVrcHeadChops = other.convertVrcHeadChops;

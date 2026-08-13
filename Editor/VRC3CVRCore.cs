@@ -177,6 +177,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             ConvertVrcParametersToChillout();
             SetNonZeroDefaultValueParameters();
             AdjustParameterNames();
+            MakeIntMenuIndirectionLayers();
             MakeGestureWeightFeedLayers();
             MakeVelocityMagnitudeFeedLayer();
             MakeVrcEmoteCompatFeedLayer();
@@ -478,6 +479,17 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     }
     HashSet<string> impulseParameters;
 
+    // An Int menu whose option values MakeIntMenuIndirectionLayers has to write for it.
+    class IntMenuIndirection
+    {
+        public CVRAdvancedSettingsEntry entry;
+        public string vrcName;
+        // the value each dropdown option stands for, by option index
+        public List<int> values;
+        public int defaultIndex;
+    }
+    List<IntMenuIndirection> intMenuIndirections;
+
     class MenuNameAndType
     {
         public readonly VRCExpressionsMenu.Control.ControlType type;
@@ -616,6 +628,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
 
         parameterOrder = new List<string>();
         impulseParameters = new HashSet<string>();
+        intMenuIndirections = new List<IntMenuIndirection>();
         Dictionary<string, Dictionary<float, MenuNameAndType>> toggleTable = FindMenuButtonsAndToggles(vrcAvatarDescriptor.expressionsMenu, new Dictionary<string, Dictionary<float, MenuNameAndType>>(), new string[0]);
 
         for (int i = 0; i < vrcParams?.parameters?.Length; i++)
@@ -676,39 +689,37 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                             // CVR dropdown options have no per-option value field: the option's list
                             // index is the parameter value it sets (AddCondition(Equals, i, ...) in
                             // CVRAdvancedAvatarSettings, built from CCK_CVRAvatarEditor's
-                            // AdvSettings_Dropdown). The list must therefore start at index 0. VRC
-                            // control.value can be negative, but there is no index that could stand in
-                            // for a negative value, so such options are dropped rather than shifting
-                            // the whole list to make room for them.
-                            var negativeKeys = discreteIdTable.Keys.Where(k => k < 0).ToList();
-                            if (negativeKeys.Count > 0)
+                            // AdvSettings_Dropdown). Values numbered anything but 0..N-1 -- gapped or
+                            // negative -- have no index that stands for them, so those go through the
+                            // indirection layer MakeIntMenuIndirectionLayers builds instead.
+                            var options = new Dictionary<int, MenuNameAndType>();
+                            foreach (var pair in discreteIdTable.OrderBy(p => p.Key))
                             {
-                                Debug.LogWarning($"Param \"{vrcParam.name}\" has option value(s) {string.Join(", ", negativeKeys)} which are negative; CVR dropdown options are addressed by list index and can't represent a negative value, so those option(s) are dropped.");
-                                discreteIdTable = discreteIdTable.Where(p => p.Key >= 0).ToDictionary(p => p.Key, p => p.Value);
+                                options[(int)pair.Key] = pair.Value;
                             }
+                            // Deselecting a VRChat toggle leaves the parameter at 0, and a released
+                            // button returns it there, so 0 is a state of the group whether or not an
+                            // option carries it. A CVR dropdown always has one option selected, so the
+                            // only way to offer that state is an option of its own.
+                            if (!options.ContainsKey(0)) options[0] = null;
+                            var values = options.Keys.OrderBy(v => v).ToList();
+                            var indirect = intMenuIndirectionMode == IntMenuIndirectionMode.All
+                                || values[0] != 0 || values[values.Count - 1] != values.Count - 1;
 
-                            if (discreteIdTable.Count == 0)
-                            {
-                                Debug.LogWarning($"Int parameter \"{vrcParam.name}\" had only negative option values, so no CVR menu entry is generated for it (the animator parameter itself is still converted).");
-                                break;
-                            }
-
-                            var lastIndex = (int)discreteIdTable.Keys.Max();
-                            var menuEntryNames = new List<string>();
-                            for (var j = 0; j <= lastIndex; j++)
-                            {
-                                menuEntryNames.Add(discreteIdTable.TryGetValue(j, out var menuEntry) ? menuEntry.name : "---");
-                            }
-                            var menuName = GetMenuNameCommonParent(menuEntryNames.Where(name => name != "---"));
+                            var menuEntryNames = values.Select(v => options[v]?.name).ToList();
+                            var menuName = GetMenuNameCommonParent(menuEntryNames.Where(name => name != null));
                             menuEntryNames = menuEntryNames.Select(name =>
                             {
-                                if (name == "---") return "---";
+                                if (name == null) return "---";
                                 // menuName is the shared submenu prefix (without a trailing "/"); when the
                                 // toggles live directly in the root menu there is no common submenu, so
                                 // GetMenuNameCommonParent returns "" and there is no "/" separator to skip.
                                 if (useHierarchicalDropdownMenuName) return string.IsNullOrEmpty(menuName) ? name : name.Substring(menuName.Length + 1);
                                 return MenuNameWithoutStack(name);
                             }).ToList();
+                            // An out-of-range default has no option to select, so the menu opens on the
+                            // first one; the parameter's own default is set from the VRC one regardless.
+                            var defaultIndex = Math.Max(0, values.IndexOf((int)vrcParam.defaultValue));
                             newParam = new CVRAdvancedSettingsEntry()
                             {
                                 name = menuName,
@@ -717,7 +728,7 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                                 type = CVRAdvancedSettingsEntry.SettingsType.Dropdown,
                                 setting = new CVRAdvancesAvatarSettingGameObjectDropdown()
                                 {
-                                    defaultValue = (int)vrcParam.defaultValue,
+                                    defaultValue = defaultIndex,
                                     options = menuEntryNames.Select(name => new CVRAdvancedSettingsDropDownEntry { name = name }).ToList(),
                                     usedType = CVRAdvancesAvatarSettingBase.ParameterType.Int
                                 }
@@ -725,6 +736,16 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                             if (discreteIdTable.Values.All(v => v.type == VRCExpressionsMenu.Control.ControlType.Button))
                             {
                                 impulseParameters.Add(vrcParam.name);
+                            }
+                            if (indirect)
+                            {
+                                intMenuIndirections.Add(new IntMenuIndirection
+                                {
+                                    entry = newParam,
+                                    vrcName = vrcParam.name,
+                                    values = values,
+                                    defaultIndex = defaultIndex,
+                                });
                             }
                         }
                     }
@@ -5175,6 +5196,126 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             AddGeneratedLayer(layer);
         }
         chilloutAnimatorController.parameters = parameters;
+    }
+
+    // A CVR dropdown writes its option's position in the list, so an Int menu numbered anything but
+    // 0..N-1 cannot drive its parameter from the menu at all. The menu drives a local selector
+    // instead, and one state per option holds the pair together: entered from either side, it
+    // writes both the value the option stands for and the option that value belongs to. The write
+    // back is what keeps the menu showing the truth once something else -- a parameter driver, a
+    // contact, another menu -- has moved the parameter on its own.
+    // The writes are localOnly because a remote copy runs its state machines just the same: the
+    // selector never reaches it -- # parameters are not synced -- so it would sit in the default
+    // state and overwrite the value that sync had just delivered.
+    // Runs after AdjustParameterNames so parameter names are final: the entry's machineName is the
+    // converted parameter by then, which is the name the states write to.
+    void MakeIntMenuIndirectionLayers()
+    {
+        foreach (var indirection in intMenuIndirections)
+        {
+            var targetName = indirection.entry.machineName;
+            var parameters = chilloutAnimatorController.parameters;
+            var target = parameters.FirstOrDefault(p => p.name == targetName);
+            var targetType = AnimatorDriverParameterType(parameters, targetName);
+            // The selector carries the menu, so the impulse annotation -- which describes how the
+            // menu control behaves -- belongs on it rather than on the parameter it writes.
+            var selectorName = NonSyncParameterName(indirection.vrcName + "Idx");
+            if (impulseParameters.Contains(indirection.vrcName)) selectorName = ImpulseParameterName(selectorName);
+            var selector = chilloutAnimatorController.MakeUniqueParameterName(selectorName);
+            ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+            {
+                name = selector,
+                type = AnimatorControllerParameterType.Int,
+                defaultInt = indirection.defaultIndex,
+            });
+            chilloutAnimatorController.parameters = parameters;
+            indirection.entry.machineName = selector;
+
+            AnimatorDriverTask Set(string name, AnimatorDriverTask.ParameterType type, int value) => new AnimatorDriverTask
+            {
+                op = AnimatorDriverTask.Operator.Set,
+                targetName = name,
+                targetType = type,
+                aType = AnimatorDriverTask.SourceType.Static,
+                aValue = value,
+            };
+
+            var states = indirection.values.Select((value, i) => new AnimatorState
+            {
+                hideFlags = HideFlags.HideInHierarchy,
+                name = value.ToString(),
+                writeDefaultValues = false,
+                behaviours = new StateMachineBehaviour[]
+                {
+                    new AnimatorDriver
+                    {
+                        hideFlags = HideFlags.HideInHierarchy,
+                        localOnly = true,
+                        EnterTasks = new List<AnimatorDriverTask>
+                        {
+                            Set(targetName, targetType, value),
+                            Set(selector, AnimatorDriverTask.ParameterType.Int, i),
+                        },
+                    },
+                },
+            }).ToArray();
+
+            AnimatorStateTransition EnterOn(AnimatorState state, AnimatorCondition[] conditions) =>
+                Timed(new AnimatorStateTransition
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    destinationState = state,
+                    canTransitionToSelf = false,
+                    conditions = conditions,
+                }, 0f);
+
+            var transitions = new List<AnimatorStateTransition>();
+            for (var i = 0; i < states.Length; i++)
+            {
+                transitions.Add(EnterOn(states[i], new AnimatorCondition[]
+                {
+                    new AnimatorCondition { mode = AnimatorConditionMode.Equals, parameter = selector, threshold = i },
+                }));
+                // Equals reads an Int; a Float is caught by the band around it instead. A parameter
+                // of any other type, or one no layer declares, has no condition that could read the
+                // value back, so that menu only drives and never follows.
+                if (target?.type == AnimatorControllerParameterType.Int)
+                {
+                    transitions.Add(EnterOn(states[i], new AnimatorCondition[]
+                    {
+                        new AnimatorCondition { mode = AnimatorConditionMode.Equals, parameter = targetName, threshold = indirection.values[i] },
+                    }));
+                }
+                else if (target?.type == AnimatorControllerParameterType.Float)
+                {
+                    transitions.Add(EnterOn(states[i], new AnimatorCondition[]
+                    {
+                        new AnimatorCondition { mode = AnimatorConditionMode.Greater, parameter = targetName, threshold = indirection.values[i] - 0.5f },
+                        new AnimatorCondition { mode = AnimatorConditionMode.Less, parameter = targetName, threshold = indirection.values[i] + 0.5f },
+                    }));
+                }
+            }
+
+            var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_" + indirection.vrcName + "Idx");
+            AddGeneratedLayer(new AnimatorControllerLayer
+            {
+                name = layerName,
+                defaultWeight = 1f,
+                blendingMode = AnimatorLayerBlendingMode.Override,
+                avatarMask = emptyMask,
+                stateMachine = new AnimatorStateMachine
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    name = layerName,
+                    entryPosition = new Vector3(0, -100),
+                    exitPosition = new Vector3(0, 200),
+                    anyStatePosition = new Vector3(0, -300),
+                    defaultState = states[indirection.defaultIndex],
+                    states = states.Select((state, i) => new ChildAnimatorState { state = state, position = new Vector3(0, i * 100) }).ToArray(),
+                    anyStateTransitions = transitions.ToArray(),
+                },
+            });
+        }
     }
 
     void MakeGestureWeightFeedLayers()
