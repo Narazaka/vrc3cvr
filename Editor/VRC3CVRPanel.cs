@@ -14,7 +14,6 @@ public static class VRC3CVRPanel
 {
     class T
     {
-        public static istring ConvertStep => new istring("Convert", "変換");
         public static istring AutoBake => new istring("Auto bake", "自動ベイク");
         public static istring AutoBakeDescription => new istring(
             "Applies VRCFury, Modular Avatar, Avatar Optimizer and other non-destructive tools "
@@ -55,8 +54,6 @@ public static class VRC3CVRPanel
 
         EditorGUILayout.PropertyField(convertConfigProperty);
 
-        CustomGUI.SmallLineGap();
-        CustomGUI.BoldLabel(T.ConvertStep);
         CustomGUI.SmallLineGap();
 
         var cloneProperty = convertConfigProperty.FindPropertyRelative(nameof(VRC3CVRConvertConfig.shouldCloneAvatar));

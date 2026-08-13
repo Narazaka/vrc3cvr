@@ -195,15 +195,11 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             LF();
         }
 
-        // A section that can be shut, and stays shut for as long as the editor is open. Which of
-        // them anyone wants open is a property of who is looking rather than of the avatar being
-        // looked at, so it is kept out of the serialized settings. Both passes read the same answer,
-        // so a shut section takes up no height either.
         static readonly Dictionary<string, bool> openSections = new Dictionary<string, bool>();
 
         bool Section(string key, string labelText)
         {
-            var open = !openSections.TryGetValue(key, out var remembered) || remembered;
+            var open = openSections.TryGetValue(key, out var remembered) && remembered;
             Height1();
             if (draw)
             {
