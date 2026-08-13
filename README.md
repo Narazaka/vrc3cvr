@@ -1,6 +1,7 @@
 # VRC3CVR
 
 - **[日本語](README.ja.md)**
+- **[Changelog](CHANGELOG.md)** — what changed, and what to watch for when updating
 
 Convert a VRChat SDK3 avatar to ChilloutVR with this Unity script.
 
