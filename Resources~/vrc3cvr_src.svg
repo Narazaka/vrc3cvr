@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="256"
+   height="256"
+   viewBox="0 0 256 256"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   sodipodi:docname="vrc3cvr_logo.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="true"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="px"
+     inkscape:zoom="2.0792508"
+     inkscape:cx="255.86139"
+     inkscape:cy="73.343724"
+     inkscape:window-width="2560"
+     inkscape:window-height="1369"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <g
+       id="bg"
+       style="stroke-width:1.58327"
+       transform="matrix(1,0,0,0.61674898,0,49.05613)">
+      <rect
+         style="fill:#4589d7;fill-opacity:1;stroke:none;stroke-width:35.9043;stroke-dasharray:none;stroke-opacity:1"
+         id="rect6"
+         width="128"
+         height="256"
+         x="0"
+         y="0" />
+      <rect
+         style="fill:#e73400;fill-opacity:1;stroke:none;stroke-width:35.9043;stroke-dasharray:none;stroke-opacity:1"
+         id="rect6-4"
+         width="128"
+         height="256"
+         x="128"
+         y="0" />
+    </g>
+    <g
+       id="txt"
+       style="stroke-width:0.755552">
+      <text
+         xml:space="preserve"
+         id="text1"
+         x="50"
+         y="128"
+         style="fill:#ffffff;fill-opacity:1;stroke-width:0.756739;stroke-dasharray:none"><tspan
+           id="tspan1"
+           style="font-style:normal;font-variant:normal;font-weight:900;font-stretch:normal;font-size:128px;font-family:'Rounded Mgen+ 1p';-inkscape-font-specification:'Rounded Mgen+ 1p Heavy';dominant-baseline:central;text-anchor:middle;fill:#ffffff;fill-opacity:1;stroke-width:0.756739;stroke-dasharray:none"
+           sodipodi:role="line"
+           x="50"
+           y="128">V</tspan></text>
+      <text
+         xml:space="preserve"
+         id="text1-7"
+         x="208"
+         y="128"
+         style="fill:#ffffff;fill-opacity:1;stroke-width:0.755552"><tspan
+           id="tspan1-7"
+           style="font-style:normal;font-variant:normal;font-weight:900;font-stretch:normal;font-size:128px;font-family:'Rounded Mgen+ 1p';-inkscape-font-specification:'Rounded Mgen+ 1p Heavy';dominant-baseline:central;text-anchor:middle;fill:#ffffff;fill-opacity:1;stroke-width:0.0104938"
+           sodipodi:role="line"
+           x="208"
+           y="128">C</tspan></text>
+      <path
+         style="fill:none;fill-opacity:1;stroke:#ffffff;stroke-width:17.1338;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1"
+         d="M 97.150376,127.44975 H 150.05405"
+         id="path3"
+         sodipodi:nodetypes="cc" />
+      <path
+         style="fill:none;stroke:#ffffff;stroke-width:17.1338;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1"
+         d="m 122.64032,73.103254 c 10.4895,16.232654 20.79584,32.611836 25.00901,53.865546 -3.68027,22.08295 -11.57266,39.07943 -24.23009,56.03257"
+         id="path6"
+         sodipodi:nodetypes="ccc" />
+    </g>
+  </g>
+</svg>
