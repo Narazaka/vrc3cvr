@@ -1,6 +1,6 @@
 # VRC3CVR
 
-- **[変更履歴](CHANGELOG.ja.md)** — 何が変わったか、更新時に気をつけること
+- **[変更履歴](CHANGELOG.ja.md)**
 
 VRChat SDK3のアバターをChilloutVR用に変換します。
 
