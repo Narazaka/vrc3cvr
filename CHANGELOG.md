@@ -1,6 +1,6 @@
 **[日本語](CHANGELOG.ja.md)**
 
-# Unreleased
+# 3.0.0-rc.3
 
 - feat: an avatar's own locomotion replaces ChilloutVR's locomotion layer (`Convert Locomotion Animator`)
   - VRChat's `proxy_*` placeholder clips are swapped for ChilloutVR's own animations

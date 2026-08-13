@@ -1,4 +1,4 @@
-# 未リリース
+# 3.0.0-rc.3
 
 - feat: アバター自身のlocomotionがChilloutVRのlocomotionレイヤーを置き換えるようになりました（`Locomotionレイヤーを変換`）
   - VRChatの`proxy_*`プレースホルダークリップはChilloutVR自身のアニメーションに差し替えられます
