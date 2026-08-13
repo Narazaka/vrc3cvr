@@ -1,4 +1,5 @@
 #if VRC_SDK_VRCSDK3
+using System.Collections.Generic;
 using UnityEngine;
 using PeanutTools_VRC3CVR.Localization;
 using UnityEditor;
@@ -194,6 +195,28 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             LF();
         }
 
+        // A section that can be shut, and stays shut for as long as the editor is open. Which of
+        // them anyone wants open is a property of who is looking rather than of the avatar being
+        // looked at, so it is kept out of the serialized settings. Both passes read the same answer,
+        // so a shut section takes up no height either.
+        static readonly Dictionary<string, bool> openSections = new Dictionary<string, bool>();
+
+        bool Section(string key, string labelText)
+        {
+            var open = !openSections.TryGetValue(key, out var remembered) || remembered;
+            Height1();
+            if (draw)
+            {
+                var indentLevel = EditorGUI.indentLevel;
+                EditorGUI.indentLevel = 0;
+                open = EditorGUI.Foldout(Indented(), open, labelText, true);
+                EditorGUI.indentLevel = indentLevel;
+                openSections[key] = open;
+            }
+            LF();
+            return open;
+        }
+
         void HeaderLabel(string labelText)
         {
             Height1();
@@ -278,53 +301,56 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
 
             EditorGUI.indentLevel--;
 
-            HeaderLabel(T.TrackingControl);
+            if (Section("trackingControl", T.TrackingControl))
+            {
+                EditorGUI.indentLevel++;
 
-            EditorGUI.indentLevel++;
+                Toggle(nameof(VRC3CVRConvertConfig.convertVRCAnimatorLocomotionControl), T.ConvertVRCAnimatorLocomotionControl, T.ConvertVRCAnimatorLocomotionControlDescription);
 
-            Toggle(nameof(VRC3CVRConvertConfig.convertVRCAnimatorLocomotionControl), T.ConvertVRCAnimatorLocomotionControl, T.ConvertVRCAnimatorLocomotionControlDescription);
+                Toggle(nameof(VRC3CVRConvertConfig.convertVRCAnimatorTrackingControl), T.ConvertVRCAnimatorTrackingControl, T.ConvertVRCAnimatorTrackingControlDescription);
 
-            Toggle(nameof(VRC3CVRConvertConfig.convertVRCAnimatorTrackingControl), T.ConvertVRCAnimatorTrackingControl, T.ConvertVRCAnimatorTrackingControlDescription);
-
-            EditorGUI.indentLevel--;
+                EditorGUI.indentLevel--;
+            }
 
             Toggle(nameof(VRC3CVRConvertConfig.preserveParameterSyncState), T.PreserveParameterSyncState, T.PreserveParameterSyncStateDescription);
 
-            HeaderLabel(T.ParameterCompatibility);
+            if (Section("parameterCompatibility", T.ParameterCompatibility))
+            {
+                EditorGUI.indentLevel++;
 
-            EditorGUI.indentLevel++;
+                EnumPopup(nameof(VRC3CVRConvertConfig.gestureWeightConversionMode), T.GestureWeightConversionMode, new string[] { T.GestureWeightModeFold, T.GestureWeightModeDerived }, T.GestureWeightConversionModeDescription);
 
-            EnumPopup(nameof(VRC3CVRConvertConfig.gestureWeightConversionMode), T.GestureWeightConversionMode, new string[] { T.GestureWeightModeFold, T.GestureWeightModeDerived }, T.GestureWeightConversionModeDescription);
+                Toggle(nameof(VRC3CVRConvertConfig.feedGameStateParameters), T.FeedGameStateParameters, T.FeedGameStateParametersDescription);
 
-            Toggle(nameof(VRC3CVRConvertConfig.feedGameStateParameters), T.FeedGameStateParameters, T.FeedGameStateParametersDescription);
+                EditorGUI.indentLevel--;
+            }
 
-            EditorGUI.indentLevel--;
+            if (Section("vrcComponents", T.VRCComponents))
+            {
+                EditorGUI.indentLevel++;
 
-            HeaderLabel(T.VRCComponents);
+                Toggle(nameof(VRC3CVRConvertConfig.convertVRCContactSendersAndReceivers), T.ConvertVRCContactSendersAndReceivers, T.ConvertVRCContactSendersAndReceiversDescription);
 
-            EditorGUI.indentLevel++;
+                EditorGUI.indentLevel++;
 
-            Toggle(nameof(VRC3CVRConvertConfig.convertVRCContactSendersAndReceivers), T.ConvertVRCContactSendersAndReceivers, T.ConvertVRCContactSendersAndReceiversDescription);
+                Toggle(nameof(VRC3CVRConvertConfig.adjustContactParameterSync), T.AdjustContactParameterSync, T.AdjustContactParameterSyncDescription);
 
-            EditorGUI.indentLevel++;
+                EditorGUI.indentLevel--;
 
-            Toggle(nameof(VRC3CVRConvertConfig.adjustContactParameterSync), T.AdjustContactParameterSync, T.AdjustContactParameterSyncDescription);
+                Toggle(nameof(VRC3CVRConvertConfig.convertVrcConstraints), T.ConvertVrcConstraints, T.ConvertVrcConstraintsDescription);
 
-            EditorGUI.indentLevel--;
+                Toggle(nameof(VRC3CVRConvertConfig.convertVrcHeadChops), T.ConvertVrcHeadChops, T.ConvertVrcHeadChopsDescription);
 
-            Toggle(nameof(VRC3CVRConvertConfig.convertVrcConstraints), T.ConvertVrcConstraints, T.ConvertVrcConstraintsDescription);
+                Toggle(nameof(VRC3CVRConvertConfig.convertVrcSpatialAudioSources), T.ConvertVrcSpatialAudioSources, T.ConvertVrcSpatialAudioSourcesDescription);
 
-            Toggle(nameof(VRC3CVRConvertConfig.convertVrcHeadChops), T.ConvertVrcHeadChops, T.ConvertVrcHeadChopsDescription);
+                Toggle(nameof(VRC3CVRConvertConfig.shouldDeleteVRCAvatarDescriptorAndPipelineManager), T.DeleteVRCAvatarDescriptorAndPipelineManager);
 
-            Toggle(nameof(VRC3CVRConvertConfig.convertVrcSpatialAudioSources), T.ConvertVrcSpatialAudioSources, T.ConvertVrcSpatialAudioSourcesDescription);
+                Toggle(nameof(VRC3CVRConvertConfig.shouldDeletePhysBones), T.DeletePhysBonesAndColliders, T.DeleteContactsDescription);
 
-            Toggle(nameof(VRC3CVRConvertConfig.shouldDeleteVRCAvatarDescriptorAndPipelineManager), T.DeleteVRCAvatarDescriptorAndPipelineManager);
+                EditorGUI.indentLevel--;
 
-            Toggle(nameof(VRC3CVRConvertConfig.shouldDeletePhysBones), T.DeletePhysBonesAndColliders, T.DeleteContactsDescription);
-
-            EditorGUI.indentLevel--;
-
-            RenderLink("Physbone -> DynamicBone Tool?", "https://github.com/FACS01-01/PhysBone-to-DynamicBone");
+                RenderLink("Physbone -> DynamicBone Tool?", "https://github.com/FACS01-01/PhysBone-to-DynamicBone");
+            }
 
             HeaderLabel(T.Menu);
 
@@ -338,28 +364,29 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
 
             EditorGUI.indentLevel--;
 
-            HeaderLabel(T.Legacy);
-
-            EditorGUI.indentLevel++;
-
-            var collisionTagConvertionConfigProperty = vrc3cvr.FindPropertyRelative(nameof(VRC3CVRConvertConfig.collisionTagConvertionConfig));
-            var collisionTagConvertionConfigLabel = T.CollisionTagConvertionConfig.GUIContent;
-            Height(EditorGUI.GetPropertyHeight(collisionTagConvertionConfigProperty, collisionTagConvertionConfigLabel, true));
-            if (draw)
+            if (Section("legacy", T.Legacy))
             {
-                EditorGUI.PropertyField(position, collisionTagConvertionConfigProperty, collisionTagConvertionConfigLabel, true);
+                EditorGUI.indentLevel++;
+
+                var collisionTagConvertionConfigProperty = vrc3cvr.FindPropertyRelative(nameof(VRC3CVRConvertConfig.collisionTagConvertionConfig));
+                var collisionTagConvertionConfigLabel = T.CollisionTagConvertionConfig.GUIContent;
+                Height(EditorGUI.GetPropertyHeight(collisionTagConvertionConfigProperty, collisionTagConvertionConfigLabel, true));
+                if (draw)
+                {
+                    EditorGUI.PropertyField(position, collisionTagConvertionConfigProperty, collisionTagConvertionConfigLabel, true);
+                }
+                LF();
+
+                var collisionTagConvertionConfigWithPathsProperty = vrc3cvr.FindPropertyRelative(nameof(VRC3CVRConvertConfig.collisionTagConvertionConfigWithPaths));
+                var collisionTagConvertionConfigWithPathsLabel = T.CollisionTagConvertionConfigWithPaths.GUIContent;
+                Height(EditorGUI.GetPropertyHeight(collisionTagConvertionConfigWithPathsProperty, collisionTagConvertionConfigWithPathsLabel, true));
+                if (draw) EditorGUI.PropertyField(position, collisionTagConvertionConfigWithPathsProperty, collisionTagConvertionConfigWithPathsLabel, true);
+                LF();
+
+                Toggle(nameof(VRC3CVRConvertConfig.createVRCContactEquivalentPointers), T.CreateVRCContactEquivalentPointers, T.CreateVRCContactEquivalentPointersDescription);
+
+                EditorGUI.indentLevel--;
             }
-            LF();
-
-            var collisionTagConvertionConfigWithPathsProperty = vrc3cvr.FindPropertyRelative(nameof(VRC3CVRConvertConfig.collisionTagConvertionConfigWithPaths));
-            var collisionTagConvertionConfigWithPathsLabel = T.CollisionTagConvertionConfigWithPaths.GUIContent;
-            Height(EditorGUI.GetPropertyHeight(collisionTagConvertionConfigWithPathsProperty, collisionTagConvertionConfigWithPathsLabel, true));
-            if (draw) EditorGUI.PropertyField(position, collisionTagConvertionConfigWithPathsProperty, collisionTagConvertionConfigWithPathsLabel, true);
-            LF();
-
-            Toggle(nameof(VRC3CVRConvertConfig.createVRCContactEquivalentPointers), T.CreateVRCContactEquivalentPointers, T.CreateVRCContactEquivalentPointersDescription);
-
-            EditorGUI.indentLevel--;
 
             return position.y;
         }
