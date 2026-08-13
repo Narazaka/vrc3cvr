@@ -14,8 +14,7 @@ public static class VRC3CVRPanel
 {
     class T
     {
-        public static istring Settings => new istring("Step 2: Configure settings", "Step 2: 設定");
-        public static istring ConvertStep => new istring("Step 3: Convert", "Step 3: 変換");
+        public static istring ConvertStep => new istring("Convert", "変換");
         public static istring AutoBake => new istring("Auto bake", "自動ベイク");
         public static istring AutoBakeDescription => new istring(
             "Applies VRCFury, Modular Avatar, Avatar Optimizer and other non-destructive tools "
@@ -54,7 +53,6 @@ public static class VRC3CVRPanel
     {
         serializedObject.UpdateIfRequiredOrScript();
 
-        CustomGUI.BoldLabel(T.Settings);
         EditorGUILayout.PropertyField(convertConfigProperty);
 
         CustomGUI.SmallLineGap();

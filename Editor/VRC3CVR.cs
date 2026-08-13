@@ -14,7 +14,7 @@ public class VRC3CVR : EditorWindow
         public static istring Description => new istring(
             "Convert your VRChat avatar to ChilloutVR",
             "VRChatアバターをChilloutVRアバターに変換");
-        public static istring Step1 => new istring("Step 1: Select your avatar", "Step 1: アバターを選択");
+        public static istring SelectAvatar => new istring("Select your avatar", "アバターを選択");
         public static istring Avatar => new istring("Avatar", "アバター");
         public static istring EditingComponent => new istring(
             "Editing the VRC3CVR Avatar component on this avatar",
@@ -61,7 +61,7 @@ public class VRC3CVR : EditorWindow
         CustomGUI.HorizontalRule();
         CustomGUI.LineGap();
 
-        CustomGUI.BoldLabel(T.Step1);
+        CustomGUI.BoldLabel(T.SelectAvatar);
         CustomGUI.SmallLineGap();
         var pickedAvatar = (VRCAvatarDescriptor)EditorGUILayout.ObjectField(
             T.Avatar, selectedAvatar, typeof(VRCAvatarDescriptor), true);
