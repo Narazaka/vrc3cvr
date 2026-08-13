@@ -48,7 +48,8 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring ConvertVRCContactSendersAndReceiversDescription => new istring("Unlike VRC Contact, CVR Pointer and Trigger only change values when the contact collides. This difference may cause compatibility issues.", "VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。");
         public static istring CollisionTagConvertionConfig => new istring("Collision Tag Convertion Config", "Collision Tag 変換設定");
         public static istring CollisionTagConvertionConfigWithPaths => new istring("Collision Tag Convertion Config per path", "パスごとのCollision Tag 変換設定");
-        public static istring CreateVRCContactEquivalentPointers => new istring("Create VRC Contact Equivalent CVR Pointers (LEGACY)", "VRC Contact 相当の CVR Pointer を作成 (レガシー）");
+        public static istring Legacy => new istring("Legacy", "レガシー");
+        public static istring CreateVRCContactEquivalentPointers => new istring("Create VRC Contact Equivalent CVR Pointers", "VRC Contact 相当の CVR Pointer を作成");
         public static istring CreateVRCContactEquivalentPointersDescription => new istring("Creates CVR Pointers for VRC default Contact Senders (legacy)", "VRCデフォルトの VRC Contact Senderに相当するCVR Pointerを作成します (レガシー)");
         public static istring AdjustContactParameterSync => new istring("Adjust Contact Parameter Sync", "Contact Receiverに使用されるパラメーターを同期させる");
         public static istring AdjustContactParameterSyncDescription => new istring("Unlike the Contact Receiver, the CVR Advanced Avatar Trigger doesn't operate remotely, so it synchronizes parameters to replicate its functionality.", "CVR Advanced Avatar TriggerはContact Receiverと違ってリモートで動作しないため、パラメーター側で同期させて動作を再現します。");
@@ -311,23 +312,6 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
 
             EditorGUI.indentLevel--;
 
-            var collisionTagConvertionConfigProperty = vrc3cvr.FindPropertyRelative(nameof(VRC3CVRConvertConfig.collisionTagConvertionConfig));
-            var collisionTagConvertionConfigLabel = T.CollisionTagConvertionConfig.GUIContent;
-            Height(EditorGUI.GetPropertyHeight(collisionTagConvertionConfigProperty, collisionTagConvertionConfigLabel, true));
-            if (draw)
-            {
-                EditorGUI.PropertyField(position, collisionTagConvertionConfigProperty, collisionTagConvertionConfigLabel, true);
-            }
-            LF();
-
-            var collisionTagConvertionConfigWithPathsProperty = vrc3cvr.FindPropertyRelative(nameof(VRC3CVRConvertConfig.collisionTagConvertionConfigWithPaths));
-            var collisionTagConvertionConfigWithPathsLabel = T.CollisionTagConvertionConfigWithPaths.GUIContent;
-            Height(EditorGUI.GetPropertyHeight(collisionTagConvertionConfigWithPathsProperty, collisionTagConvertionConfigWithPathsLabel, true));
-            if (draw) EditorGUI.PropertyField(position, collisionTagConvertionConfigWithPathsProperty, collisionTagConvertionConfigWithPathsLabel, true);
-            LF();
-
-            Toggle(nameof(VRC3CVRConvertConfig.createVRCContactEquivalentPointers), T.CreateVRCContactEquivalentPointers, T.CreateVRCContactEquivalentPointersDescription);
-
             Toggle(nameof(VRC3CVRConvertConfig.convertVrcConstraints), T.ConvertVrcConstraints, T.ConvertVrcConstraintsDescription);
 
             Toggle(nameof(VRC3CVRConvertConfig.convertVrcHeadChops), T.ConvertVrcHeadChops, T.ConvertVrcHeadChopsDescription);
@@ -351,6 +335,29 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             Toggle(nameof(VRC3CVRConvertConfig.useHierarchicalMenuName), T.UseHierarchicalMenuName);
             Toggle(nameof(VRC3CVRConvertConfig.useHierarchicalDropdownMenuName), T.UseHierarchicalDropdownMenuName);
             Toggle(nameof(VRC3CVRConvertConfig.addActionMenuModAnnotations), T.AddActionMenuModAnnotations);
+
+            EditorGUI.indentLevel--;
+
+            HeaderLabel(T.Legacy);
+
+            EditorGUI.indentLevel++;
+
+            var collisionTagConvertionConfigProperty = vrc3cvr.FindPropertyRelative(nameof(VRC3CVRConvertConfig.collisionTagConvertionConfig));
+            var collisionTagConvertionConfigLabel = T.CollisionTagConvertionConfig.GUIContent;
+            Height(EditorGUI.GetPropertyHeight(collisionTagConvertionConfigProperty, collisionTagConvertionConfigLabel, true));
+            if (draw)
+            {
+                EditorGUI.PropertyField(position, collisionTagConvertionConfigProperty, collisionTagConvertionConfigLabel, true);
+            }
+            LF();
+
+            var collisionTagConvertionConfigWithPathsProperty = vrc3cvr.FindPropertyRelative(nameof(VRC3CVRConvertConfig.collisionTagConvertionConfigWithPaths));
+            var collisionTagConvertionConfigWithPathsLabel = T.CollisionTagConvertionConfigWithPaths.GUIContent;
+            Height(EditorGUI.GetPropertyHeight(collisionTagConvertionConfigWithPathsProperty, collisionTagConvertionConfigWithPathsLabel, true));
+            if (draw) EditorGUI.PropertyField(position, collisionTagConvertionConfigWithPathsProperty, collisionTagConvertionConfigWithPathsLabel, true);
+            LF();
+
+            Toggle(nameof(VRC3CVRConvertConfig.createVRCContactEquivalentPointers), T.CreateVRCContactEquivalentPointers, T.CreateVRCContactEquivalentPointersDescription);
 
             EditorGUI.indentLevel--;
 
