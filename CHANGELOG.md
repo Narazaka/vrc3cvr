@@ -21,11 +21,9 @@
 - feat: every playable layer is converted by default
   - each conversion judges for itself whether it can stand in for what ChilloutVR already does, and leaves ChilloutVR's own layer alone when it cannot
   - an avatar that already carries a `VRC3CVR Avatar` component keeps the settings it was saved with
-- feat: the settings are sorted into sections that fold
-  - every heading folds and starts folded, so what greets you is the list of what can be set rather than all of it at once, with the convert button in reach
-  - the parameter settings share one heading, the VRC components another, and the ones kept only for the conversions that came before them sit under `Legacy` at the end
-  - the step numbers are gone, and each setting is named after what it sits on rather than after the machinery behind it
-- feat: the `VRC3CVR Avatar` component has an icon of its own, and does not wear it in the scene view where it would sit over the avatar
+- feat: the settings are sorted into sections that fold, all of them folded to start with
+  - parameter settings under one heading, VRC components under another, what is kept only for older conversions under `Legacy` at the end. The step numbers are gone
+- feat: the `VRC3CVR Avatar` component has an icon of its own, and does not wear it in the scene view
 - feat: the locomotion option is no longer labelled `NOT RECOMMEND`, and the Additive option no longer warns about the bicycle pose
 - fix: Additive layers are blended additively
   - the Additive playable is additive by platform rule rather than by anything in the controller, so its layers are usually authored on Override. They were carried over on Override and replaced the merged pose instead of adding to it
@@ -37,11 +35,10 @@
 - fix: the hands stop gesturing during an emote
   - ChilloutVR mutes the hands by zeroing the weight of the layers named `LeftHand` and `RightHand`. A converted Gesture layer kept the name VRChat gave it, which is spelled differently (`Left Hand` in the stock controller), so nothing was muted and the fingers kept animating
   - the Gesture layer whose name matches once case and non-alphanumeric characters are ignored is renamed to ChilloutVR's spelling. A layer is left alone if it is not the only such match, if it does not run at full weight, or if a layer of that name is already there
-- fix: an emote no longer leaves the avatar in the bicycle pose for a time before the next one starts (`Zero-Weight States`)
-  - an emote layer parks the body in a state once the emote is over -- stock's own blend-out, and the cleanup an emote tool waits a whole clip out in -- and VRChat showed nothing of either, since the Action playable's weight was already down by then. The merged layer plays one state at a time and has no weight left to hide them with, so they played for real, and a cleanup clip that animates nothing plays Unity's own humanoid default
-  - these states are now left as soon as they are reached, which keeps whatever they carry firing. Choose `Change nothing` to keep VRChat's own timing instead, at the price of seeing what it was spent on. Leaving at once means the next emote follows on sooner than it does in VRChat, and the two cannot both be had in one layer
-  - whatever the weight had left to fade over is handed to the way out, which is the same crossfade by another name. Stock asks for half a second of it and leaves a fifth of the way through its own clip, so the return to locomotion after an emote now blends over the rest rather than cutting
-  - a layer whose weight control does not bound the raised span clearly enough to say which states were unseen is left alone
+- fix: switching or cancelling an emote no longer leaves the avatar in the bicycle pose -- Unity's own humanoid default -- for a time (`Zero-Weight States`)
+  - an emote tool, and stock Action itself, run a cleanup state once the emote is over. VRChat could play that state without showing it; ChilloutVR cannot, so it was seen
+  - the state is now passed straight through. It is still entered, so whatever it carries still runs, and `Change nothing` restores the old behaviour
+  - as a side effect, an avatar on stock Action now blends back to locomotion rather than cutting, and the next emote follows on sooner than in VRChat
 - fix: a parameter with no name is dropped instead of carried over. VRChat ignores such a parameter, so a tool that generates one by accident leaves no trace and the avatar uploads normally, but ChilloutVR cannot load that avatar and leaves you in its own default avatar instead
 
 # 3.0.0-rc.2
