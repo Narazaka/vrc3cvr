@@ -43,8 +43,8 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring ActionZeroWeightStateModeDescription => new istring("Fixes the time an avatar spends in the bicycle pose -- Unity's own humanoid default -- once an emote is switched or cancelled.", "エモートの切り替え・キャンセル直後に、一定時間アバターが自転車ポーズ（Unity Humanoidの既定ポーズ）になる問題への対処です。");
         public static istring FeedGameStateParameters => new istring("Feed MuteSelf / VRMode / Upright", "MuteSelf / VRMode / Upright を供給");
         public static istring FeedGameStateParametersDescription => new istring("Feeds VRChat's VRMode / MuteSelf / Upright from the game state and syncs them to remote viewers (only the ones the avatar uses; costs sync bits).", "VRChat組み込みのVRMode / MuteSelf / Uprightをゲーム状態から供給し、リモートにも同期します（アバターが使うもののみ。同期容量を消費します）。");
-        public static istring VRCContacts => new istring("VRC Contacts", "VRC Contact");
-        public static istring ConvertVRCContactSendersAndReceivers => new istring("Convert VRC Contact Senders and Receivers to CVR Pointer and CVR Advanced Avatar Trigger", "VRC Contact SenderとReceiverをCVR PointerとCVR Advanced Avatar Triggerに変換");
+        public static istring VRCComponents => new istring("VRC Components", "VRCコンポーネント");
+        public static istring ConvertVRCContactSendersAndReceivers => new istring("Convert VRC Contacts to CVR Pointer and CVR Advanced Avatar Trigger", "VRC ContactをCVR PointerとCVR Advanced Avatar Triggerに変換");
         public static istring ConvertVRCContactSendersAndReceiversDescription => new istring("Unlike VRC Contact, CVR Pointer and Trigger only change values when the contact collides. This difference may cause compatibility issues.", "VRCContactと違って、CVR PointerやTriggerはContactが衝突した時にしか値を変更しません。この差異によって互換性の問題を生じる可能性があります。");
         public static istring CollisionTagConvertionConfig => new istring("Collision Tag Convertion Config", "Collision Tag 変換設定");
         public static istring CollisionTagConvertionConfigWithPaths => new istring("Collision Tag Convertion Config per path", "パスごとのCollision Tag 変換設定");
@@ -299,13 +299,17 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
 
             EditorGUI.indentLevel--;
 
-            HeaderLabel(T.VRCContacts);
+            HeaderLabel(T.VRCComponents);
 
             EditorGUI.indentLevel++;
 
             Toggle(nameof(VRC3CVRConvertConfig.convertVRCContactSendersAndReceivers), T.ConvertVRCContactSendersAndReceivers, T.ConvertVRCContactSendersAndReceiversDescription);
-            
+
+            EditorGUI.indentLevel++;
+
             Toggle(nameof(VRC3CVRConvertConfig.adjustContactParameterSync), T.AdjustContactParameterSync, T.AdjustContactParameterSyncDescription);
+
+            EditorGUI.indentLevel--;
 
             var collisionTagConvertionConfigProperty = vrc3cvr.FindPropertyRelative(nameof(VRC3CVRConvertConfig.collisionTagConvertionConfig));
             var collisionTagConvertionConfigLabel = T.CollisionTagConvertionConfig.GUIContent;
@@ -324,6 +328,16 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
 
             Toggle(nameof(VRC3CVRConvertConfig.createVRCContactEquivalentPointers), T.CreateVRCContactEquivalentPointers, T.CreateVRCContactEquivalentPointersDescription);
 
+            Toggle(nameof(VRC3CVRConvertConfig.convertVrcConstraints), T.ConvertVrcConstraints, T.ConvertVrcConstraintsDescription);
+
+            Toggle(nameof(VRC3CVRConvertConfig.convertVrcHeadChops), T.ConvertVrcHeadChops, T.ConvertVrcHeadChopsDescription);
+
+            Toggle(nameof(VRC3CVRConvertConfig.convertVrcSpatialAudioSources), T.ConvertVrcSpatialAudioSources, T.ConvertVrcSpatialAudioSourcesDescription);
+
+            Toggle(nameof(VRC3CVRConvertConfig.shouldDeleteVRCAvatarDescriptorAndPipelineManager), T.DeleteVRCAvatarDescriptorAndPipelineManager);
+
+            Toggle(nameof(VRC3CVRConvertConfig.shouldDeletePhysBones), T.DeletePhysBonesAndColliders, T.DeleteContactsDescription);
+
             EditorGUI.indentLevel--;
 
             RenderLink("Physbone -> DynamicBone Tool?", "https://github.com/FACS01-01/PhysBone-to-DynamicBone");
@@ -339,16 +353,6 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             Toggle(nameof(VRC3CVRConvertConfig.addActionMenuModAnnotations), T.AddActionMenuModAnnotations);
 
             EditorGUI.indentLevel--;
-
-            Toggle(nameof(VRC3CVRConvertConfig.convertVrcConstraints), T.ConvertVrcConstraints, T.ConvertVrcConstraintsDescription);
-
-            Toggle(nameof(VRC3CVRConvertConfig.convertVrcHeadChops), T.ConvertVrcHeadChops, T.ConvertVrcHeadChopsDescription);
-
-            Toggle(nameof(VRC3CVRConvertConfig.convertVrcSpatialAudioSources), T.ConvertVrcSpatialAudioSources, T.ConvertVrcSpatialAudioSourcesDescription);
-
-            Toggle(nameof(VRC3CVRConvertConfig.shouldDeleteVRCAvatarDescriptorAndPipelineManager), T.DeleteVRCAvatarDescriptorAndPipelineManager);
-
-            Toggle(nameof(VRC3CVRConvertConfig.shouldDeletePhysBones), T.DeletePhysBonesAndColliders, T.DeleteContactsDescription);
 
             return position.y;
         }
