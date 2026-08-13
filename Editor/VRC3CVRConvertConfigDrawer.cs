@@ -217,19 +217,6 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
             return open;
         }
 
-        void HeaderLabel(string labelText)
-        {
-            Height1();
-            if (draw)
-            {
-                var indentLevel = EditorGUI.indentLevel;
-                EditorGUI.indentLevel = 0;
-                EditorGUI.LabelField(Indented(), labelText);
-                EditorGUI.indentLevel = indentLevel;
-            }
-            LF();
-        }
-
         void RenderLink(string label, string url)
         {
             RenderLinkRaw(label, url);
@@ -267,39 +254,40 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
 
         public float GUI()
         {
-            HeaderLabel(T.PlayableLayers);
+            if (Section("playableLayers", T.PlayableLayers))
+            {
+                EditorGUI.indentLevel++;
 
-            EditorGUI.indentLevel++;
+                Toggle(nameof(VRC3CVRConvertConfig.convertLocomotionLayer), T.ConvertLocomotionAnimator, T.ConvertLocomotionAnimatorDescription);
 
-            Toggle(nameof(VRC3CVRConvertConfig.convertLocomotionLayer), T.ConvertLocomotionAnimator, T.ConvertLocomotionAnimatorDescription);
+                EditorGUI.indentLevel++;
 
-            EditorGUI.indentLevel++;
+                Toggle(nameof(VRC3CVRConvertConfig.playLandingAnimation), T.PlayLandingAnimation, T.PlayLandingAnimationDescription);
 
-            Toggle(nameof(VRC3CVRConvertConfig.playLandingAnimation), T.PlayLandingAnimation, T.PlayLandingAnimationDescription);
+                Toggle(nameof(VRC3CVRConvertConfig.convertLocomotionTrackingControl), T.ConvertLocomotionTrackingControl, T.ConvertLocomotionTrackingControlDescription);
 
-            Toggle(nameof(VRC3CVRConvertConfig.convertLocomotionTrackingControl), T.ConvertLocomotionTrackingControl, T.ConvertLocomotionTrackingControlDescription);
+                EditorGUI.indentLevel--;
 
-            EditorGUI.indentLevel--;
+                Toggle(nameof(VRC3CVRConvertConfig.convertAdditiveLayer), T.ConvertAdditiveAnimator, T.ConvertAdditiveAnimatorDescription);
 
-            Toggle(nameof(VRC3CVRConvertConfig.convertAdditiveLayer), T.ConvertAdditiveAnimator, T.ConvertAdditiveAnimatorDescription);
+                Toggle(nameof(VRC3CVRConvertConfig.convertGestureLayer), T.ConvertGestureAnimator, T.ConvertGestureAnimatorDescription);
 
-            Toggle(nameof(VRC3CVRConvertConfig.convertGestureLayer), T.ConvertGestureAnimator, T.ConvertGestureAnimatorDescription);
-            
-            Toggle(nameof(VRC3CVRConvertConfig.convertActionLayer), T.ConvertActionAnimator, T.ConvertActionAnimatorDescription);
+                Toggle(nameof(VRC3CVRConvertConfig.convertActionLayer), T.ConvertActionAnimator, T.ConvertActionAnimatorDescription);
 
-            EditorGUI.indentLevel++;
+                EditorGUI.indentLevel++;
 
-            EnumPopup(nameof(VRC3CVRConvertConfig.actionZeroWeightStateMode), T.ActionZeroWeightStateMode,
-                new string[] { T.ActionZeroWeightStatePassThrough, T.ActionZeroWeightStateKeep },
-                T.ActionZeroWeightStateModeDescription);
+                EnumPopup(nameof(VRC3CVRConvertConfig.actionZeroWeightStateMode), T.ActionZeroWeightStateMode,
+                    new string[] { T.ActionZeroWeightStatePassThrough, T.ActionZeroWeightStateKeep },
+                    T.ActionZeroWeightStateModeDescription);
 
-            EditorGUI.indentLevel--;
+                EditorGUI.indentLevel--;
 
-            Toggle(nameof(VRC3CVRConvertConfig.convertSittingLayer), T.ConvertSittingAnimator, T.ConvertSittingAnimatorDescription);
+                Toggle(nameof(VRC3CVRConvertConfig.convertSittingLayer), T.ConvertSittingAnimator, T.ConvertSittingAnimatorDescription);
 
-            Toggle(nameof(VRC3CVRConvertConfig.convertFXLayer), T.ConvertFXAnimator, T.ConvertFXAnimatorDescription);
+                Toggle(nameof(VRC3CVRConvertConfig.convertFXLayer), T.ConvertFXAnimator, T.ConvertFXAnimatorDescription);
 
-            EditorGUI.indentLevel--;
+                EditorGUI.indentLevel--;
+            }
 
             if (Section("trackingControl", T.TrackingControl))
             {
@@ -312,11 +300,11 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
                 EditorGUI.indentLevel--;
             }
 
-            Toggle(nameof(VRC3CVRConvertConfig.preserveParameterSyncState), T.PreserveParameterSyncState, T.PreserveParameterSyncStateDescription);
-
             if (Section("parameterCompatibility", T.ParameterCompatibility))
             {
                 EditorGUI.indentLevel++;
+
+                Toggle(nameof(VRC3CVRConvertConfig.preserveParameterSyncState), T.PreserveParameterSyncState, T.PreserveParameterSyncStateDescription);
 
                 EnumPopup(nameof(VRC3CVRConvertConfig.gestureWeightConversionMode), T.GestureWeightConversionMode, new string[] { T.GestureWeightModeFold, T.GestureWeightModeDerived }, T.GestureWeightConversionModeDescription);
 
@@ -348,21 +336,22 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
                 Toggle(nameof(VRC3CVRConvertConfig.shouldDeletePhysBones), T.DeletePhysBonesAndColliders, T.DeleteContactsDescription);
 
                 EditorGUI.indentLevel--;
-
-                RenderLink("Physbone -> DynamicBone Tool?", "https://github.com/FACS01-01/PhysBone-to-DynamicBone");
             }
 
-            HeaderLabel(T.Menu);
+            RenderLink("Physbone -> DynamicBone Tool?", "https://github.com/FACS01-01/PhysBone-to-DynamicBone");
 
-            EditorGUI.indentLevel++;
+            if (Section("menu", T.Menu))
+            {
+                EditorGUI.indentLevel++;
 
-            Toggle(nameof(VRC3CVRConvertConfig.adjustToVrcMenuOrder), T.AdjustToVrcMenuOrder);
+                Toggle(nameof(VRC3CVRConvertConfig.adjustToVrcMenuOrder), T.AdjustToVrcMenuOrder);
 
-            Toggle(nameof(VRC3CVRConvertConfig.useHierarchicalMenuName), T.UseHierarchicalMenuName);
-            Toggle(nameof(VRC3CVRConvertConfig.useHierarchicalDropdownMenuName), T.UseHierarchicalDropdownMenuName);
-            Toggle(nameof(VRC3CVRConvertConfig.addActionMenuModAnnotations), T.AddActionMenuModAnnotations);
+                Toggle(nameof(VRC3CVRConvertConfig.useHierarchicalMenuName), T.UseHierarchicalMenuName);
+                Toggle(nameof(VRC3CVRConvertConfig.useHierarchicalDropdownMenuName), T.UseHierarchicalDropdownMenuName);
+                Toggle(nameof(VRC3CVRConvertConfig.addActionMenuModAnnotations), T.AddActionMenuModAnnotations);
 
-            EditorGUI.indentLevel--;
+                EditorGUI.indentLevel--;
+            }
 
             if (Section("legacy", T.Legacy))
             {
