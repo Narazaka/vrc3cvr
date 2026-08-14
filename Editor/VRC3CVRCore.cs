@@ -479,14 +479,20 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
     }
     HashSet<string> impulseParameters;
 
-    // An Int menu whose option values MakeIntMenuIndirectionLayers has to write for it.
+    // An Int menu whose option values MakeIntMenuIndirectionLayers has to write for it. Both forms
+    // are indexed by option: values[i] is what option i stands for, controls[i] is the VRChat
+    // control it came from -- null for the value 0 no control carries, which the menu still needs
+    // to reach because VRChat leaves the parameter there with nothing selected.
     class IntMenuIndirection
     {
-        public CVRAdvancedSettingsEntry entry;
         public string vrcName;
-        // the value each dropdown option stands for, by option index
         public List<int> values;
+        public List<MenuNameAndType> controls;
         public int defaultIndex;
+        // The dropdown that stands for the whole menu, or, split by hierarchy, the entry each
+        // option got where its control was (null where no control carries the value).
+        public CVRAdvancedSettingsEntry dropdown;
+        public List<CVRAdvancedSettingsEntry> toggles;
     }
     List<IntMenuIndirection> intMenuIndirections;
 
@@ -703,10 +709,42 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                             // only way to offer that state is an option of its own.
                             if (!options.ContainsKey(0)) options[0] = null;
                             var values = options.Keys.OrderBy(v => v).ToList();
-                            var indirect = intMenuIndirectionMode == IntMenuIndirectionMode.All
-                                || values[0] != 0 || values[values.Count - 1] != values.Count - 1;
+                            var controls = values.Select(v => options[v]).ToList();
+                            // An out-of-range default has no option to select, so the menu opens on the
+                            // first one; the parameter's own default is set from the VRC one regardless.
+                            var defaultIndex = Math.Max(0, values.IndexOf((int)vrcParam.defaultValue));
 
-                            var menuEntryNames = values.Select(v => options[v]?.name).ToList();
+                            if (splitIntMenuByHierarchy)
+                            {
+                                // Each control stays the entry it was, where it was. What made the
+                                // group exclusive in VRChat was the one Int parameter behind it, and
+                                // that is what the generated layer goes on being.
+                                var toggles = values.Select((v, i) => controls[i] == null ? null : new CVRAdvancedSettingsEntry()
+                                {
+                                    name = MenuName(controls[i].name),
+                                    machineName = vrcParam.name,
+                                    unlinkNameFromMachineName = true,
+                                    setting = new CVRAdvancesAvatarSettingGameObjectToggle()
+                                    {
+                                        defaultValue = i == defaultIndex,
+                                        usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool,
+                                    },
+                                }).ToList();
+                                newParams.AddRange(toggles.Where(t => t != null));
+                                intMenuIndirections.Add(new IntMenuIndirection
+                                {
+                                    vrcName = vrcParam.name,
+                                    values = values,
+                                    controls = controls,
+                                    defaultIndex = defaultIndex,
+                                    toggles = toggles,
+                                });
+                                break;
+                            }
+
+                            var indirect = values[0] != 0 || values[values.Count - 1] != values.Count - 1;
+
+                            var menuEntryNames = controls.Select(c => c?.name).ToList();
                             var menuName = GetMenuNameCommonParent(menuEntryNames.Where(name => name != null));
                             menuEntryNames = menuEntryNames.Select(name =>
                             {
@@ -717,9 +755,6 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                                 if (useHierarchicalDropdownMenuName) return string.IsNullOrEmpty(menuName) ? name : name.Substring(menuName.Length + 1);
                                 return MenuNameWithoutStack(name);
                             }).ToList();
-                            // An out-of-range default has no option to select, so the menu opens on the
-                            // first one; the parameter's own default is set from the VRC one regardless.
-                            var defaultIndex = Math.Max(0, values.IndexOf((int)vrcParam.defaultValue));
                             newParam = new CVRAdvancedSettingsEntry()
                             {
                                 name = menuName,
@@ -741,10 +776,11 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                             {
                                 intMenuIndirections.Add(new IntMenuIndirection
                                 {
-                                    entry = newParam,
                                     vrcName = vrcParam.name,
                                     values = values,
+                                    controls = controls,
                                     defaultIndex = defaultIndex,
+                                    dropdown = newParam,
                                 });
                             }
                         }
@@ -5198,38 +5234,63 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
         chilloutAnimatorController.parameters = parameters;
     }
 
-    // A CVR dropdown writes its option's position in the list, so an Int menu numbered anything but
-    // 0..N-1 cannot drive its parameter from the menu at all. The menu drives a local selector
-    // instead, and one state per option holds the pair together: entered from either side, it
-    // writes both the value the option stands for and the option that value belongs to. The write
-    // back is what keeps the menu showing the truth once something else -- a parameter driver, a
-    // contact, another menu -- has moved the parameter on its own.
-    // The writes are localOnly because a remote copy runs its state machines just the same: the
-    // selector never reaches it -- # parameters are not synced -- so it would sit in the default
-    // state and overwrite the value that sync had just delivered.
-    // Runs after AdjustParameterNames so parameter names are final: the entry's machineName is the
+    // A CVR menu entry can only write its own parameter: a dropdown writes the position of the
+    // option picked, a toggle writes true or false. Neither is the number an Int menu means, so the
+    // menu drives local parameters of that shape and a state per option holds the pair together --
+    // entered from either side, it writes both the value the option stands for and the menu's own
+    // reading of it. That write back is what keeps the menu showing the truth once something else --
+    // a parameter driver, a contact, another menu -- has moved the parameter on its own.
+    // The writes are localOnly because a remote copy runs its state machines just the same: what
+    // the menu drives never reaches it -- # parameters are not synced -- so it would sit in the
+    // default state and overwrite the value that sync had just delivered.
+    // Runs after AdjustParameterNames so parameter names are final: the entries' machineName is the
     // converted parameter by then, which is the name the states write to.
     void MakeIntMenuIndirectionLayers()
     {
         foreach (var indirection in intMenuIndirections)
         {
-            var targetName = indirection.entry.machineName;
+            var menuEntries = indirection.toggles?.Where(t => t != null) ?? new[] { indirection.dropdown };
+            var targetName = menuEntries.First().machineName;
             var parameters = chilloutAnimatorController.parameters;
             var target = parameters.FirstOrDefault(p => p.name == targetName);
             var targetType = AnimatorDriverParameterType(parameters, targetName);
-            // The selector carries the menu, so the impulse annotation -- which describes how the
-            // menu control behaves -- belongs on it rather than on the parameter it writes.
-            var selectorName = NonSyncParameterName(indirection.vrcName + "Idx");
-            if (impulseParameters.Contains(indirection.vrcName)) selectorName = ImpulseParameterName(selectorName);
-            var selector = chilloutAnimatorController.MakeUniqueParameterName(selectorName);
-            ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+
+            // The menu's parameters carry the menu, so an impulse annotation -- which describes how
+            // a control behaves -- belongs on them rather than on the parameter they stand for.
+            string Declare(string name, bool impulse, AnimatorControllerParameterType type, int defaultValue)
             {
-                name = selector,
-                type = AnimatorControllerParameterType.Int,
-                defaultInt = indirection.defaultIndex,
-            });
-            chilloutAnimatorController.parameters = parameters;
-            indirection.entry.machineName = selector;
+                var declared = chilloutAnimatorController.MakeUniqueParameterName(
+                    impulse ? ImpulseParameterName(NonSyncParameterName(name)) : NonSyncParameterName(name));
+                ArrayUtility.Add(ref parameters, new AnimatorControllerParameter
+                {
+                    name = declared,
+                    type = type,
+                    defaultInt = defaultValue,
+                    defaultBool = defaultValue != 0,
+                });
+                chilloutAnimatorController.parameters = parameters;
+                return declared;
+            }
+
+            // by option index; null where no control carries that value and nothing is in the menu
+            var menuNames = new string[indirection.values.Count];
+            if (indirection.toggles == null)
+            {
+                var selector = Declare(indirection.vrcName + "Idx", impulseParameters.Contains(indirection.vrcName),
+                    AnimatorControllerParameterType.Int, indirection.defaultIndex);
+                indirection.dropdown.machineName = selector;
+                for (var i = 0; i < menuNames.Length; i++) menuNames[i] = selector;
+            }
+            else
+            {
+                for (var i = 0; i < menuNames.Length; i++)
+                {
+                    if (indirection.toggles[i] == null) continue;
+                    menuNames[i] = Declare($"{indirection.vrcName}_{indirection.values[i]}", indirection.controls[i].IsButton,
+                        AnimatorControllerParameterType.Bool, i == indirection.defaultIndex ? 1 : 0);
+                    indirection.toggles[i].machineName = menuNames[i];
+                }
+            }
 
             AnimatorDriverTask Set(string name, AnimatorDriverTask.ParameterType type, int value) => new AnimatorDriverTask
             {
@@ -5240,24 +5301,30 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                 aValue = value,
             };
 
-            var states = indirection.values.Select((value, i) => new AnimatorState
+            // Split into toggles, the option leaving is the one that unchecks: the box that was
+            // ticked belongs to the state being left, and the next state ticks its own. Nothing
+            // walks the whole set, so this stays one write per side however long the menu is.
+            var states = indirection.values.Select((value, i) =>
             {
-                hideFlags = HideFlags.HideInHierarchy,
-                name = value.ToString(),
-                writeDefaultValues = false,
-                behaviours = new StateMachineBehaviour[]
+                var driver = new AnimatorDriver
                 {
-                    new AnimatorDriver
-                    {
-                        hideFlags = HideFlags.HideInHierarchy,
-                        localOnly = true,
-                        EnterTasks = new List<AnimatorDriverTask>
-                        {
-                            Set(targetName, targetType, value),
-                            Set(selector, AnimatorDriverTask.ParameterType.Int, i),
-                        },
-                    },
-                },
+                    hideFlags = HideFlags.HideInHierarchy,
+                    localOnly = true,
+                    EnterTasks = new List<AnimatorDriverTask> { Set(targetName, targetType, value) },
+                };
+                if (menuNames[i] != null)
+                {
+                    var menuType = indirection.toggles == null ? AnimatorDriverTask.ParameterType.Int : AnimatorDriverTask.ParameterType.Bool;
+                    driver.EnterTasks.Add(Set(menuNames[i], menuType, indirection.toggles == null ? i : 1));
+                    if (indirection.toggles != null) driver.ExitTasks.Add(Set(menuNames[i], menuType, 0));
+                }
+                return new AnimatorState
+                {
+                    hideFlags = HideFlags.HideInHierarchy,
+                    name = value.ToString(),
+                    writeDefaultValues = false,
+                    behaviours = new StateMachineBehaviour[] { driver },
+                };
             }).ToArray();
 
             AnimatorStateTransition EnterOn(AnimatorState state, AnimatorCondition[] conditions) =>
@@ -5272,10 +5339,15 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
             var transitions = new List<AnimatorStateTransition>();
             for (var i = 0; i < states.Length; i++)
             {
-                transitions.Add(EnterOn(states[i], new AnimatorCondition[]
+                if (menuNames[i] != null)
                 {
-                    new AnimatorCondition { mode = AnimatorConditionMode.Equals, parameter = selector, threshold = i },
-                }));
+                    transitions.Add(EnterOn(states[i], new AnimatorCondition[]
+                    {
+                        indirection.toggles == null
+                            ? new AnimatorCondition { mode = AnimatorConditionMode.Equals, parameter = menuNames[i], threshold = i }
+                            : new AnimatorCondition { mode = AnimatorConditionMode.If, parameter = menuNames[i] },
+                    }));
+                }
                 // Equals reads an Int; a Float is caught by the band around it instead. A parameter
                 // of any other type, or one no layer declares, has no condition that could read the
                 // value back, so that menu only drives and never follows.
@@ -5295,8 +5367,18 @@ public class VRC3CVRCore : VRC3CVRConvertConfig
                     }));
                 }
             }
+            // Unchecking the last box selects nothing, which in VRChat is the parameter at 0. A box
+            // of its own at 0 is ticked straight back by the state it leads to -- as VRChat ticks it
+            // back, the value it stands for being the one nothing selected leaves behind.
+            if (indirection.toggles != null)
+            {
+                transitions.Add(EnterOn(states[indirection.values.IndexOf(0)],
+                    menuNames.Where(name => name != null)
+                        .Select(name => new AnimatorCondition { mode = AnimatorConditionMode.IfNot, parameter = name })
+                        .ToArray()));
+            }
 
-            var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_" + indirection.vrcName + "Idx");
+            var layerName = chilloutAnimatorController.MakeUniqueLayerName("VRC3CVR_" + indirection.vrcName + "Menu");
             AddGeneratedLayer(new AnimatorControllerLayer
             {
                 name = layerName,

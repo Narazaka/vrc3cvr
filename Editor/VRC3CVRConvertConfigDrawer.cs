@@ -58,10 +58,8 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
         public static istring AdjustToVrcMenuOrder => new istring("Adjust to VRC menu order", "VRCメニューの順序に調整");
         public static istring UseHierarchicalMenuName => new istring("Use hierarchical menu name", "階層メニュー名を使用");
         public static istring UseHierarchicalDropdownMenuName => new istring("Use hierarchical dropdown menu name", "ドロップダウンメニュー名も階層化");
-        public static istring IntMenuIndirectionMode => new istring("Rebuild Int menus", "Intメニューの組み直し");
-        public static istring IntMenuIndirectionAll => new istring("All Int menus", "全てのIntメニュー");
-        public static istring IntMenuIndirectionIncompatibleOnly => new istring("Only incompatible Int menus", "非互換なIntメニューのみ");
-        public static istring IntMenuIndirectionModeDescription => new istring("ChilloutVR menus set the parameter to the option's position, so numbering with gaps (0, 3, 7) or negatives picks the wrong thing. Rebuilding sends the intended number instead.", "ChilloutVRのメニューは「選んだ項目が上から何番目か」を値にするため、番号が飛ぶ (0, 3, 7) メニューやマイナスの番号は違うものが選ばれます。組み直すと本来の番号を送ります。");
+        public static istring SplitIntMenuByHierarchy => new istring("Keep Int menu items where they were", "Intメニューの項目を階層に忠実にする");
+        public static istring SplitIntMenuByHierarchyDescription => new istring("VRChat can put the items of one Int menu in different folders. On, each stays where it was as its own check item; off, they are gathered into a single dropdown.", "VRChatでは1つのIntメニューの項目を別々のフォルダに置けます。ONにすると元の場所にチェック項目として残し、OFFにすると1つのドロップダウンにまとめます。");
         public static istring AddActionMenuModAnnotations => new istring("Add Action Menu Mod annotations", "Action Menu Mod用の種別タグを付与");
         public static istring ConvertVrcConstraints => new istring("Convert VRC Constraints", "VRC Constraintsを変換");
         public static istring ConvertVrcConstraintsDescription => new istring("Converts VRC Constraints to Unity Constraints. VRC-only features (FreezeToWorld etc.) are dropped with warnings.", "VRC ConstraintsをUnity Constraintsに変換します。VRC固有機能（FreezeToWorld等）は警告つきで破棄されます。");
@@ -348,9 +346,7 @@ public class VRC3CVRConvertConfigDrawer : PropertyDrawer
 
                 Toggle(nameof(VRC3CVRConvertConfig.useHierarchicalMenuName), T.UseHierarchicalMenuName);
                 Toggle(nameof(VRC3CVRConvertConfig.useHierarchicalDropdownMenuName), T.UseHierarchicalDropdownMenuName);
-                EnumPopup(nameof(VRC3CVRConvertConfig.intMenuIndirectionMode), T.IntMenuIndirectionMode,
-                    new string[] { T.IntMenuIndirectionAll, T.IntMenuIndirectionIncompatibleOnly },
-                    T.IntMenuIndirectionModeDescription);
+                Toggle(nameof(VRC3CVRConvertConfig.splitIntMenuByHierarchy), T.SplitIntMenuByHierarchy, T.SplitIntMenuByHierarchyDescription);
                 Toggle(nameof(VRC3CVRConvertConfig.addActionMenuModAnnotations), T.AddActionMenuModAnnotations);
 
                 EditorGUI.indentLevel--;

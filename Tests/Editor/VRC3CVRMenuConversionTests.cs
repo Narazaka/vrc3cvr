@@ -464,11 +464,7 @@ public class VRC3CVRMenuConversionTests
         // and 7 with nothing in between -- but a dropdown can only offer them in a row. Padding the
         // gaps with placeholder options would put values in the menu that the avatar has no state
         // for, so the options stay exactly the ones the menu has and the layer writes their values.
-        var subMenu = Menu(
-            Toggle("Three", "Mode", 3f),
-            Toggle("Seven", "Mode", 7f));
-        SetMenu(Menu(SubMenuControl("Modes", subMenu)));
-        SetParams(Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue: 7f));
+        SetUpGappedModeMenu(defaultValue: 7f);
 
         Convert();
         MakeIntMenuIndirectionLayers();
@@ -483,11 +479,10 @@ public class VRC3CVRMenuConversionTests
     }
 
     [Test]
-    public void ContiguousToggleValues_IncompatibleOnly_KeepDrivingTheParameterDirectly()
+    public void ContiguousToggleValues_KeepDrivingTheParameterDirectly()
     {
-        // Numbered 0..N-1 the option's own index is already the value it sets, so there is nothing
-        // for a layer to translate -- which is what the "only incompatible menus" mode is for.
-        core.intMenuIndirectionMode = VRC3CVRConvertConfig.IntMenuIndirectionMode.IncompatibleOnly;
+        // Numbered 0..N-1 the option's own position is already the value it sets, so there is
+        // nothing for a layer to translate.
         SetUpContiguousColorMenu();
 
         Convert();
@@ -498,30 +493,13 @@ public class VRC3CVRMenuConversionTests
     }
 
     [Test]
-    public void ContiguousToggleValues_AreRebuiltTooByDefault()
-    {
-        // The default mode: every Int menu is built the same way whatever it is numbered.
-        SetUpContiguousColorMenu();
-
-        Convert();
-        MakeIntMenuIndirectionLayers();
-
-        Assert.AreEqual("#ColorIdx", Settings[0].machineName);
-        Assert.AreEqual(new[] { 0f, 1f }, WrittenValues("#ColorIdx"));
-    }
-
-    [Test]
     public void ParameterMovedByTheAvatarItself_MovesTheMenuSelectionWithIt()
     {
         // The menu no longer sets the parameter directly, so a parameter driver, a contact or a
         // second menu moving it would leave the dropdown showing the option it last picked. Each
         // option is entered from the parameter's side as well, which puts the menu back in step.
         Controller.AddParameter("Mode", AnimatorControllerParameterType.Int);
-        var subMenu = Menu(
-            Toggle("Three", "Mode", 3f),
-            Toggle("Seven", "Mode", 7f));
-        SetMenu(Menu(SubMenuControl("Modes", subMenu)));
-        SetParams(Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue: 3f));
+        SetUpGappedModeMenu(defaultValue: 3f);
 
         Convert();
         MakeIntMenuIndirectionLayers();
@@ -542,15 +520,15 @@ public class VRC3CVRMenuConversionTests
     [Test]
     public void TheIndirectionLayerWritesNothingOnARemoteCopy()
     {
-        // A remote copy runs its state machines just the same, but the selector never reaches it --
-        // # parameters are not synced -- so it would sit in the default option and overwrite the
-        // value that sync had just delivered. localOnly is what stops that.
-        SetUpContiguousColorMenu();
+        // A remote copy runs its state machines just the same, but what the menu drives never
+        // reaches it -- # parameters are not synced -- so it would sit in the default option and
+        // overwrite the value that sync had just delivered. localOnly is what stops that.
+        SetUpGappedModeMenu(defaultValue: 3f);
 
         Convert();
         MakeIntMenuIndirectionLayers();
 
-        Assert.That(Layer("#ColorIdx").stateMachine.states
+        Assert.That(Layer("#ModeIdx").stateMachine.states
             .SelectMany(s => s.state.behaviours.OfType<AnimatorDriver>())
             .All(d => d.localOnly));
     }
@@ -562,11 +540,7 @@ public class VRC3CVRMenuConversionTests
         // the merge takes the first declaration. Equals only reads an Int, so the value comes back
         // through the half-unit band around it instead.
         Controller.AddParameter("Mode", AnimatorControllerParameterType.Float);
-        var subMenu = Menu(
-            Toggle("Three", "Mode", 3f),
-            Toggle("Seven", "Mode", 7f));
-        SetMenu(Menu(SubMenuControl("Modes", subMenu)));
-        SetParams(Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue: 3f));
+        SetUpGappedModeMenu(defaultValue: 3f);
 
         Convert();
         MakeIntMenuIndirectionLayers();
@@ -599,11 +573,7 @@ public class VRC3CVRMenuConversionTests
     public void DefaultValueNoOptionCarries_OpensOnTheFirstOption()
     {
         // Nothing in the menu sets 5, so no option can be shown as the one selected at start.
-        var subMenu = Menu(
-            Toggle("Three", "Mode", 3f),
-            Toggle("Seven", "Mode", 7f));
-        SetMenu(Menu(SubMenuControl("Modes", subMenu)));
-        SetParams(Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue: 5f));
+        SetUpGappedModeMenu(defaultValue: 5f);
 
         Convert();
         MakeIntMenuIndirectionLayers();
@@ -619,13 +589,7 @@ public class VRC3CVRMenuConversionTests
         // is given a "#" here too -- so it has to write the name the rest of the animator ended up
         // reading, not the one the menu asset named.
         Controller.AddParameter("Mode", AnimatorControllerParameterType.Int);
-        var subMenu = Menu(
-            Toggle("Three", "Mode", 3f),
-            Toggle("Seven", "Mode", 7f));
-        SetMenu(Menu(SubMenuControl("Modes", subMenu)));
-        var unsynced = Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue: 3f);
-        unsynced.networkSynced = false;
-        SetParams(unsynced);
+        SetUpGappedModeMenu(defaultValue: 3f, networkSynced: false);
 
         Convert();
         typeof(VRC3CVRCore).GetField("contactReceiverParameters", Flags).SetValue(core, new HashSet<string>());
@@ -640,6 +604,70 @@ public class VRC3CVRMenuConversionTests
         Assert.AreEqual(7f, written.aValue);
     }
 
+    [Test]
+    public void SplitByHierarchy_LeavesEachItemWhereItWas()
+    {
+        // A dropdown can only stand in one place, so items spread across submenus were gathered
+        // into whichever folder they share. Split, each stays an entry of its own where it was.
+        core.splitIntMenuByHierarchy = true;
+        SetMenu(Menu(
+            SubMenuControl("Dance", Menu(Toggle("Wave", "Mode", 3f))),
+            SubMenuControl("Sit", Menu(Toggle("Chair", "Mode", 7f)))));
+        SetParams(Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue: 3f));
+
+        Convert();
+        MakeIntMenuIndirectionLayers();
+
+        Assert.AreEqual(new[] { "Dance/Wave", "Sit/Chair" }, Settings.Select(s => s.name).ToArray());
+        Assert.AreEqual(new[] { "#Mode_3", "#Mode_7" }, Settings.Select(s => s.machineName).ToArray());
+        Assert.AreEqual(new[] { true, false },
+            Settings.Select(s => ((CVRAdvancesAvatarSettingGameObjectToggle)s.setting).defaultValue).ToArray());
+        // no entry stands for 0, the value nothing selected leaves behind
+        Assert.AreEqual(2, Settings.Count);
+    }
+
+    [Test]
+    public void SplitByHierarchy_TicksOneBoxAndUnticksTheOneItLeaves()
+    {
+        // What made the group exclusive in VRChat was the one Int parameter behind it. Each option
+        // ticks its own box on the way in and unticks it on the way out, so picking a second one
+        // clears the first without either of them having to know the whole set.
+        core.splitIntMenuByHierarchy = true;
+        SetUpGappedModeMenu(defaultValue: 3f);
+
+        Convert();
+        MakeIntMenuIndirectionLayers();
+
+        var seven = Layer("#Mode_7").stateMachine.states.Single(s => s.state.name == "7").state
+            .behaviours.OfType<AnimatorDriver>().Single();
+        Assert.AreEqual(new[] { "Mode", "#Mode_7" }, seven.EnterTasks.Select(t => t.targetName).ToArray());
+        Assert.AreEqual(new[] { 7f, 1f }, seven.EnterTasks.Select(t => t.aValue).ToArray());
+        Assert.AreEqual(new[] { "#Mode_7" }, seven.ExitTasks.Select(t => t.targetName).ToArray());
+        Assert.AreEqual(new[] { 0f }, seven.ExitTasks.Select(t => t.aValue).ToArray());
+        // ticking a box is what selects its option
+        Assert.AreEqual(AnimatorConditionMode.If, Layer("#Mode_7").stateMachine.anyStateTransitions
+            .Single(t => t.destinationState.name == "7" && t.conditions[0].parameter == "#Mode_7")
+            .conditions.Single().mode);
+    }
+
+    [Test]
+    public void SplitByHierarchy_UntickingTheLastBoxLeavesTheParameterAtZero()
+    {
+        // Nothing selected is the parameter at 0 in VRChat, and with every box cleared that is the
+        // state the menu is in -- there being no box of its own to reach it by.
+        core.splitIntMenuByHierarchy = true;
+        SetUpGappedModeMenu(defaultValue: 3f);
+
+        Convert();
+        MakeIntMenuIndirectionLayers();
+
+        var toZero = Layer("#Mode_3").stateMachine.anyStateTransitions.Single(t => t.destinationState.name == "0");
+        Assert.AreEqual(new[] { "#Mode_3", "#Mode_7" }, toZero.conditions.Select(c => c.parameter).ToArray());
+        Assert.That(toZero.conditions.All(c => c.mode == AnimatorConditionMode.IfNot));
+        Assert.AreEqual(new[] { 0f }, Layer("#Mode_3").stateMachine.states.Single(s => s.state.name == "0").state
+            .behaviours.OfType<AnimatorDriver>().Single().EnterTasks.Select(t => t.aValue).ToArray());
+    }
+
     void SetUpContiguousColorMenu()
     {
         var subMenu = Menu(
@@ -647,6 +675,19 @@ public class VRC3CVRMenuConversionTests
             Toggle("Green", "Color", 1f));
         SetMenu(Menu(SubMenuControl("Colors", subMenu)));
         SetParams(Param("Color", VRCExpressionParameters.ValueType.Int, defaultValue: 1f));
+    }
+
+    // 3 and 7 with nothing in between: a dropdown can only offer its options in a row, so this is
+    // the numbering that has to be rebuilt.
+    void SetUpGappedModeMenu(float defaultValue, bool networkSynced = true)
+    {
+        var subMenu = Menu(
+            Toggle("Three", "Mode", 3f),
+            Toggle("Seven", "Mode", 7f));
+        SetMenu(Menu(SubMenuControl("Modes", subMenu)));
+        var parameter = Param("Mode", VRCExpressionParameters.ValueType.Int, defaultValue);
+        parameter.networkSynced = networkSynced;
+        SetParams(parameter);
     }
 
     void MakeIntMenuIndirectionLayers()
