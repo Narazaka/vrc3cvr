@@ -1,5 +1,12 @@
 **[日本語](CHANGELOG.ja.md)**
 
+# 3.0.0-rc.4
+
+- feat: the items of an Int menu can stay in the folders VRChat had them in (`Keep Int menu items where they were`, off by default). A ChilloutVR dropdown can only stand in one place, so items spread across submenus are otherwise gathered into whichever folder they share. On, each becomes a check item where it was
+- fix: an Int menu numbered with gaps (0, 3, 7) or with negative numbers converts as it reads
+  - the gaps were filled with `---` placeholder options, which set values the avatar has no state for
+  - a negative value was dropped along with the item that carried it
+
 # 3.0.0-rc.3
 
 - feat: an avatar's own locomotion replaces ChilloutVR's locomotion layer (`Convert Locomotion Animator`)
